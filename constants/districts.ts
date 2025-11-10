@@ -1,0 +1,43 @@
+import { District } from '@/types/database';
+
+export const DISTRICTS: District[] = [
+  'Ortahisar',
+  'Akçaabat',
+  'Araklı',
+  'Arsin',
+  'Beşikdüzü',
+  'Çarşıbaşı',
+  'Çaykara',
+  'Dernekpazarı',
+  'Düzköy',
+  'Hayrat',
+  'Köprübaşı',
+  'Maçka',
+  'Of',
+  'Sürmene',
+  'Şalpazarı',
+  'Tonya',
+  'Vakfıkebir',
+  'Yomra',
+];
+
+export const DISTRICT_BADGES: Record<District, string> = {
+  'Ortahisar': '🏛️',
+  'Akçaabat': '🥙',
+  'Araklı': '🏔️',
+  'Arsin': '🌊',
+  'Beşikdüzü': '⛰️',
+  'Çarşıbaşı': '🏞️',
+  'Çaykara': '☕',
+  'Dernekpazarı': '🌲',
+  'Düzköy': '🌾',
+  'Hayrat': '🎣',
+  'Köprübaşı': '🌉',
+  'Maçka': '🏞️',
+  'Of': '🌿',
+  'Sürmene': '⚓',
+  'Şalpazarı': '🌳',
+  'Tonya': '🥜',
+  'Vakfıkebir': '🎋',
+  'Yomra': '🏖️',
+};
