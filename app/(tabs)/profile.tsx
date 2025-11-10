@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert } fr
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LogOut, Settings, HelpCircle, Trash2 } from 'lucide-react-native';
+import { LogOut, Settings, HelpCircle, Trash2, Edit3 } from 'lucide-react-native';
 import { DISTRICT_BADGES } from '@/constants/districts';
 import { useRouter } from 'expo-router';
 import { Footer } from '@/components/Footer';
@@ -91,6 +91,11 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.menuSection}>
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/profile/edit')}>
+            <Edit3 size={20} color={COLORS.text} />
+            <Text style={styles.menuText}>Profili Düzenle</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity style={styles.menuItem}>
             <Settings size={20} color={COLORS.text} />
             <Text style={styles.menuText}>Ayarlar</Text>

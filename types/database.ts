@@ -18,6 +18,29 @@ export type District =
   | 'Vakfıkebir'
   | 'Yomra';
 
+export type City = 'Trabzon' | 'Giresun' | 'Rize';
+export type Gender = 'male' | 'female' | 'other';
+
+export interface SocialMedia {
+  instagram?: string;
+  twitter?: string;
+  facebook?: string;
+  linkedin?: string;
+  tiktok?: string;
+  youtube?: string;
+}
+
+export interface PrivacySettings {
+  show_age: boolean;
+  show_gender: boolean;
+  show_phone: boolean;
+  show_email: boolean;
+  show_address: boolean;
+  show_height: boolean;
+  show_weight: boolean;
+  show_social_media: boolean;
+}
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -25,7 +48,15 @@ export interface UserProfile {
   avatar_url: string | null;
   bio: string | null;
   district: District;
+  city: City | null;
+  age: number | null;
+  gender: Gender | null;
   phone: string | null;
+  address: string | null;
+  height: number | null;
+  weight: number | null;
+  social_media: SocialMedia;
+  privacy_settings: PrivacySettings;
   show_address: boolean;
   verified: boolean;
   selfie_verified: boolean;
