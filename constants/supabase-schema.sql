@@ -50,10 +50,17 @@ CREATE TABLE user_profiles (
   bio TEXT,
   district district_type NOT NULL,
   phone TEXT,
+  date_of_birth DATE,
   show_address BOOLEAN DEFAULT true,
   verified BOOLEAN DEFAULT false,
   selfie_verified BOOLEAN DEFAULT false,
+  verification_status TEXT DEFAULT 'unverified' CHECK (verification_status IN ('pending', 'verified', 'rejected', 'unverified')),
+  verification_documents TEXT[],
+  verified_at TIMESTAMP WITH TIME ZONE,
+  verification_notes TEXT,
   points INTEGER DEFAULT 0,
+  is_online BOOLEAN DEFAULT false,
+  last_seen_at TIMESTAMP WITH TIME ZONE,
   deletion_requested_at TIMESTAMP WITH TIME ZONE,
   deletion_scheduled_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -427,6 +434,104 @@ CREATE TABLE analytics_events (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- User Settings (Yeni)
+CREATE TABLE user_settings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL UNIQUE REFERENCES user_profiles(id) ON DELETE CASCADE,
+  
+  -- Privacy Settings
+  profile_visibility TEXT DEFAULT 'public' CHECK (profile_visibility IN ('public', 'friends', 'private')),
+  show_phone BOOLEAN DEFAULT false,
+  show_email BOOLEAN DEFAULT false,
+  show_birth_date BOOLEAN DEFAULT false,
+  allow_messages_from TEXT DEFAULT 'everyone' CHECK (allow_messages_from IN ('everyone', 'friends', 'none')),
+  allow_tagging TEXT DEFAULT 'everyone' CHECK (allow_tagging IN ('everyone', 'friends', 'none')),
+  show_online_status BOOLEAN DEFAULT true,
+  
+  -- Notification Settings
+  push_enabled BOOLEAN DEFAULT true,
+  push_posts BOOLEAN DEFAULT true,
+  push_comments BOOLEAN DEFAULT true,
+  push_likes BOOLEAN DEFAULT true,
+  push_follows BOOLEAN DEFAULT true,
+  push_messages BOOLEAN DEFAULT true,
+  push_events BOOLEAN DEFAULT true,
+  push_help_requests BOOLEAN DEFAULT true,
+  
+  email_enabled BOOLEAN DEFAULT true,
+  email_digest TEXT DEFAULT 'daily' CHECK (email_digest IN ('realtime', 'daily', 'weekly', 'never')),
+  email_marketing BOOLEAN DEFAULT false,
+  
+  sms_enabled BOOLEAN DEFAULT false,
+  sms_important_only BOOLEAN DEFAULT true,
+  
+  -- District Settings
+  interested_districts district_type[],
+  show_all_districts BOOLEAN DEFAULT true,
+  
+  -- Security Settings
+  two_factor_enabled BOOLEAN DEFAULT false,
+  two_factor_method TEXT CHECK (two_factor_method IN ('sms', 'email', 'authenticator')),
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- User Sessions (Yeni)
+CREATE TABLE user_sessions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+  device_name TEXT,
+  device_type TEXT,
+  ip_address TEXT,
+  user_agent TEXT,
+  last_active_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  is_current BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Verification Documents (Yeni)
+CREATE TABLE selfie_verifications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+  selfie_url TEXT NOT NULL,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'verified', 'rejected')),
+  verified_by UUID REFERENCES admin_users(id),
+  verified_at TIMESTAMP WITH TIME ZONE,
+  rejection_reason TEXT,
+  confidence_score DECIMAL(3,2),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE identity_verifications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+  identity_front_url TEXT NOT NULL,
+  identity_back_url TEXT,
+  selfie_with_id_url TEXT,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'verified', 'rejected')),
+  verified_by UUID REFERENCES admin_users(id),
+  verified_at TIMESTAMP WITH TIME ZONE,
+  rejection_reason TEXT,
+  identity_number TEXT,
+  full_name TEXT,
+  date_of_birth DATE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Blocked Users (Yeni)
+CREATE TABLE blocked_users (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  blocker_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+  blocked_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+  reason TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(blocker_id, blocked_id),
+  CHECK (blocker_id != blocked_id)
+);
+
 -- ============================================
 -- 15. INDEXES (Performance)
 -- ============================================
@@ -486,6 +591,17 @@ CREATE INDEX idx_posts_content_search ON posts USING GIN(to_tsvector('turkish', 
 CREATE INDEX idx_businesses_search ON businesses USING GIN(to_tsvector('turkish', name || ' ' || description));
 CREATE INDEX idx_user_profiles_search ON user_profiles USING GIN(to_tsvector('turkish', full_name));
 
+-- User Settings Indexes (Yeni)
+CREATE INDEX idx_user_settings_user_id ON user_settings(user_id);
+CREATE INDEX idx_user_sessions_user_id ON user_sessions(user_id);
+CREATE INDEX idx_user_sessions_last_active ON user_sessions(last_active_at DESC);
+CREATE INDEX idx_selfie_verifications_user_id ON selfie_verifications(user_id);
+CREATE INDEX idx_selfie_verifications_status ON selfie_verifications(status);
+CREATE INDEX idx_identity_verifications_user_id ON identity_verifications(user_id);
+CREATE INDEX idx_identity_verifications_status ON identity_verifications(status);
+CREATE INDEX idx_blocked_users_blocker ON blocked_users(blocker_id);
+CREATE INDEX idx_blocked_users_blocked ON blocked_users(blocked_id);
+
 -- ============================================
 -- 16. ROW LEVEL SECURITY (RLS)
 -- ============================================
@@ -519,6 +635,11 @@ ALTER TABLE badges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_badges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE analytics_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE selfie_verifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE identity_verifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE blocked_users ENABLE ROW LEVEL SECURITY;
 
 -- User Profiles Policies
 CREATE POLICY "Profiles viewable by everyone" ON user_profiles FOR SELECT USING (true);
@@ -652,6 +773,27 @@ CREATE POLICY "App settings viewable by everyone" ON app_settings FOR SELECT USI
 -- Analytics Policies
 CREATE POLICY "Analytics insertable by everyone" ON analytics_events FOR INSERT WITH CHECK (true);
 
+-- User Settings Policies (Yeni)
+CREATE POLICY "Users view own settings" ON user_settings FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY "Users insert own settings" ON user_settings FOR INSERT WITH CHECK (user_id = auth.uid());
+CREATE POLICY "Users update own settings" ON user_settings FOR UPDATE USING (user_id = auth.uid());
+
+-- User Sessions Policies
+CREATE POLICY "Users view own sessions" ON user_sessions FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY "Users insert own sessions" ON user_sessions FOR INSERT WITH CHECK (user_id = auth.uid());
+CREATE POLICY "Users delete own sessions" ON user_sessions FOR DELETE USING (user_id = auth.uid());
+
+-- Verification Policies
+CREATE POLICY "Users view own selfie verifications" ON selfie_verifications FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY "Users insert own selfie verifications" ON selfie_verifications FOR INSERT WITH CHECK (user_id = auth.uid());
+CREATE POLICY "Users view own identity verifications" ON identity_verifications FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY "Users insert own identity verifications" ON identity_verifications FOR INSERT WITH CHECK (user_id = auth.uid());
+
+-- Blocked Users Policies
+CREATE POLICY "Users view own blocks" ON blocked_users FOR SELECT USING (blocker_id = auth.uid());
+CREATE POLICY "Users can block others" ON blocked_users FOR INSERT WITH CHECK (blocker_id = auth.uid());
+CREATE POLICY "Users can unblock" ON blocked_users FOR DELETE USING (blocker_id = auth.uid());
+
 -- ============================================
 -- 17. FUNCTIONS & TRIGGERS
 -- ============================================
@@ -683,6 +825,12 @@ CREATE TRIGGER update_businesses_updated_at BEFORE UPDATE ON businesses
 CREATE TRIGGER update_products_updated_at BEFORE UPDATE ON products
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER update_campaigns_updated_at BEFORE UPDATE ON campaigns
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_user_settings_updated_at BEFORE UPDATE ON user_settings
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_selfie_verifications_updated_at BEFORE UPDATE ON selfie_verifications
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_identity_verifications_updated_at BEFORE UPDATE ON identity_verifications
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- Post Likes Count
@@ -853,7 +1001,7 @@ CREATE TRIGGER on_new_message AFTER INSERT ON messages
 
 -- Auto-create user profile on signup
 CREATE OR REPLACE FUNCTION create_user_profile()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER AS $
 BEGIN
   INSERT INTO user_profiles (id, email, full_name, district)
   VALUES (
@@ -862,9 +1010,14 @@ BEGIN
     COALESCE(NEW.raw_user_meta_data->>'full_name', 'Kullanıcı'),
     COALESCE((NEW.raw_user_meta_data->>'district')::district_type, 'Ortahisar')
   );
+  
+  -- Create default user settings
+  INSERT INTO user_settings (user_id)
+  VALUES (NEW.id);
+  
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION create_user_profile();
@@ -1011,7 +1164,7 @@ RETURNS TABLE (
   district district_type,
   bio TEXT,
   similarity_score FLOAT
-) AS $$
+) AS $
 BEGIN
   RETURN QUERY
   SELECT 
@@ -1031,7 +1184,250 @@ BEGIN
   ORDER BY similarity_score DESC, up.full_name
   LIMIT limit_count;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ============================================
+-- 21. YENİ FONKSİYONLAR (AYARLAR SİSTEMİ)
+-- ============================================
+
+-- Request account deletion
+CREATE OR REPLACE FUNCTION request_account_deletion()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $
+DECLARE
+  scheduled_date TIMESTAMP WITH TIME ZONE;
+BEGIN
+  UPDATE user_profiles 
+  SET 
+    deletion_requested_at = NOW(),
+    deletion_scheduled_at = NOW() + INTERVAL '7 days'
+  WHERE id = auth.uid()
+  RETURNING deletion_scheduled_at INTO scheduled_date;
+  
+  RETURN json_build_object(
+    'success', true,
+    'message', 'Hesap silme talebi oluşturuldu. 7 gün içinde hesabınız silinecek.',
+    'scheduled_at', scheduled_date
+  );
+END;
+$;
+
+-- Cancel account deletion
+CREATE OR REPLACE FUNCTION cancel_account_deletion()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $
+BEGIN
+  UPDATE user_profiles 
+  SET 
+    deletion_requested_at = NULL,
+    deletion_scheduled_at = NULL
+  WHERE id = auth.uid();
+  
+  RETURN json_build_object(
+    'success', true,
+    'message', 'Hesap silme talebi iptal edildi.'
+  );
+END;
+$;
+
+-- Download user data (GDPR compliance)
+CREATE OR REPLACE FUNCTION download_user_data()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $
+DECLARE
+  user_data JSONB;
+BEGIN
+  SELECT json_build_object(
+    'profile', (SELECT row_to_json(up) FROM user_profiles up WHERE id = auth.uid()),
+    'settings', (SELECT row_to_json(us) FROM user_settings us WHERE user_id = auth.uid()),
+    'posts', (SELECT json_agg(p) FROM posts p WHERE user_id = auth.uid()),
+    'comments', (SELECT json_agg(c) FROM comments c WHERE user_id = auth.uid()),
+    'businesses', (SELECT json_agg(b) FROM businesses b WHERE user_id = auth.uid()),
+    'events', (SELECT json_agg(e) FROM events e WHERE user_id = auth.uid()),
+    'help_requests', (SELECT json_agg(hr) FROM help_requests hr WHERE user_id = auth.uid()),
+    'campaigns', (SELECT json_agg(c) FROM campaigns c WHERE user_id = auth.uid()),
+    'followers', (SELECT json_agg(f) FROM follows f WHERE following_id = auth.uid()),
+    'following', (SELECT json_agg(f) FROM follows f WHERE follower_id = auth.uid()),
+    'downloaded_at', NOW()
+  ) INTO user_data;
+  
+  RETURN user_data;
+END;
+$;
+
+-- Get user settings with defaults
+CREATE OR REPLACE FUNCTION get_user_settings(p_user_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $
+DECLARE
+  settings JSONB;
+BEGIN
+  SELECT row_to_json(us)::jsonb INTO settings
+  FROM user_settings us
+  WHERE user_id = p_user_id;
+  
+  IF settings IS NULL THEN
+    INSERT INTO user_settings (user_id)
+    VALUES (p_user_id)
+    RETURNING row_to_json(user_settings)::jsonb INTO settings;
+  END IF;
+  
+  RETURN settings;
+END;
+$;
+
+-- Update user settings
+CREATE OR REPLACE FUNCTION update_user_settings(settings_data JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $
+BEGIN
+  UPDATE user_settings
+  SET
+    profile_visibility = COALESCE((settings_data->>'profile_visibility')::TEXT, profile_visibility),
+    show_phone = COALESCE((settings_data->>'show_phone')::BOOLEAN, show_phone),
+    show_email = COALESCE((settings_data->>'show_email')::BOOLEAN, show_email),
+    show_birth_date = COALESCE((settings_data->>'show_birth_date')::BOOLEAN, show_birth_date),
+    allow_messages_from = COALESCE((settings_data->>'allow_messages_from')::TEXT, allow_messages_from),
+    allow_tagging = COALESCE((settings_data->>'allow_tagging')::TEXT, allow_tagging),
+    show_online_status = COALESCE((settings_data->>'show_online_status')::BOOLEAN, show_online_status),
+    push_enabled = COALESCE((settings_data->>'push_enabled')::BOOLEAN, push_enabled),
+    push_posts = COALESCE((settings_data->>'push_posts')::BOOLEAN, push_posts),
+    push_comments = COALESCE((settings_data->>'push_comments')::BOOLEAN, push_comments),
+    push_likes = COALESCE((settings_data->>'push_likes')::BOOLEAN, push_likes),
+    push_follows = COALESCE((settings_data->>'push_follows')::BOOLEAN, push_follows),
+    push_messages = COALESCE((settings_data->>'push_messages')::BOOLEAN, push_messages),
+    push_events = COALESCE((settings_data->>'push_events')::BOOLEAN, push_events),
+    push_help_requests = COALESCE((settings_data->>'push_help_requests')::BOOLEAN, push_help_requests),
+    email_enabled = COALESCE((settings_data->>'email_enabled')::BOOLEAN, email_enabled),
+    email_digest = COALESCE((settings_data->>'email_digest')::TEXT, email_digest),
+    email_marketing = COALESCE((settings_data->>'email_marketing')::BOOLEAN, email_marketing),
+    sms_enabled = COALESCE((settings_data->>'sms_enabled')::BOOLEAN, sms_enabled),
+    sms_important_only = COALESCE((settings_data->>'sms_important_only')::BOOLEAN, sms_important_only),
+    show_all_districts = COALESCE((settings_data->>'show_all_districts')::BOOLEAN, show_all_districts),
+    two_factor_enabled = COALESCE((settings_data->>'two_factor_enabled')::BOOLEAN, two_factor_enabled),
+    two_factor_method = COALESCE((settings_data->>'two_factor_method')::TEXT, two_factor_method),
+    updated_at = NOW()
+  WHERE user_id = auth.uid();
+  
+  RETURN json_build_object(
+    'success', true,
+    'message', 'Ayarlar güncellendi'
+  );
+END;
+$;
+
+-- Approve selfie verification (Admin only)
+CREATE OR REPLACE FUNCTION approve_selfie_verification(
+  verification_id UUID,
+  confidence_score DECIMAL(3,2) DEFAULT 1.0
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $
+DECLARE
+  target_user_id UUID;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM admin_users WHERE id = auth.uid()) THEN
+    RETURN json_build_object('success', false, 'message', 'Yetkisiz işlem');
+  END IF;
+  
+  UPDATE selfie_verifications 
+  SET 
+    status = 'verified',
+    verified_by = auth.uid(),
+    verified_at = NOW(),
+    confidence_score = confidence_score,
+    updated_at = NOW()
+  WHERE id = verification_id
+  RETURNING user_id INTO target_user_id;
+  
+  UPDATE user_profiles 
+  SET 
+    selfie_verified = true,
+    verified = true,
+    verification_status = 'verified',
+    verified_at = NOW(),
+    updated_at = NOW()
+  WHERE id = target_user_id;
+  
+  RETURN json_build_object('success', true, 'message', 'Selfie doğrulama onaylandı');
+END;
+$;
+
+-- Approve identity verification (Admin only)
+CREATE OR REPLACE FUNCTION approve_identity_verification(verification_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $
+DECLARE
+  target_user_id UUID;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM admin_users WHERE id = auth.uid()) THEN
+    RETURN json_build_object('success', false, 'message', 'Yetkisiz işlem');
+  END IF;
+  
+  UPDATE identity_verifications 
+  SET 
+    status = 'verified',
+    verified_by = auth.uid(),
+    verified_at = NOW(),
+    updated_at = NOW()
+  WHERE id = verification_id
+  RETURNING user_id INTO target_user_id;
+  
+  UPDATE user_profiles 
+  SET 
+    verification_status = 'verified',
+    verified = true,
+    verified_at = NOW(),
+    updated_at = NOW()
+  WHERE id = target_user_id;
+  
+  RETURN json_build_object('success', true, 'message', 'Kimlik doğrulama onaylandı');
+END;
+$;
+
+-- Get system statistics (Admin only)
+CREATE OR REPLACE FUNCTION get_system_stats()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $
+DECLARE
+  stats JSONB;
+BEGIN
+  SELECT json_build_object(
+    'total_users', (SELECT COUNT(*) FROM user_profiles),
+    'verified_users', (SELECT COUNT(*) FROM user_profiles WHERE verified = true),
+    'active_users_today', (SELECT COUNT(*) FROM user_profiles WHERE last_seen_at > NOW() - INTERVAL '24 hours'),
+    'total_posts', (SELECT COUNT(*) FROM posts),
+    'total_comments', (SELECT COUNT(*) FROM comments),
+    'total_events', (SELECT COUNT(*) FROM events),
+    'total_businesses', (SELECT COUNT(*) FROM businesses),
+    'total_help_requests', (SELECT COUNT(*) FROM help_requests),
+    'pending_verifications', (SELECT COUNT(*) FROM selfie_verifications WHERE status = 'pending') + (SELECT COUNT(*) FROM identity_verifications WHERE status = 'pending'),
+    'pending_reports', (SELECT COUNT(*) FROM reports WHERE status = 'pending'),
+    'users_by_district', (
+      SELECT json_object_agg(district, count)
+      FROM (SELECT district, COUNT(*) as count FROM user_profiles GROUP BY district) as district_counts
+    )
+  ) INTO stats;
+  
+  RETURN stats;
+END;
+$;
 
 -- ============================================
 -- 20. REALTIME SETUP
@@ -1054,7 +1450,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE chat_members;
 -- 4. Admin şifrenizi değiştirin (yukarıdaki default şifre: admin123)
 -- 5. .env dosyasına Supabase anahtarlarınızı ekleyin
 -- 
--- Tablolar: ✅ Oluşturuldu (20+ tablo)
+-- Tablolar: ✅ Oluşturuldu (25+ tablo)
 -- İndeksler: ✅ Oluşturuldu (Performance optimized)
 -- RLS Policies: ✅ Oluşturuldu (Güvenlik sağlandı)
 -- Triggers: ✅ Oluşturuldu (Auto-update mekanizmaları)
@@ -1062,6 +1458,15 @@ ALTER PUBLICATION supabase_realtime ADD TABLE chat_members;
 -- Default Data: ✅ Eklendi (Admin, badges, settings)
 -- Full-text Search: ✅ Türkçe dil desteği ile
 -- Realtime: ✅ Chat ve bildirimler için aktif
+-- 
+-- 🆕 YENİ ÖZELLİKLER:
+-- ⚙️ Ayarlar Sistemi: Profil, gizlilik, bildirim, güvenlik ayarları
+-- 🔐 Gelişmiş Doğrulama: Selfie ve kimlik doğrulama sistemi
+-- 📊 İstatistik Paneli: Kullanıcı ve sistem istatistikleri
+-- 🗂️ Veri Yönetimi: GDPR uyumlu veri indirme
+-- 🚫 Engelleme Sistemi: Kullanıcı engelleme
+-- 📱 Oturum Yönetimi: Aktif cihaz yönetimi
+-- 🗑️ Hesap Silme: 7 günlük bekleme süresi ile hesap silme
 -- 
 -- Hazır! 🚀
 -- ============================================
