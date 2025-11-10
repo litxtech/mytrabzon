@@ -1,30 +1,90 @@
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Image } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
+import { useChat } from '@/contexts/ChatContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { MessageCircle, Users, MapPin } from 'lucide-react-native';
 
 export default function ChatScreen() {
-  const { profile } = useAuth();
+  const { user } = useAuth();
+  const { rooms, loading, loadRooms, onlineUsers } = useChat();
   const router = useRouter();
+  const [refreshing, setRefreshing] = React.useState(false);
 
-  const mockChats = [
-    {
-      id: '1',
-      name: 'Trabzon Genel',
-      lastMessage: 'Bugün havalar çok güzel!',
-      type: 'district',
-      time: '5 dk',
-    },
-    {
-      id: '2',
-      name: 'Yardımlaşma',
-      lastMessage: 'Kan bağışı kampanyası başladı',
-      type: 'group',
-      time: '1 sa',
-    },
-  ];
+  useEffect(() => {
+    loadRooms();
+  }, [loadRooms]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadRooms();
+    setRefreshing(false);
+  };
+
+  const formatTime = (date: string | null) => {
+    if (!date) return '';
+    
+    const now = new Date();
+    const messageDate = new Date(date);
+    const diffMs = now.getTime() - messageDate.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) return 'Şimdi';
+    if (diffMins < 60) return `${diffMins} dk`;
+    if (diffHours < 24) return `${diffHours} sa`;
+    if (diffDays === 1) return 'Dün';
+    return messageDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+  };
+
+  const getRoomName = (room: any) => {
+    if (room.type === 'direct' && room.other_user) {
+      return room.other_user.full_name;
+    }
+    return room.name || room.district || 'Sohbet';
+  };
+
+  const getRoomAvatar = (room: any) => {
+    if (room.type === 'direct' && room.other_user?.avatar_url) {
+      return room.other_user.avatar_url;
+    }
+    return room.avatar_url;
+  };
+
+  const getRoomIcon = (type: string) => {
+    switch (type) {
+      case 'district':
+        return MapPin;
+      case 'group':
+        return Users;
+      default:
+        return MessageCircle;
+    }
+  };
+
+  const isUserOnline = (room: any) => {
+    if (room.type === 'direct' && room.other_user) {
+      return onlineUsers[room.other_user.id]?.is_online || false;
+    }
+    return false;
+  };
+
+  if (loading && rooms.length === 0) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Sohbet</Text>
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loadingText}>Yükleniyor...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -33,27 +93,54 @@ export default function ChatScreen() {
       </View>
 
       <FlatList
-        data={mockChats}
+        data={rooms}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.chatItem}
-            onPress={() => router.push(`/chat/${item.id}`)}
-          >
-            <View style={styles.chatAvatar}>
-              <Text style={styles.chatAvatarText}>{item.name[0]}</Text>
-            </View>
-            <View style={styles.chatInfo}>
-              <View style={styles.chatHeader}>
-                <Text style={styles.chatName}>{item.name}</Text>
-                <Text style={styles.chatTime}>{item.time}</Text>
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        renderItem={({ item: room }) => {
+          const IconComponent = getRoomIcon(room.type);
+          const isOnline = isUserOnline(room);
+          const avatar = getRoomAvatar(room);
+          
+          return (
+            <TouchableOpacity
+              style={styles.chatItem}
+              onPress={() => router.push(`/chat/${room.id}`)}
+            >
+              <View style={styles.avatarContainer}>
+                {avatar ? (
+                  <Image source={{ uri: avatar }} style={styles.chatAvatar} />
+                ) : (
+                  <View style={[styles.chatAvatar, styles.chatAvatarPlaceholder]}>
+                    <IconComponent size={24} color={COLORS.white} />
+                  </View>
+                )}
+                {isOnline && <View style={styles.onlineBadge} />}
               </View>
-              <Text style={styles.chatMessage} numberOfLines={1}>
-                {item.lastMessage}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        )}
+              
+              <View style={styles.chatInfo}>
+                <View style={styles.chatHeader}>
+                  <Text style={styles.chatName}>{getRoomName(room)}</Text>
+                  <Text style={styles.chatTime}>
+                    {formatTime(room.last_message_at)}
+                  </Text>
+                </View>
+                
+                <View style={styles.messageRow}>
+                  <Text style={styles.chatMessage} numberOfLines={1}>
+                    {room.last_message?.content || 'Henüz mesaj yok'}
+                  </Text>
+                  {room.unread_count > 0 && (
+                    <View style={styles.unreadBadge}>
+                      <Text style={styles.unreadText}>{room.unread_count}</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        }}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>Henüz sohbet yok</Text>
@@ -96,14 +183,6 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     backgroundColor: COLORS.primary,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    marginRight: SPACING.md,
-  },
-  chatAvatarText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '700' as const,
   },
   chatInfo: {
     flex: 1,
@@ -141,5 +220,55 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
     textAlign: 'center' as const,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: SPACING.xl,
+  },
+  loadingText: {
+    marginTop: SPACING.md,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textLight,
+  },
+  avatarContainer: {
+    position: 'relative' as const,
+    marginRight: SPACING.md,
+  },
+  chatAvatarPlaceholder: {
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  onlineBadge: {
+    position: 'absolute' as const,
+    bottom: 0,
+    right: 0,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#4CAF50',
+    borderWidth: 2,
+    borderColor: COLORS.white,
+  },
+  messageRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+  },
+  unreadBadge: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: 6,
+    marginLeft: SPACING.sm,
+  },
+  unreadText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '700' as const,
   },
 });

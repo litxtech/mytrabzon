@@ -116,6 +116,15 @@ export interface Message {
   created_at: string;
   updated_at: string;
   user?: UserProfile;
+  reply_to_message?: {
+    id: string;
+    content: string;
+    user?: {
+      full_name: string;
+      avatar_url: string | null;
+    };
+  };
+  reactions?: MessageReaction[];
 }
 
 export interface Notification {
@@ -373,4 +382,39 @@ export interface UserStats {
 
 export interface FeedPost extends Post {
   is_liked: boolean;
+}
+
+export interface MessageReaction {
+  id: string;
+  message_id: string;
+  user_id: string;
+  emoji: string;
+  created_at: string;
+}
+
+export interface TypingIndicator {
+  room_id: string;
+  user_id: string;
+  user_name: string;
+  timestamp: number;
+}
+
+export interface OnlineStatus {
+  user_id: string;
+  is_online: boolean;
+  last_seen: string;
+}
+
+export interface BlockedUser {
+  id: string;
+  blocker_id: string;
+  blocked_id: string;
+  created_at: string;
+}
+
+export interface ChatRoomWithDetails extends ChatRoom {
+  last_message: Message | null;
+  members: (ChatMember & { user: UserProfile })[];
+  other_user?: UserProfile | null;
+  unread_count: number;
 }

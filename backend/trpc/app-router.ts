@@ -2,6 +2,14 @@ import { createTRPCRouter } from "./create-context";
 import hiRoute from "./routes/example/hi/route";
 import { requestAccountDeletionProcedure } from "./routes/user/request-deletion/route";
 import { cancelAccountDeletionProcedure } from "./routes/user/cancel-deletion/route";
+import { getRoomsProcedure } from "./routes/chat/get-rooms/route";
+import { getMessagesProcedure } from "./routes/chat/get-messages/route";
+import { sendMessageProcedure } from "./routes/chat/send-message/route";
+import { createRoomProcedure } from "./routes/chat/create-room/route";
+import { markAsReadProcedure } from "./routes/chat/mark-as-read/route";
+import { deleteMessageProcedure } from "./routes/chat/delete-message/route";
+import { addReactionProcedure } from "./routes/chat/add-reaction/route";
+import { blockUserProcedure, unblockUserProcedure } from "./routes/chat/block-user/route";
 
 export const appRouter = createTRPCRouter({
   example: createTRPCRouter({
@@ -10,6 +18,17 @@ export const appRouter = createTRPCRouter({
   user: createTRPCRouter({
     requestAccountDeletion: requestAccountDeletionProcedure,
     cancelAccountDeletion: cancelAccountDeletionProcedure,
+  }),
+  chat: createTRPCRouter({
+    getRooms: getRoomsProcedure,
+    getMessages: getMessagesProcedure,
+    sendMessage: sendMessageProcedure,
+    createRoom: createRoomProcedure,
+    markAsRead: markAsReadProcedure,
+    deleteMessage: deleteMessageProcedure,
+    addReaction: addReactionProcedure,
+    blockUser: blockUserProcedure,
+    unblockUser: unblockUserProcedure,
   }),
 });
 
