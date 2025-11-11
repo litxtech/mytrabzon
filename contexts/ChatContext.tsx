@@ -9,6 +9,7 @@ import {
   OnlineStatus,
 } from '@/types/database';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { trpcClient } from '@/lib/trpc';
 
 export const [ChatContext, useChat] = createContextHook(() => {
   const { user, profile } = useAuth();
@@ -28,6 +29,8 @@ export const [ChatContext, useChat] = createContextHook(() => {
       setLoading(false);
       return;
     }
+
+    console.log('Subscribing to presence channel for user', user.id);
 
     const presenceChannel = supabase.channel('online-users');
     
@@ -82,17 +85,22 @@ export const [ChatContext, useChat] = createContextHook(() => {
           filter: `room_id=eq.${roomId}`,
         },
         async (payload) => {
-          const { data: message } = await supabase
-            .from('messages')
-            .select('*, user:user_profiles(*)')
-            .eq('id', payload.new.id)
-            .single();
+          try {
+            const latestMessages = await trpcClient.chat.getMessages.query({
+              roomId,
+              limit: 1,
+              offset: 0,
+            });
 
-          if (message) {
-            setMessages(prev => ({
-              ...prev,
-              [roomId]: [message as Message, ...(prev[roomId] || [])],
-            }));
+            if (latestMessages.length > 0) {
+              const newestMessage = latestMessages[0] as Message;
+              setMessages(prev => ({
+                ...prev,
+                [roomId]: [newestMessage, ...(prev[roomId] || [])],
+              }));
+            }
+          } catch (fetchError) {
+            console.error('Failed to fetch latest message for room', roomId, fetchError);
           }
         }
       )
@@ -161,68 +169,12 @@ export const [ChatContext, useChat] = createContextHook(() => {
   const loadRooms = useCallback(async () => {
     if (!user) return;
 
+    setLoading(true);
+    console.log('Loading chat rooms for user', user.id);
+
     try {
-      const { data: roomsData, error } = await supabase
-        .from('chat_rooms')
-        .select(`
-          *,
-          chat_members!inner(
-            id,
-            user_id,
-            role,
-            unread_count,
-            last_read_at
-          )
-        `)
-        .eq('chat_members.user_id', user.id)
-        .order('last_message_at', { ascending: false, nullsFirst: false });
-
-      if (error) {
-        const errorMessage = `Chat odaları yüklenemedi: ${error.message || 'Bilinmeyen hata'}`;
-        console.error('Error loading rooms:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        });
-        setRooms([]);
-        setLoading(false);
-        throw new Error(errorMessage);
-      }
-
-      const roomsWithDetails = await Promise.all(
-        (roomsData || []).map(async (room: any) => {
-          const { data: lastMessage } = await supabase
-            .from('messages')
-            .select('*, user:user_profiles(*)')
-            .eq('room_id', room.id)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
-
-          const { data: members } = await supabase
-            .from('chat_members')
-            .select('*, user:user_profiles(*)')
-            .eq('room_id', room.id);
-
-          let otherUser = null;
-          if (room.type === 'direct' && members && members.length === 2) {
-            otherUser = members.find((m: any) => m.user_id !== user.id)?.user || null;
-          }
-
-          const currentMember = room.chat_members.find((m: any) => m.user_id === user.id);
-
-          return {
-            ...room,
-            last_message: lastMessage || null,
-            members: members || [],
-            other_user: otherUser,
-            unread_count: currentMember?.unread_count || 0,
-          };
-        })
-      );
-
-      setRooms(roomsWithDetails as ChatRoomWithDetails[]);
+      const roomsData = await trpcClient.chat.getRooms.query({ limit: 50, offset: 0 });
+      setRooms(roomsData as ChatRoomWithDetails[]);
     } catch (error: any) {
       const errorMessage = error?.message || 'Chat odaları yüklenirken bilinmeyen bir hata oluştu';
       console.error('Error loading rooms:', {
@@ -241,25 +193,11 @@ export const [ChatContext, useChat] = createContextHook(() => {
     if (!user) return;
 
     try {
-      const { data: messagesData, error } = await supabase
-        .from('messages')
-        .select(`
-          *,
-          user:user_profiles(*),
-          reply_to_message:messages!reply_to(
-            id,
-            content,
-            user:user_profiles(full_name, avatar_url)
-          )
-        `)
-        .eq('room_id', roomId)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) {
-        console.error('Error loading messages:', error);
-        return;
-      }
+      const messagesData = await trpcClient.chat.getMessages.query({
+        roomId,
+        limit: 50,
+        offset: 0,
+      });
 
       setMessages(prev => ({
         ...prev,

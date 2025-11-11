@@ -1,5 +1,22 @@
 import { z } from 'zod';
-import { protectedProcedure } from '@/backend/trpc/create-context';
+import { protectedProcedure } from '../../../create-context';
+import { TRPCError } from '@trpc/server';
+
+interface RawChatMember {
+  id: string;
+  user_id: string;
+  role: 'admin' | 'member';
+  unread_count: number;
+  last_read_at: string | null;
+  user?: unknown;
+}
+
+interface RawChatRoom {
+  id: string;
+  type: 'direct' | 'group' | 'district';
+  chat_members: RawChatMember[];
+  [key: string]: unknown;
+}
 
 export const getRoomsProcedure = protectedProcedure
   .input(
@@ -28,38 +45,62 @@ export const getRoomsProcedure = protectedProcedure
       .range(input.offset, input.offset + input.limit - 1);
 
     if (error) {
-      console.error('Error fetching chat rooms:', error);
-      throw new Error('Failed to fetch chat rooms');
+      console.error('Error fetching chat rooms:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: `Chat odaları yüklenemedi: ${error.message ?? 'Bilinmeyen hata'}`,
+      });
     }
 
+    const normalizedRooms = (rooms ?? []) as RawChatRoom[];
+
     const roomsWithLastMessage = await Promise.all(
-      (rooms || []).map(async (room) => {
-        const { data: lastMessage } = await ctx.supabase
+      normalizedRooms.map(async (room) => {
+        const { data: lastMessage, error: lastMessageError } = await ctx.supabase
           .from('messages')
           .select('*, user:user_profiles(*)')
           .eq('room_id', room.id)
           .order('created_at', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
-        const { data: members } = await ctx.supabase
+        if (lastMessageError) {
+          console.error('Failed to load last message for room', {
+            roomId: room.id,
+            message: lastMessageError.message,
+          });
+        }
+
+        const { data: members, error: membersError } = await ctx.supabase
           .from('chat_members')
           .select('*, user:user_profiles(*)')
           .eq('room_id', room.id);
 
-        let otherUser = null;
-        if (room.type === 'direct' && members && members.length === 2) {
-          otherUser = members.find((m: any) => m.user_id !== userId)?.user || null;
+        if (membersError) {
+          console.error('Failed to load members for room', {
+            roomId: room.id,
+            message: membersError.message,
+          });
         }
 
-        const currentMember = room.chat_members.find((m: any) => m.user_id === userId);
+        let otherUser: unknown = null;
+        if (room.type === 'direct' && members && members.length === 2) {
+          otherUser = members.find((member) => member.user_id !== userId)?.user ?? null;
+        }
+
+        const currentMember = room.chat_members.find((member) => member.user_id === userId);
 
         return {
           ...room,
-          last_message: lastMessage || null,
-          members: members || [],
+          last_message: lastMessage ?? null,
+          members: members ?? [],
           other_user: otherUser,
-          unread_count: currentMember?.unread_count || 0,
+          unread_count: currentMember?.unread_count ?? 0,
         };
       })
     );
