@@ -1,5 +1,6 @@
 import createContextHook from '@nkzw/create-context-hook';
 import { supabase } from '@/lib/supabase';
+import { retryOperation } from '@/utils/retry';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import {
@@ -64,6 +65,7 @@ export const [ChatContext, useChat] = createContextHook(() => {
   const [typingIndicators, setTypingIndicators] = useState<Record<string, TypingIndicator[]>>({});
   const [onlineUsers, setOnlineUsers] = useState<Record<string, OnlineStatus>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   const channelsRef = useRef<Record<string, RealtimeChannel>>({});
   const typingTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
@@ -213,18 +215,77 @@ export const [ChatContext, useChat] = createContextHook(() => {
   }, [user, profile]);
 
   const loadRooms = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      setRooms([]);
+      setError(null);
+      return;
+    }
 
     setLoading(true);
-    console.log('Loading chat rooms for user', user.id);
+    setError(null);
+    console.log('🔄 Oda yükleme başlıyor...');
 
     try {
-      const roomsData = await trpcClient.chat.getRooms.query({ limit: 50, offset: 0 });
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+
+      if (authError) {
+        console.error('❌ Kullanıcı hatası:', authError);
+        throw new Error(`Kimlik doğrulama hatası: ${authError.message}`);
+      }
+
+      const authedUser = authData?.user;
+
+      if (!authedUser) {
+        console.error('❌ Kullanıcı bulunamadı');
+        throw new Error('Lütfen tekrar giriş yapın');
+      }
+
+      console.log('👤 Kullanıcı:', authedUser.id);
+
+      const memberships = await retryOperation(async () => {
+        const { data: membershipsData, error: membershipsError } = await supabase
+          .from('chat_members')
+          .select('room_id')
+          .eq('user_id', authedUser.id)
+          .limit(5);
+
+        console.log('📊 Üyelikler:', membershipsData);
+        if (membershipsError) {
+          console.log('❌ Hata (üyelikler):', membershipsError);
+          throw membershipsError;
+        }
+
+        return membershipsData ?? [];
+      });
+
+      if (memberships.length === 0) {
+        console.log('ℹ️ Hiç oda bulunamadı');
+        setRooms([]);
+        return;
+      }
+
+      const roomIds = memberships.map((membership) => membership.room_id);
+      console.log('🏠 Oda IDleri:', roomIds);
+
+      const { data: roomsProbe, error: roomsProbeError } = await supabase
+        .from('chat_rooms')
+        .select('id')
+        .in('id', roomIds)
+        .limit(roomIds.length);
+
+      console.log('🏠 Odalar (kontrol):', roomsProbe);
+      if (roomsProbeError) {
+        console.log('❌ Hata (odalar):', roomsProbeError);
+      }
+
+      const roomsData = await retryOperation(async () => trpcClient.chat.getRooms.query({ limit: 50, offset: 0 }));
       setRooms(roomsData as ChatRoomWithDetails[]);
-    } catch (error: unknown) {
-      const normalized = normalizeRoomsError(error);
-      console.error('Error loading rooms:', JSON.stringify(normalized.details, null, 2));
+      console.log('✅ Odalar başarıyla yüklendi');
+    } catch (loadError: unknown) {
+      console.error('💥 loadRooms hatası:', loadError);
+      const normalized = normalizeRoomsError(loadError);
       setRooms([]);
+      setError(`Chat odaları yüklenemedi: ${normalized.message}`);
       throw new Error(normalized.message);
     } finally {
       setLoading(false);
@@ -267,6 +328,7 @@ export const [ChatContext, useChat] = createContextHook(() => {
     subscribeToRoom,
     unsubscribeFromRoom,
     sendTypingIndicator,
+    error,
   }), [
     rooms,
     messages,
@@ -278,5 +340,6 @@ export const [ChatContext, useChat] = createContextHook(() => {
     subscribeToRoom,
     unsubscribeFromRoom,
     sendTypingIndicator,
+    error,
   ]);
 });
