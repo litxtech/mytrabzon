@@ -29,7 +29,7 @@ type PickerItem<T> = {
 export default function EditProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { profile, refreshProfile } = useAuth();
+  const { profile, updateProfile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -120,14 +120,7 @@ export default function EditProfileScreen() {
         .from('avatars')
         .getPublicUrl(fileName);
 
-      const { error: updateError } = await supabase
-        .from('user_profiles')
-        .update({ avatar_url: publicUrl })
-        .eq('id', profile?.id);
-
-      if (updateError) throw updateError;
-
-      await refreshProfile?.();
+      await updateProfile?.({ avatar_url: publicUrl });
       Alert.alert('Başarılı', 'Profil resmi güncellendi.');
     } catch (error) {
       console.error('Avatar upload error:', error);
@@ -150,14 +143,7 @@ export default function EditProfileScreen() {
             try {
               setUploading(true);
 
-              const { error } = await supabase
-                .from('user_profiles')
-                .update({ avatar_url: null })
-                .eq('id', profile?.id);
-
-              if (error) throw error;
-
-              await refreshProfile?.();
+              await updateProfile?.({ avatar_url: null });
               Alert.alert('Başarılı', 'Profil resmi silindi.');
             } catch (error) {
               console.error('Avatar delete error:', error);
@@ -175,7 +161,7 @@ export default function EditProfileScreen() {
     try {
       setLoading(true);
 
-      const updateData: Record<string, unknown> = {
+      const updateData = {
         full_name: formData.full_name,
         bio: formData.bio || null,
         city: formData.city,
@@ -191,16 +177,16 @@ export default function EditProfileScreen() {
         privacy_settings: privacy,
       };
 
-      const { error } = await supabase
-        .from('user_profiles')
-        .update(updateData)
-        .eq('id', profile?.id);
-
-      if (error) throw error;
-
-      await refreshProfile?.();
-      Alert.alert('Başarılı', 'Profil bilgileriniz güncellendi.');
-      router.back();
+      console.log('Saving profile with data:', updateData);
+      await updateProfile?.(updateData);
+      console.log('Profile saved successfully');
+      
+      Alert.alert('Başarılı', 'Profil bilgileriniz güncellendi.', [
+        {
+          text: 'Tamam',
+          onPress: () => router.back(),
+        },
+      ]);
     } catch (error) {
       console.error('Profile update error:', error);
       Alert.alert('Hata', 'Profil güncellenirken bir hata oluştu.');
