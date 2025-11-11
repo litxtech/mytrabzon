@@ -136,7 +136,8 @@ export default function CreatePostScreen() {
       ]);
     } catch (error) {
       console.error('Post oluşturma hatası:', error);
-      Alert.alert('Hata', 'Gönderi oluşturulurken bir hata oluştu');
+      const errorMessage = error instanceof Error ? error.message : 'Gönderi oluşturulurken bir hata oluştu';
+      Alert.alert('Hata', errorMessage);
     } finally {
       setIsUploading(false);
     }
