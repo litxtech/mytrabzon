@@ -1,71 +1,90 @@
 {
-"expo": {
-  "name": "Mytrabzon",
-  "slug": "mytrabzon-",
-  "version": "1.0.0",
-  "orientation": "portrait",
-  "icon": "./assets/images/icon.png",
-  "scheme": "rork-app",
-  "userInterfaceStyle": "automatic",
-  "newArchEnabled": true,
-  "platforms": ["ios", "android", "web"],
-  "runtimeVersion": { "policy": "sdkVersion" },
-  "splash": {
-    "image": "./assets/images/splash-icon.png",
-    "resizeMode": "contain",
-    "backgroundColor": "#ffffff"
-  },
-  "android": {
-    "adaptiveIcon": {
-      "foregroundImage": "./assets/images/adaptive-icon.png",
+  "expo": {
+    "name": "Mytrabzon",
+    "slug": "mytrabzon-",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "rork-app",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "package": "com.litxtech.mytrabzon",
-    "permissions": [
-      "CAMERA",
-      "READ_EXTERNAL_STORAGE",
-      "WRITE_EXTERNAL_STORAGE",
-      "RECORD_AUDIO",
-      "INTERNET"
-    ]
-  },
-  "ios": {
-    "supportsTablet": false,
-    "bundleIdentifier": "com.litxtech.mytrabzon"
-  },
-  "web": {
-    "favicon": "./assets/images/favicon.png",
-    "bundler": "metro"
-  },
-  "plugins": [
-    [
-      "expo-router",
-      { "origin": "https://rork.com/" }
-    ],
-    "expo-font",
-    "expo-web-browser",
-    [
-      "expo-image-picker",
-      {
-        "photosPermission": "The app accesses your photos to let you share them with your friends."
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.litxtech.mytrabzon",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "RECORD_AUDIO",
+        "INTERNET"
+      ]
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.litxtech.mytrabzon",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photos",
+        "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to access your camera",
+        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to access your microphone"
       }
-    ]
-  ],
-  "experiments": {
-    "typedRoutes": true,
-    "tsconfigPaths": true
-  },
-  "extra": {
-    "router": { "origin": "https://rork.com/" },
-    "eas": { "projectId": "368ac56e-da84-480e-b163-f04077df7fa6" }
-  },
-  "cli": { "appVersionSource": "local" },
-  "sdkVersion": "54.0.0",
-  "jsEngine": "hermes",
-  "androidNavigationBar": {
-    "visible": "immersive",
-    "backgroundColor": "#ffffff"
-  },
-  "privacy": "unlisted"
-}
+    },
+    "web": {
+      "favicon": "./assets/images/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "origin": "https://rork.com/"
+        }
+      ],
+      "expo-font",
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app accesses your photos to let you share them with your friends."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "tsconfigPaths": true
+    },
+    "extra": {
+      "router": {
+        "origin": "https://rork.com/"
+      },
+      "eas": {
+        "projectId": "368ac56e-da84-480e-b163-f04077df7fa6"
+      }
+    },
+    "cli": {
+      "appVersionSource": "local"
+    },
+    "sdkVersion": "54.0.0",
+    "jsEngine": "hermes",
+    "androidNavigationBar": {
+      "visible": "immersive",
+      "backgroundColor": "#ffffff"
+    },
+    "privacy": "unlisted"
+  }
 }
