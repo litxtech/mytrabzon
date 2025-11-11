@@ -30,7 +30,8 @@
     ]
   },
   "ios": {
-    "supportsTablet": false
+    "supportsTablet": false,
+    "bundleIdentifier": "com.litxtech.mytrabzon"
   },
   "web": {
     "favicon": "./assets/images/favicon.png",
