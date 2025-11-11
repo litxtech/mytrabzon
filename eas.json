@@ -1,3 +1,4 @@
+{
 "build": {
   "development": {
     "developmentClient": true,
@@ -23,4 +24,5 @@
       "EXPO_PUBLIC_EAS_PROJECT_ID": "368ac56e-da84-480e-b163-f04077df7fa6"
     }
   }
-},
+}
+}
