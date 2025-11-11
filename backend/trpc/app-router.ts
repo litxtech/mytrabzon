@@ -2,6 +2,8 @@ import { createTRPCRouter } from "./create-context";
 import hiRoute from "./routes/example/hi/route";
 import { requestAccountDeletionProcedure } from "./routes/user/request-deletion/route";
 import { cancelAccountDeletionProcedure } from "./routes/user/cancel-deletion/route";
+import { getAllUsersProcedure } from "./routes/user/get-all-users/route";
+import { updateDirectoryVisibilityProcedure } from "./routes/user/update-directory-visibility/route";
 import { getRoomsProcedure } from "./routes/chat/get-rooms/route";
 import { getMessagesProcedure } from "./routes/chat/get-messages/route";
 import { sendMessageProcedure } from "./routes/chat/send-message/route";
@@ -18,6 +20,8 @@ export const appRouter = createTRPCRouter({
   user: createTRPCRouter({
     requestAccountDeletion: requestAccountDeletionProcedure,
     cancelAccountDeletion: cancelAccountDeletionProcedure,
+    getAllUsers: getAllUsersProcedure,
+    updateDirectoryVisibility: updateDirectoryVisibilityProcedure,
   }),
   chat: createTRPCRouter({
     getRooms: getRoomsProcedure,

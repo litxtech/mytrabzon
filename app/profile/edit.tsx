@@ -17,7 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { DISTRICTS, getDistrictsByCity } from '@/constants/districts';
 import { CITIES, GENDERS, SOCIAL_MEDIA_PLATFORMS, City, Gender } from '@/constants/cities';
-import { Camera, Trash2, ChevronDown, Eye, EyeOff, Save } from 'lucide-react-native';
+import { Camera, Trash2, ChevronDown, Eye, EyeOff, Save, Users } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { SocialMedia, PrivacySettings } from '@/types/database';
 
@@ -46,6 +46,10 @@ export default function EditProfileScreen() {
     height: profile?.height?.toString() || '',
     weight: profile?.weight?.toString() || '',
   });
+
+  const [showInDirectory, setShowInDirectory] = useState(
+    profile?.show_in_directory !== undefined ? profile.show_in_directory : true
+  );
 
   const availableDistricts = formData.city ? getDistrictsByCity(formData.city) : DISTRICTS;
 
@@ -175,6 +179,7 @@ export default function EditProfileScreen() {
         weight: formData.weight ? parseInt(formData.weight) : null,
         social_media: socialMedia,
         privacy_settings: privacy,
+        show_in_directory: showInDirectory,
       };
 
       console.log('Saving profile with data:', updateData);
@@ -531,6 +536,35 @@ export default function EditProfileScreen() {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Kullanıcı Listesi</Text>
+          
+          <View style={styles.inputContainer}>
+            <View style={styles.labelRow}>
+              <View style={styles.labelWithIcon}>
+                <Users size={18} color={COLORS.text} />
+                <Text style={styles.label}>Listede beni göster</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.switch, showInDirectory && styles.switchActive]}
+                onPress={() => setShowInDirectory(!showInDirectory)}
+                activeOpacity={0.7}
+              >
+                <View
+                  style={[
+                    styles.switchThumb,
+                    showInDirectory && styles.switchThumbActive,
+                  ]}
+                />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.switchDescription}>
+              Kullanıcı listesinde profilinizi görünür yapar. Kapatırsanız,
+              sadece siz profilinizi görebilirsiniz.
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.privacyNote}>
             👁️ Göz simgesi ile hangi bilgilerinizin diğer kullanıcılar tarafından görüleceğini kontrol edebilirsiniz.
           </Text>
@@ -696,5 +730,37 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  labelWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  switch: {
+    width: 50,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.border,
+    justifyContent: 'center',
+    padding: 2,
+  },
+  switchActive: {
+    backgroundColor: COLORS.primary,
+  },
+  switchThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.white,
+    alignSelf: 'flex-start',
+  },
+  switchThumbActive: {
+    alignSelf: 'flex-end',
+  },
+  switchDescription: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+    lineHeight: 18,
+    marginTop: SPACING.xs,
   },
 });

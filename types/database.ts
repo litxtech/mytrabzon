@@ -74,6 +74,7 @@ export interface UserProfile {
   social_media: SocialMedia;
   privacy_settings: PrivacySettings;
   show_address: boolean;
+  show_in_directory: boolean;
   verified: boolean;
   selfie_verified: boolean;
   points: number;
