@@ -149,17 +149,7 @@ export default function CreatePostScreen() {
           <X size={24} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Yeni Gönderi</Text>
-        <TouchableOpacity
-          onPress={handleSubmit}
-          disabled={isUploading}
-          style={[styles.postButton, isUploading && styles.postButtonDisabled]}
-        >
-          {isUploading ? (
-            <ActivityIndicator color={COLORS.white} />
-          ) : (
-            <Text style={styles.postButtonText}>Paylaş</Text>
-          )}
-        </TouchableOpacity>
+        <View style={{ width: 24 }} />
       </View>
 
       <ScrollView style={styles.content}>
@@ -214,42 +204,56 @@ export default function CreatePostScreen() {
       </ScrollView>
 
       <View style={styles.toolbar}>
-        <TouchableOpacity
-          onPress={pickImage}
-          style={styles.toolButton}
-          disabled={selectedImages.length >= 5}
-        >
-          <ImageIcon
-            size={24}
-            color={selectedImages.length >= 5 ? COLORS.textLight : COLORS.primary}
-          />
-          <Text
-            style={[
-              styles.toolButtonText,
-              selectedImages.length >= 5 && styles.toolButtonTextDisabled,
-            ]}
+        <View style={styles.toolbarActions}>
+          <TouchableOpacity
+            onPress={pickImage}
+            style={styles.toolButton}
+            disabled={selectedImages.length >= 5}
           >
-            Galeri ({selectedImages.length}/5)
-          </Text>
-        </TouchableOpacity>
+            <ImageIcon
+              size={24}
+              color={selectedImages.length >= 5 ? COLORS.textLight : COLORS.primary}
+            />
+            <Text
+              style={[
+                styles.toolButtonText,
+                selectedImages.length >= 5 && styles.toolButtonTextDisabled,
+              ]}
+            >
+              Galeri ({selectedImages.length}/5)
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={takePhoto}
+            style={styles.toolButton}
+            disabled={selectedImages.length >= 5}
+          >
+            <Camera
+              size={24}
+              color={selectedImages.length >= 5 ? COLORS.textLight : COLORS.primary}
+            />
+            <Text
+              style={[
+                styles.toolButtonText,
+                selectedImages.length >= 5 && styles.toolButtonTextDisabled,
+              ]}
+            >
+              Kamera
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         <TouchableOpacity
-          onPress={takePhoto}
-          style={styles.toolButton}
-          disabled={selectedImages.length >= 5}
+          onPress={handleSubmit}
+          disabled={isUploading}
+          style={[styles.shareButton, isUploading && styles.shareButtonDisabled]}
         >
-          <Camera
-            size={24}
-            color={selectedImages.length >= 5 ? COLORS.textLight : COLORS.primary}
-          />
-          <Text
-            style={[
-              styles.toolButtonText,
-              selectedImages.length >= 5 && styles.toolButtonTextDisabled,
-            ]}
-          >
-            Kamera
-          </Text>
+          {isUploading ? (
+            <ActivityIndicator color={COLORS.white} size="small" />
+          ) : (
+            <Text style={styles.shareButtonText}>Paylaş</Text>
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -279,20 +283,7 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     color: COLORS.text,
   },
-  postButton: {
-    backgroundColor: COLORS.secondary,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: 20,
-  },
-  postButtonDisabled: {
-    backgroundColor: COLORS.border,
-  },
-  postButtonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600' as const,
-  },
+
   content: {
     flex: 1,
   },
@@ -366,11 +357,17 @@ const styles = StyleSheet.create({
   },
   toolbar: {
     flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
     backgroundColor: COLORS.white,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
+  },
+  toolbarActions: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     gap: SPACING.lg,
   },
   toolButton: {
@@ -384,5 +381,32 @@ const styles = StyleSheet.create({
   },
   toolButtonTextDisabled: {
     color: COLORS.textLight,
+  },
+  shareButton: {
+    backgroundColor: COLORS.secondary,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderRadius: 24,
+    minWidth: 100,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    shadowColor: COLORS.secondary,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  shareButtonDisabled: {
+    backgroundColor: COLORS.border,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  shareButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700' as const,
   },
 });
