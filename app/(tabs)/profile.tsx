@@ -96,7 +96,7 @@ export default function ProfileScreen() {
             <Text style={styles.menuText}>Profili Düzenle</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/profile/settings')}>
             <Settings size={20} color={COLORS.text} />
             <Text style={styles.menuText}>Ayarlar</Text>
           </TouchableOpacity>

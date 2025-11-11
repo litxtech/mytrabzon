@@ -15,7 +15,7 @@ import { useRouter } from 'expo-router';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { DISTRICTS } from '@/constants/districts';
+import { DISTRICTS, getDistrictsByCity } from '@/constants/districts';
 import { CITIES, GENDERS, SOCIAL_MEDIA_PLATFORMS, City, Gender } from '@/constants/cities';
 import { Camera, Trash2, ChevronDown, Eye, EyeOff, Save } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -46,6 +46,8 @@ export default function EditProfileScreen() {
     height: profile?.height?.toString() || '',
     weight: profile?.weight?.toString() || '',
   });
+
+  const availableDistricts = formData.city ? getDistrictsByCity(formData.city) : DISTRICTS;
 
   const [socialMedia, setSocialMedia] = useState<SocialMedia>(
     profile?.social_media || {}
@@ -321,14 +323,21 @@ export default function EditProfileScreen() {
             'Şehir',
             formData.city,
             CITIES,
-            (value: City) => setFormData({ ...formData, city: value }),
+            (value: City) => {
+              const newDistricts = getDistrictsByCity(value);
+              setFormData({ 
+                ...formData, 
+                city: value, 
+                district: newDistricts[0] || 'Ortahisar' 
+              });
+            },
             'city'
           )}
 
           {renderPicker(
             'İlçe',
             formData.district,
-            DISTRICTS.map(d => ({ label: d, value: d })),
+            availableDistricts.map(d => ({ label: d, value: d })),
             (value) => setFormData({ ...formData, district: value }),
             'district'
           )}
