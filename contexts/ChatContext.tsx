@@ -10,6 +10,52 @@ import {
 } from '@/types/database';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { trpcClient } from '@/lib/trpc';
+import { TRPCClientError } from '@trpc/client';
+
+type NormalizedError = {
+  message: string;
+  details: Record<string, unknown>;
+};
+
+const normalizeRoomsError = (error: unknown): NormalizedError => {
+  if (error instanceof TRPCClientError) {
+    return {
+      message: error.message || 'Chat odaları yüklenemedi',
+      details: {
+        name: error.name,
+        code: error.data?.code ?? null,
+        httpStatus: error.data?.httpStatus ?? null,
+        stack: error.stack ?? null,
+        cause: (error as TRPCClientError & { cause?: unknown }).cause ?? null,
+        path: error.data?.path ?? null,
+      },
+    };
+  }
+
+  if (error instanceof Error) {
+    const nativeError = error as Error & { cause?: unknown };
+    return {
+      message: error.message || 'Chat odaları yüklenemedi',
+      details: {
+        name: error.name,
+        stack: error.stack ?? null,
+        cause: nativeError.cause ?? null,
+      },
+    };
+  }
+
+  if (typeof error === 'string') {
+    return {
+      message: error,
+      details: { raw: error },
+    };
+  }
+
+  return {
+    message: 'Chat odaları yüklenirken bilinmeyen bir hata oluştu',
+    details: { raw: error },
+  };
+};
 
 export const [ChatContext, useChat] = createContextHook(() => {
   const { user, profile } = useAuth();
@@ -175,15 +221,11 @@ export const [ChatContext, useChat] = createContextHook(() => {
     try {
       const roomsData = await trpcClient.chat.getRooms.query({ limit: 50, offset: 0 });
       setRooms(roomsData as ChatRoomWithDetails[]);
-    } catch (error: any) {
-      const errorMessage = error?.message || 'Chat odaları yüklenirken bilinmeyen bir hata oluştu';
-      console.error('Error loading rooms:', {
-        message: errorMessage,
-        stack: error?.stack,
-        code: error?.code
-      });
+    } catch (error: unknown) {
+      const normalized = normalizeRoomsError(error);
+      console.error('Error loading rooms:', JSON.stringify(normalized.details, null, 2));
       setRooms([]);
-      throw new Error(errorMessage);
+      throw new Error(normalized.message);
     } finally {
       setLoading(false);
     }
