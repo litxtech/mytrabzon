@@ -152,6 +152,25 @@ const fetchLatestMessage = async (roomId: string): Promise<Message | null> => {
   }
 };
 
+const parseSupabaseError = (error: unknown): NormalizedError => {
+  if (error && typeof error === 'object' && 'message' in (error as Record<string, unknown>)) {
+    const message = String((error as Record<string, unknown>).message ?? 'Bilinmeyen hata');
+    return {
+      message,
+      details: {
+        raw: error,
+      },
+    };
+  }
+
+  return {
+    message: 'Bilinmeyen Supabase hatası',
+    details: {
+      raw: error,
+    },
+  };
+};
+
 const fetchRoomsViaSupabase = async (currentUserId: string): Promise<ChatRoomWithDetails[]> => {
   type MembershipRow = {
     room_id: string;
@@ -167,8 +186,9 @@ const fetchRoomsViaSupabase = async (currentUserId: string): Promise<ChatRoomWit
       .eq('user_id', currentUserId);
 
     if (membershipsError) {
-      console.error('Failed to fetch chat memberships', membershipsError);
-      throw new Error(membershipsError.message ?? 'Üyelik bilgisi alınamadı');
+      const parsed = parseSupabaseError(membershipsError);
+      console.error('Failed to fetch chat memberships', parsed);
+      throw new Error(parsed.message ?? 'Üyelik bilgisi alınamadı');
     }
 
     return (membershipsRaw ?? []) as MembershipRow[];
@@ -192,8 +212,9 @@ const fetchRoomsViaSupabase = async (currentUserId: string): Promise<ChatRoomWit
     .order('last_message_at', { ascending: false });
 
   if (roomsError) {
-    console.error('Failed to fetch chat rooms list', roomsError);
-    throw new Error(roomsError.message ?? 'Sohbet listesi alınamadı');
+    const parsed = parseSupabaseError(roomsError);
+    console.error('Failed to fetch chat rooms list', parsed);
+    throw new Error(parsed.message ?? 'Sohbet listesi alınamadı');
   }
 
   const typedRooms = (roomsRaw ?? []) as ChatRoom[];
@@ -208,8 +229,9 @@ const fetchRoomsViaSupabase = async (currentUserId: string): Promise<ChatRoomWit
     .in('room_id', roomIds);
 
   if (membersError) {
-    console.error('Failed to fetch room members', membersError);
-    throw new Error(membersError.message ?? 'Üye listesi alınamadı');
+    const parsed = parseSupabaseError(membersError);
+    console.error('Failed to fetch room members', parsed);
+    throw new Error(parsed.message ?? 'Üye listesi alınamadı');
   }
 
   const typedMembers = (membersRaw ?? []) as MemberWithProfile[];
