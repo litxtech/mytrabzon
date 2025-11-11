@@ -55,6 +55,17 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": "https://rork.com/"
+      },
+      "eas": {
+        "projectId": "tcM8PjK5MyVtSLoi9IRPvGRjJ8R9GNw5t2hnU7qD"
+      }
+    },
+    "cli": {
+      "appVersionSource": "local"
     }
   }
 }
