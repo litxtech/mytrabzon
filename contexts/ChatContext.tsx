@@ -13,8 +13,6 @@ import {
   UserProfile,
 } from '@/types/database';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { trpcClient } from '@/lib/trpc';
-import { TRPCClientError } from '@trpc/client';
 
 type NormalizedError = {
   message: string;
@@ -22,20 +20,6 @@ type NormalizedError = {
 };
 
 const normalizeRoomsError = (error: unknown): NormalizedError => {
-  if (error instanceof TRPCClientError) {
-    return {
-      message: error.message || 'Chat odaları yüklenemedi',
-      details: {
-        name: error.name,
-        code: error.data?.code ?? null,
-        httpStatus: error.data?.httpStatus ?? null,
-        stack: error.stack ?? null,
-        cause: (error as TRPCClientError & { cause?: unknown }).cause ?? null,
-        path: error.data?.path ?? null,
-      },
-    };
-  }
-
   if (error instanceof Error) {
     const nativeError = error as Error & { cause?: unknown };
     return {
@@ -59,6 +43,26 @@ const normalizeRoomsError = (error: unknown): NormalizedError => {
     message: 'Chat odaları yüklenirken bilinmeyen bir hata oluştu',
     details: { raw: error },
   };
+};
+
+const MESSAGE_SELECT_FIELDS = 'id, room_id, user_id, content, media_url, media_type, reply_to, is_edited, created_at, updated_at, user:user_profiles(*)';
+
+type MemberWithProfile = ChatMember & { user?: UserProfile | null };
+
+type RawMessage = {
+  id: string;
+  room_id: string;
+  user_id: string;
+  content: string;
+  media_url: string | null;
+  media_type: Message['media_type'];
+  reply_to: string | null;
+  is_edited: boolean;
+  created_at: string;
+  updated_at: string;
+  user?: UserProfile | null;
+  reply_to_message?: Message['reply_to_message'];
+  reactions?: Message['reactions'];
 };
 
 const createFallbackProfile = (userId: string): UserProfile => {
@@ -100,12 +104,86 @@ const createFallbackProfile = (userId: string): UserProfile => {
   };
 };
 
-const fetchRoomsFallback = async (roomIds: string[], currentUserId: string): Promise<ChatRoomWithDetails[]> => {
-  if (roomIds.length === 0) {
+const mapMessage = (raw: RawMessage): Message => ({
+  id: raw.id,
+  room_id: raw.room_id,
+  user_id: raw.user_id,
+  content: raw.content,
+  media_url: raw.media_url,
+  media_type: raw.media_type,
+  reply_to: raw.reply_to,
+  is_edited: raw.is_edited,
+  created_at: raw.created_at,
+  updated_at: raw.updated_at,
+  user: raw.user ?? createFallbackProfile(raw.user_id),
+  reply_to_message: raw.reply_to_message,
+  reactions: raw.reactions,
+});
+
+const fetchRoomMessages = async (roomId: string, limit: number): Promise<Message[]> => {
+  const { data, error } = await supabase
+    .from('messages')
+    .select(MESSAGE_SELECT_FIELDS)
+    .eq('room_id', roomId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error('Failed to load messages for room', {
+      roomId,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    });
+    throw new Error(error.message ?? 'Mesajlar yüklenemedi');
+  }
+
+  return (data ?? []).map((entry) => mapMessage(entry as RawMessage));
+};
+
+const fetchLatestMessage = async (roomId: string): Promise<Message | null> => {
+  try {
+    const latest = await fetchRoomMessages(roomId, 1);
+    return latest[0] ?? null;
+  } catch (error) {
+    console.error('Failed to fetch latest message for room', roomId, error);
+    return null;
+  }
+};
+
+const fetchRoomsViaSupabase = async (currentUserId: string): Promise<ChatRoomWithDetails[]> => {
+  type MembershipRow = {
+    room_id: string;
+    unread_count: number;
+    role: 'admin' | 'member';
+    last_read_at: string | null;
+  };
+
+  const memberships = await retryOperation(async () => {
+    const { data: membershipsRaw, error: membershipsError } = await supabase
+      .from('chat_members')
+      .select('room_id, unread_count, role, last_read_at')
+      .eq('user_id', currentUserId);
+
+    if (membershipsError) {
+      console.error('Failed to fetch chat memberships', membershipsError);
+      throw new Error(membershipsError.message ?? 'Üyelik bilgisi alınamadı');
+    }
+
+    return (membershipsRaw ?? []) as MembershipRow[];
+  });
+
+  if (memberships.length === 0) {
     return [];
   }
 
-  console.log('Fallback: loading chat rooms directly via Supabase', { roomCount: roomIds.length });
+  const membershipMap = memberships.reduce<Record<string, MembershipRow>>((acc, membership) => {
+    acc[membership.room_id] = membership;
+    return acc;
+  }, {});
+
+  const roomIds = Object.keys(membershipMap);
 
   const { data: roomsRaw, error: roomsError } = await supabase
     .from('chat_rooms')
@@ -114,8 +192,8 @@ const fetchRoomsFallback = async (roomIds: string[], currentUserId: string): Pro
     .order('last_message_at', { ascending: false });
 
   if (roomsError) {
-    console.error('Fallback: room fetch failed', roomsError);
-    throw roomsError;
+    console.error('Failed to fetch chat rooms list', roomsError);
+    throw new Error(roomsError.message ?? 'Sohbet listesi alınamadı');
   }
 
   const typedRooms = (roomsRaw ?? []) as ChatRoom[];
@@ -126,57 +204,55 @@ const fetchRoomsFallback = async (roomIds: string[], currentUserId: string): Pro
 
   const { data: membersRaw, error: membersError } = await supabase
     .from('chat_members')
-    .select('id, room_id, user_id, role, unread_count, last_read_at, joined_at')
+    .select('id, room_id, user_id, role, unread_count, last_read_at, joined_at, user:user_profiles(*)')
     .in('room_id', roomIds);
 
   if (membersError) {
-    console.error('Fallback: member fetch failed', membersError);
-    throw membersError;
+    console.error('Failed to fetch room members', membersError);
+    throw new Error(membersError.message ?? 'Üye listesi alınamadı');
   }
 
-  const typedMembers = (membersRaw ?? []) as ChatMember[];
-  const memberUserIds = Array.from(new Set(typedMembers.map((member) => member.user_id)));
+  const typedMembers = (membersRaw ?? []) as MemberWithProfile[];
 
-  let profilesMap = new Map<string, UserProfile>();
+  const roomsWithDetails = await Promise.all(
+    typedRooms.map(async (room) => {
+      const roomMembers = typedMembers.filter((member) => member.room_id === room.id);
 
-  if (memberUserIds.length > 0) {
-    const { data: profilesRaw, error: profilesError } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .in('id', memberUserIds);
+      const membersWithProfiles = roomMembers.map((member) => {
+        const userProfile = member.user ?? createFallbackProfile(member.user_id);
+        return {
+          id: member.id,
+          room_id: member.room_id,
+          user_id: member.user_id,
+          role: member.role,
+          unread_count: member.unread_count,
+          last_read_at: member.last_read_at,
+          joined_at: member.joined_at,
+          user: userProfile,
+        } as ChatMember & { user: UserProfile };
+      });
 
-    if (profilesError) {
-      console.error('Fallback: profile fetch failed', profilesError);
-      throw profilesError;
-    }
+      const otherUserProfile = room.type === 'direct'
+        ? membersWithProfiles.find((member) => member.user_id !== currentUserId)?.user ?? null
+        : null;
 
-    profilesMap = new Map(
-      (profilesRaw ?? []).map((profile) => [profile.id as string, profile as UserProfile]),
-    );
-  }
+      const lastMessage = await fetchLatestMessage(room.id);
+      const unreadCount = membershipMap[room.id]?.unread_count ?? 0;
 
-  const fallbackRooms = typedRooms.map((room) => {
-    const roomMembers = typedMembers.filter((member) => member.room_id === room.id);
-    const membersWithProfiles = roomMembers.map((member) => ({
-      ...member,
-      user: profilesMap.get(member.user_id) ?? createFallbackProfile(member.user_id),
-    }));
+      return {
+        ...room,
+        last_message: lastMessage,
+        last_message_at: lastMessage?.created_at ?? room.last_message_at,
+        members: membersWithProfiles,
+        unread_count: unreadCount,
+        other_user: otherUserProfile,
+      } satisfies ChatRoomWithDetails;
+    }),
+  );
 
-    const otherUserProfile = membersWithProfiles.find((member) => member.user_id !== currentUserId)?.user ?? null;
-    const unreadCount = roomMembers.find((member) => member.user_id === currentUserId)?.unread_count ?? 0;
+  console.log('Chat rooms loaded via Supabase', { userId: currentUserId, roomCount: roomsWithDetails.length });
 
-    return {
-      ...room,
-      last_message: null,
-      members: membersWithProfiles,
-      unread_count: unreadCount,
-      other_user: otherUserProfile,
-    } satisfies ChatRoomWithDetails;
-  });
-
-  console.log('Fallback: chat rooms loaded via Supabase', { roomCount: fallbackRooms.length });
-
-  return fallbackRooms;
+  return roomsWithDetails;
 };
 
 export const [ChatContext, useChat] = createContextHook(() => {
@@ -253,23 +329,42 @@ export const [ChatContext, useChat] = createContextHook(() => {
           table: 'messages',
           filter: `room_id=eq.${roomId}`,
         },
-        async (payload) => {
+        async () => {
           try {
-            const latestMessages = await trpcClient.chat.getMessages.query({
-              roomId,
-              limit: 1,
-              offset: 0,
+            const newestMessage = await fetchLatestMessage(roomId);
+
+            if (!newestMessage) {
+              return;
+            }
+
+            setMessages(prev => {
+              const existing = prev[roomId] ?? [];
+              if (existing.some((message) => message.id === newestMessage.id)) {
+                return prev;
+              }
+
+              return {
+                ...prev,
+                [roomId]: [newestMessage, ...existing],
+              };
             });
 
-            if (latestMessages.length > 0) {
-              const newestMessage = latestMessages[0] as Message;
-              setMessages(prev => ({
-                ...prev,
-                [roomId]: [newestMessage, ...(prev[roomId] || [])],
-              }));
-            }
+            setRooms(prevRooms => prevRooms.map((roomEntry) => {
+              if (roomEntry.id !== roomId) {
+                return roomEntry;
+              }
+
+              const isSelfMessage = newestMessage.user_id === user.id;
+
+              return {
+                ...roomEntry,
+                last_message: newestMessage,
+                last_message_at: newestMessage.created_at,
+                unread_count: isSelfMessage ? roomEntry.unread_count : roomEntry.unread_count + 1,
+              };
+            }));
           } catch (fetchError) {
-            console.error('Failed to fetch latest message for room', roomId, fetchError);
+            console.error('Failed to fetch latest message for room', { roomId, fetchError });
           }
         }
       )
@@ -363,52 +458,7 @@ export const [ChatContext, useChat] = createContextHook(() => {
 
       console.log('👤 Kullanıcı:', authedUser.id);
 
-      const memberships = await retryOperation(async () => {
-        const { data: membershipsData, error: membershipsError } = await supabase
-          .from('chat_members')
-          .select('room_id')
-          .eq('user_id', authedUser.id)
-          .limit(5);
-
-        console.log('📊 Üyelikler:', membershipsData);
-        if (membershipsError) {
-          console.log('❌ Hata (üyelikler):', membershipsError);
-          throw membershipsError;
-        }
-
-        return membershipsData ?? [];
-      });
-
-      if (memberships.length === 0) {
-        console.log('ℹ️ Hiç oda bulunamadı');
-        setRooms([]);
-        return;
-      }
-
-      const roomIds = memberships.map((membership) => membership.room_id);
-      console.log('🏠 Oda IDleri:', roomIds);
-
-      const { data: roomsProbe, error: roomsProbeError } = await supabase
-        .from('chat_rooms')
-        .select('id')
-        .in('id', roomIds)
-        .limit(roomIds.length);
-
-      console.log('🏠 Odalar (kontrol):', roomsProbe);
-      if (roomsProbeError) {
-        console.log('❌ Hata (odalar):', roomsProbeError);
-      }
-
-      let roomsData: ChatRoomWithDetails[] = [];
-
-      try {
-        roomsData = await retryOperation(async () => trpcClient.chat.getRooms.query({ limit: 50, offset: 0 })) as ChatRoomWithDetails[];
-        console.log('✅ Odalar başarıyla yüklendi (tRPC)');
-      } catch (roomsError) {
-        console.error('❌ tRPC oda sorgusu başarısız, Supabase fallback deneniyor', roomsError);
-        roomsData = await fetchRoomsFallback(roomIds, authedUser.id);
-      }
-
+      const roomsData = await fetchRoomsViaSupabase(authedUser.id);
       setRooms(roomsData);
     } catch (loadError: unknown) {
       console.error('💥 loadRooms hatası:', loadError);
@@ -424,18 +474,13 @@ export const [ChatContext, useChat] = createContextHook(() => {
     if (!user) return;
 
     try {
-      const messagesData = await trpcClient.chat.getMessages.query({
-        roomId,
-        limit: 50,
-        offset: 0,
-      });
-
+      const roomMessages = await fetchRoomMessages(roomId, 50);
       setMessages(prev => ({
         ...prev,
-        [roomId]: (messagesData as Message[]) || [],
+        [roomId]: roomMessages,
       }));
     } catch (error) {
-      console.error('Error loading messages:', error);
+      console.error('Error loading messages:', { roomId, error });
     }
   }, [user]);
 
