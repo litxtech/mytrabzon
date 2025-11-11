@@ -111,6 +111,13 @@ export const [AuthContext, useAuth] = createContextHook(() => {
 
     console.log('Profile updated successfully:', data);
     setProfile(data);
+    
+    setTimeout(async () => {
+      if (user) {
+        await loadProfile(user.id);
+      }
+    }, 300);
+    
     return data;
   }, [user]);
 

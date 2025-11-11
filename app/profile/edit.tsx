@@ -214,7 +214,7 @@ export default function EditProfileScreen() {
         <ChevronDown size={20} color={COLORS.textLight} />
       </TouchableOpacity>
       {showPickers[pickerKey] && (
-        <View style={styles.pickerOptions}>
+        <ScrollView style={styles.pickerOptions} nestedScrollEnabled>
           {items.map((item) => (
             <TouchableOpacity
               key={item.value}
@@ -229,7 +229,7 @@ export default function EditProfileScreen() {
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
       )}
     </View>
   );
@@ -314,18 +314,43 @@ export default function EditProfileScreen() {
               setFormData({ 
                 ...formData, 
                 city: value, 
-                district: newDistricts[0] || 'Ortahisar' 
+                district: newDistricts.length > 0 ? newDistricts[0] : 'Ortahisar'
               });
             },
             'city'
           )}
 
-          {renderPicker(
-            'İlçe',
-            formData.district,
-            availableDistricts.map(d => ({ label: d, value: d })),
-            (value) => setFormData({ ...formData, district: value }),
-            'district'
+          {formData.city && (
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>İlçe</Text>
+              <TouchableOpacity
+                style={styles.pickerButton}
+                onPress={() => setShowPickers({ ...showPickers, district: !showPickers.district })}
+              >
+                <Text style={[styles.pickerText, !formData.district && styles.placeholderText]}>
+                  {formData.district || 'İlçe seçin'}
+                </Text>
+                <ChevronDown size={20} color={COLORS.textLight} />
+              </TouchableOpacity>
+              {showPickers.district && (
+                <ScrollView style={styles.pickerOptions} nestedScrollEnabled>
+                  {availableDistricts.map((district) => (
+                    <TouchableOpacity
+                      key={district}
+                      style={styles.pickerOption}
+                      onPress={() => {
+                        setFormData({ ...formData, district: district });
+                        setShowPickers({ ...showPickers, district: false });
+                      }}
+                    >
+                      <Text style={[styles.pickerOptionText, formData.district === district && styles.selectedOption]}>
+                        {district}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
           )}
         </View>
 
@@ -357,12 +382,32 @@ export default function EditProfileScreen() {
                 {privacy.show_gender ? <Eye size={16} color={COLORS.primary} /> : <EyeOff size={16} color={COLORS.textLight} />}
               </TouchableOpacity>
             </View>
-            {renderPicker(
-              'Cinsiyet',
-              formData.gender,
-              GENDERS,
-              (value: Gender) => setFormData({ ...formData, gender: value }),
-              'gender'
+            <TouchableOpacity
+              style={styles.pickerButton}
+              onPress={() => setShowPickers({ ...showPickers, gender: !showPickers.gender })}
+            >
+              <Text style={[styles.pickerText, !formData.gender && styles.placeholderText]}>
+                {formData.gender ? GENDERS.find(g => g.value === formData.gender)?.label : 'Cinsiyet seçin'}
+              </Text>
+              <ChevronDown size={20} color={COLORS.textLight} />
+            </TouchableOpacity>
+            {showPickers.gender && (
+              <View style={styles.pickerOptions}>
+                {GENDERS.map((gender) => (
+                  <TouchableOpacity
+                    key={gender.value}
+                    style={styles.pickerOption}
+                    onPress={() => {
+                      setFormData({ ...formData, gender: gender.value });
+                      setShowPickers({ ...showPickers, gender: false });
+                    }}
+                  >
+                    <Text style={[styles.pickerOptionText, formData.gender === gender.value && styles.selectedOption]}>
+                      {gender.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             )}
           </View>
 
