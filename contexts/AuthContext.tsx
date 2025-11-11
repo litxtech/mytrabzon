@@ -4,6 +4,52 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { UserProfile } from '@/types/database';
 import { trpcClient } from '@/lib/trpc';
+import { TRPCClientError } from '@trpc/client';
+import type { AppRouter } from '@/backend/trpc/app-router';
+
+const shouldFallbackToSupabase = (error: unknown): boolean => {
+  if (!error) {
+    return false;
+  }
+
+  if (error instanceof TRPCClientError<AppRouter>) {
+    return true;
+  }
+
+  if (error instanceof Error) {
+    return error.message?.toLowerCase().includes('failed to fetch');
+  }
+
+  if (typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: string }).message;
+    if (typeof message === 'string') {
+      return message.toLowerCase().includes('failed to fetch');
+    }
+  }
+
+  return false;
+};
+
+const fetchProfileDirectly = async (userId: string): Promise<UserProfile> => {
+  console.log('Falling back to Supabase profile fetch', { userId });
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('*')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Supabase fallback profile fetch failed', error);
+    throw new Error(error.message ?? 'Profil verisine ulaşılamadı');
+  }
+
+  if (!data) {
+    throw new Error('Profil bulunamadı');
+  }
+
+  console.log('Profile loaded via Supabase fallback', { userId });
+  return data as UserProfile;
+};
 
 export const [AuthContext, useAuth] = createContextHook(() => {
   const [session, setSession] = useState<Session | null>(null);
@@ -13,9 +59,20 @@ export const [AuthContext, useAuth] = createContextHook(() => {
 
   const loadProfile = useCallback(async (userId: string): Promise<UserProfile> => {
     console.log('Loading profile via tRPC', { userId });
-    const profileData = await trpcClient.user.getProfile.query({ userId });
-    console.log('Profile loaded via tRPC successfully', { userId });
-    return profileData;
+
+    try {
+      const profileData = await trpcClient.user.getProfile.query({ userId });
+      console.log('Profile loaded via tRPC successfully', { userId });
+      return profileData;
+    } catch (error) {
+      console.error('Primary profile fetch via tRPC failed', error);
+
+      if (shouldFallbackToSupabase(error)) {
+        return fetchProfileDirectly(userId);
+      }
+
+      throw error instanceof Error ? error : new Error('Profil yüklenemedi');
+    }
   }, []);
 
   useEffect(() => {
