@@ -178,6 +178,7 @@ export const [ChatContext, useChat] = createContextHook(() => {
         .order('last_message_at', { ascending: false, nullsFirst: false });
 
       if (error) {
+        const errorMessage = `Chat odaları yüklenemedi: ${error.message || 'Bilinmeyen hata'}`;
         console.error('Error loading rooms:', {
           message: error.message,
           details: error.details,
@@ -186,7 +187,7 @@ export const [ChatContext, useChat] = createContextHook(() => {
         });
         setRooms([]);
         setLoading(false);
-        return;
+        throw new Error(errorMessage);
       }
 
       const roomsWithDetails = await Promise.all(
@@ -223,12 +224,14 @@ export const [ChatContext, useChat] = createContextHook(() => {
 
       setRooms(roomsWithDetails as ChatRoomWithDetails[]);
     } catch (error: any) {
+      const errorMessage = error?.message || 'Chat odaları yüklenirken bilinmeyen bir hata oluştu';
       console.error('Error loading rooms:', {
-        message: error?.message || 'Unknown error',
+        message: errorMessage,
         stack: error?.stack,
-        error: error
+        code: error?.code
       });
       setRooms([]);
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
     }
