@@ -178,7 +178,14 @@ export const [ChatContext, useChat] = createContextHook(() => {
         .order('last_message_at', { ascending: false, nullsFirst: false });
 
       if (error) {
-        console.error('Error loading rooms:', error);
+        console.error('Error loading rooms:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        setRooms([]);
+        setLoading(false);
         return;
       }
 
@@ -215,8 +222,13 @@ export const [ChatContext, useChat] = createContextHook(() => {
       );
 
       setRooms(roomsWithDetails as ChatRoomWithDetails[]);
-    } catch (error) {
-      console.error('Error loading rooms:', error);
+    } catch (error: any) {
+      console.error('Error loading rooms:', {
+        message: error?.message || 'Unknown error',
+        stack: error?.stack,
+        error: error
+      });
+      setRooms([]);
     } finally {
       setLoading(false);
     }

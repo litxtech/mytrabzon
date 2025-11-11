@@ -1,26 +1,48 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Image } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Image, Alert } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { MessageCircle, Users, MapPin } from 'lucide-react-native';
+import { MessageCircle, Users, MapPin, AlertCircle } from 'lucide-react-native';
 
 export default function ChatScreen() {
   const { user } = useAuth();
   const { rooms, loading, loadRooms, onlineUsers } = useChat();
   const router = useRouter();
-  const [refreshing, setRefreshing] = React.useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadRooms();
-  }, [loadRooms]);
+    const load = async () => {
+      try {
+        setError(null);
+        await loadRooms();
+      } catch (err: any) {
+        const errorMessage = err?.message || 'Chat odaları yüklenirken bir hata oluştu';
+        setError(errorMessage);
+        console.error('Chat screen error:', err);
+      }
+    };
+    
+    if (user) {
+      load();
+    }
+  }, [loadRooms, user]);
 
   const onRefresh = async () => {
-    setRefreshing(true);
-    await loadRooms();
-    setRefreshing(false);
+    try {
+      setRefreshing(true);
+      setError(null);
+      await loadRooms();
+    } catch (err: any) {
+      const errorMessage = err?.message || 'Chat odaları yüklenirken bir hata oluştu';
+      setError(errorMessage);
+      Alert.alert('Hata', errorMessage);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const formatTime = (date: string | null) => {
@@ -72,6 +94,21 @@ export default function ChatScreen() {
     return false;
   };
 
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Sohbet</Text>
+        </View>
+        <View style={styles.emptyContainer}>
+          <AlertCircle size={48} color={COLORS.textLight} />
+          <Text style={styles.emptyText}>Giriş Yapmalısınız</Text>
+          <Text style={styles.emptySubtext}>Sohbet özelliğini kullanmak için giriş yapın</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (loading && rooms.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -81,6 +118,27 @@ export default function ChatScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
           <Text style={styles.loadingText}>Yükleniyor...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Sohbet</Text>
+        </View>
+        <View style={styles.emptyContainer}>
+          <AlertCircle size={48} color={COLORS.error} />
+          <Text style={styles.emptyText}>Hata Oluştu</Text>
+          <Text style={styles.emptySubtext}>{error}</Text>
+          <TouchableOpacity 
+            style={styles.retryButton} 
+            onPress={onRefresh}
+          >
+            <Text style={styles.retryButtonText}>Tekrar Dene</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -270,5 +328,17 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.xs,
     fontWeight: '700' as const,
+  },
+  retryButton: {
+    marginTop: SPACING.lg,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600' as const,
   },
 });
