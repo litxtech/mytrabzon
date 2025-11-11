@@ -1,0 +1,29 @@
+modules = ["nodejs-20", "bun"]
+[agent]
+expertMode = true
+
+[nix]
+channel = "stable-25_05"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "expo-dev"
+
+[[workflows.workflow]]
+name = "expo-dev"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bun run start"
+
+[workflows.workflow.metadata]
+outputType = "console"
