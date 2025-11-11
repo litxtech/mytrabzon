@@ -2,6 +2,13 @@
 "cli": {
   "version": ">= 12.5.0"
 },
+"submit": {
+  "production": {
+    "android": {
+      "serviceAccountKeyPath": "./google-play-service-account.json"
+    }
+  }
+},
 "build": {
   "development": {
     "developmentClient": true,
