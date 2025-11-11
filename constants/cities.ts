@@ -1,7 +1,6 @@
 export const CITIES = [
   { label: 'Trabzon', value: 'Trabzon' },
   { label: 'Giresun', value: 'Giresun' },
-  { label: 'Rize', value: 'Rize' },
 ] as const;
 
 export type City = typeof CITIES[number]['value'];

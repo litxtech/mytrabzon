@@ -16,9 +16,25 @@ export type District =
   | 'Şalpazarı'
   | 'Tonya'
   | 'Vakfıkebir'
-  | 'Yomra';
+  | 'Yomra'
+  | 'Alucra'
+  | 'Bulancak'
+  | 'Çamoluk'
+  | 'Çanakçı'
+  | 'Dereli'
+  | 'Doğankent'
+  | 'Espiye'
+  | 'Eynesil'
+  | 'Görele'
+  | 'Güce'
+  | 'Keşap'
+  | 'Merkez'
+  | 'Piraziz'
+  | 'Şebinkarahisar'
+  | 'Tirebolu'
+  | 'Yağlıdere';
 
-export type City = 'Trabzon' | 'Giresun' | 'Rize';
+export type City = 'Trabzon' | 'Giresun';
 export type Gender = 'male' | 'female' | 'other';
 
 export interface SocialMedia {
