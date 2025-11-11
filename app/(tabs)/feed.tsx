@@ -152,7 +152,7 @@ export default function FeedScreen() {
 
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => alert('Gönderi oluştur')}
+        onPress={() => router.push('/create-post')}
       >
         <Plus size={28} color={COLORS.white} />
       </TouchableOpacity>

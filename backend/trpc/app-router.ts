@@ -12,6 +12,14 @@ import { markAsReadProcedure } from "./routes/chat/mark-as-read/route";
 import { deleteMessageProcedure } from "./routes/chat/delete-message/route";
 import { addReactionProcedure } from "./routes/chat/add-reaction/route";
 import { blockUserProcedure, unblockUserProcedure } from "./routes/chat/block-user/route";
+import { createPostProcedure } from "./routes/post/create-post/route";
+import { getPostsProcedure } from "./routes/post/get-posts/route";
+import { likePostProcedure } from "./routes/post/like-post/route";
+import { deletePostProcedure } from "./routes/post/delete-post/route";
+import { uploadPostMediaProcedure } from "./routes/post/upload-media/route";
+import { getPostDetailProcedure } from "./routes/post/get-post-detail/route";
+import { updateProfileProcedure } from "./routes/user/update-profile/route";
+import { uploadAvatarProcedure } from "./routes/user/upload-avatar/route";
 
 export const appRouter = createTRPCRouter({
   example: createTRPCRouter({
@@ -22,6 +30,8 @@ export const appRouter = createTRPCRouter({
     cancelAccountDeletion: cancelAccountDeletionProcedure,
     getAllUsers: getAllUsersProcedure,
     updateDirectoryVisibility: updateDirectoryVisibilityProcedure,
+    updateProfile: updateProfileProcedure,
+    uploadAvatar: uploadAvatarProcedure,
   }),
   chat: createTRPCRouter({
     getRooms: getRoomsProcedure,
@@ -33,6 +43,14 @@ export const appRouter = createTRPCRouter({
     addReaction: addReactionProcedure,
     blockUser: blockUserProcedure,
     unblockUser: unblockUserProcedure,
+  }),
+  post: createTRPCRouter({
+    createPost: createPostProcedure,
+    getPosts: getPostsProcedure,
+    likePost: likePostProcedure,
+    deletePost: deletePostProcedure,
+    uploadMedia: uploadPostMediaProcedure,
+    getPostDetail: getPostDetailProcedure,
   }),
 });
 
