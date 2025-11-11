@@ -2,20 +2,33 @@ import { z } from 'zod';
 import { protectedProcedure } from '../../../create-context';
 import { TRPCError } from '@trpc/server';
 
-interface RawChatMember {
+interface RawMembership {
+  room_id: string;
+  unread_count: number;
+  role: 'admin' | 'member';
+  last_read_at: string | null;
+}
+
+interface RawRoom {
   id: string;
+  name: string | null;
+  avatar_url: string | null;
+  type: 'direct' | 'group' | 'district';
+  district: string | null;
+  last_message_at: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+interface RawMemberWithProfile {
+  id: string;
+  room_id: string;
   user_id: string;
   role: 'admin' | 'member';
   unread_count: number;
   last_read_at: string | null;
-  user?: unknown;
-}
-
-interface RawChatRoom {
-  id: string;
-  type: 'direct' | 'group' | 'district';
-  chat_members: RawChatMember[];
-  [key: string]: unknown;
+  joined_at: string;
+  user: unknown;
 }
 
 export const getRoomsProcedure = protectedProcedure
@@ -28,39 +41,72 @@ export const getRoomsProcedure = protectedProcedure
   .query(async ({ ctx, input }) => {
     const userId = ctx.user.id;
 
-    const { data: rooms, error } = await ctx.supabase
-      .from('chat_rooms')
-      .select(`
-        *,
-        chat_members!inner(
-          id,
-          user_id,
-          role,
-          unread_count,
-          last_read_at
-        )
-      `)
-      .eq('chat_members.user_id', userId)
-      .order('last_message_at', { ascending: false, nullsFirst: false })
-      .range(input.offset, input.offset + input.limit - 1);
+    console.log('Fetching chat rooms for user via tRPC', {
+      userId,
+      limit: input.limit,
+      offset: input.offset,
+    });
 
-    if (error) {
-      console.error('Error fetching chat rooms:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
+    const { data: membershipRows, error: membershipError } = await ctx.supabase
+      .from('chat_members')
+      .select('room_id, unread_count, role, last_read_at')
+      .eq('user_id', userId);
+
+    if (membershipError) {
+      console.error('Failed to fetch user chat memberships', {
+        message: membershipError.message,
+        details: membershipError.details,
+        hint: membershipError.hint,
+        code: membershipError.code,
       });
       throw new TRPCError({
         code: 'INTERNAL_SERVER_ERROR',
-        message: `Chat odaları yüklenemedi: ${error.message ?? 'Bilinmeyen hata'}`,
+        message: `Chat odaları yüklenemedi: ${membershipError.message ?? 'Üyelik bilgisi alınamadı'}`,
       });
     }
 
-    const normalizedRooms = (rooms ?? []) as RawChatRoom[];
+    const memberships = (membershipRows ?? []) as RawMembership[];
+
+    if (memberships.length === 0) {
+      console.log('No chat memberships found for user', { userId });
+      return [];
+    }
+
+    const membershipMap = memberships.reduce<Record<string, RawMembership>>((acc, membership) => {
+      acc[membership.room_id] = membership;
+      return acc;
+    }, {});
+
+    const roomIds = memberships.map((membership) => membership.room_id);
+
+    const { data: roomsData, error: roomsError } = await ctx.supabase
+      .from('chat_rooms')
+      .select('id, name, avatar_url, type, district, last_message_at, created_by, created_at')
+      .in('id', roomIds);
+
+    if (roomsError) {
+      console.error('Failed to fetch chat rooms list', {
+        message: roomsError.message,
+        details: roomsError.details,
+        hint: roomsError.hint,
+        code: roomsError.code,
+      });
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: `Chat odaları yüklenemedi: ${roomsError.message ?? 'Sohbet listesi alınamadı'}`,
+      });
+    }
+
+    const sortedRooms = ((roomsData ?? []) as RawRoom[]).sort((a, b) => {
+      const timeA = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+      const timeB = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+      return timeB - timeA;
+    });
+
+    const paginatedRooms = sortedRooms.slice(input.offset, input.offset + input.limit);
 
     const roomsWithLastMessage = await Promise.all(
-      normalizedRooms.map(async (room) => {
+      paginatedRooms.map(async (room) => {
         const { data: lastMessage, error: lastMessageError } = await ctx.supabase
           .from('messages')
           .select('*, user:user_profiles(*)')
@@ -73,37 +119,45 @@ export const getRoomsProcedure = protectedProcedure
           console.error('Failed to load last message for room', {
             roomId: room.id,
             message: lastMessageError.message,
+            details: lastMessageError.details,
           });
         }
 
-        const { data: members, error: membersError } = await ctx.supabase
+        const { data: memberRows, error: membersError } = await ctx.supabase
           .from('chat_members')
-          .select('*, user:user_profiles(*)')
+          .select('id, room_id, user_id, role, unread_count, last_read_at, joined_at, user:user_profiles(*)')
           .eq('room_id', room.id);
 
         if (membersError) {
           console.error('Failed to load members for room', {
             roomId: room.id,
             message: membersError.message,
+            details: membersError.details,
           });
         }
 
-        let otherUser: unknown = null;
-        if (room.type === 'direct' && members && members.length === 2) {
-          otherUser = members.find((member) => member.user_id !== userId)?.user ?? null;
-        }
+        const members = (memberRows ?? []) as RawMemberWithProfile[];
 
-        const currentMember = room.chat_members.find((member) => member.user_id === userId);
+        const otherUser = room.type === 'direct'
+          ? members.find((member) => member.user_id !== userId)?.user ?? null
+          : null;
+
+        const membership = membershipMap[room.id];
 
         return {
           ...room,
           last_message: lastMessage ?? null,
-          members: members ?? [],
+          members,
           other_user: otherUser,
-          unread_count: currentMember?.unread_count ?? 0,
+          unread_count: membership?.unread_count ?? 0,
         };
       })
     );
+
+    console.log('Chat rooms fetched successfully', {
+      userId,
+      count: roomsWithLastMessage.length,
+    });
 
     return roomsWithLastMessage;
   });

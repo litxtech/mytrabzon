@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { UserProfile } from '@/types/database';
+import { trpcClient } from '@/lib/trpc';
 
 export const [AuthContext, useAuth] = createContextHook(() => {
   const [session, setSession] = useState<Session | null>(null);
@@ -10,22 +11,54 @@ export const [AuthContext, useAuth] = createContextHook(() => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const loadProfile = useCallback(async (userId: string): Promise<UserProfile> => {
+    console.log('Loading profile via tRPC', { userId });
+    const profileData = await trpcClient.user.getProfile.query({ userId });
+    console.log('Profile loaded via tRPC successfully', { userId });
+    return profileData;
+  }, []);
+
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadProfile(session.user.id);
+      const nextUser = session?.user ?? null;
+      setUser(nextUser);
+
+      if (nextUser) {
+        setLoading(true);
+        try {
+          const profileData = await loadProfile(nextUser.id);
+          setProfile(profileData);
+        } catch (error) {
+          console.error('Error loading profile after session fetch:', error);
+          setProfile(null);
+        } finally {
+          setLoading(false);
+        }
       } else {
+        setProfile(null);
         setLoading(false);
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadProfile(session.user.id);
+      const nextUser = session?.user ?? null;
+      setUser(nextUser);
+
+      if (nextUser) {
+        setLoading(true);
+        void loadProfile(nextUser.id)
+          .then((profileData) => {
+            setProfile(profileData);
+          })
+          .catch((error) => {
+            console.error('Error loading profile after auth change:', error);
+            setProfile(null);
+          })
+          .finally(() => {
+            setLoading(false);
+          });
       } else {
         setProfile(null);
         setLoading(false);
@@ -33,7 +66,7 @@ export const [AuthContext, useAuth] = createContextHook(() => {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [loadProfile]);
 
   useEffect(() => {
     if (!user) return;
@@ -62,36 +95,27 @@ export const [AuthContext, useAuth] = createContextHook(() => {
     };
   }, [user]);
 
-  const loadProfile = async (userId: string) => {
-    try {
-      console.log('Loading profile for user:', userId);
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (error) throw error;
-      console.log('Profile loaded successfully:', data);
-      setProfile(data);
-    } catch (error) {
-      console.error('Error loading profile:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setProfile(null);
   }, []);
 
   const refreshProfile = useCallback(async () => {
-    if (user) {
-      console.log('Manually refreshing profile');
-      await loadProfile(user.id);
+    if (!user) {
+      return;
     }
-  }, [user]);
+
+    console.log('Manually refreshing profile');
+    setLoading(true);
+    try {
+      const profileData = await loadProfile(user.id);
+      setProfile(profileData);
+    } catch (error) {
+      console.error('Error refreshing profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [user, loadProfile]);
 
   const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
     if (!user) return;
@@ -111,15 +135,16 @@ export const [AuthContext, useAuth] = createContextHook(() => {
 
     console.log('Profile updated successfully:', data);
     setProfile(data);
-    
-    setTimeout(async () => {
-      if (user) {
-        await loadProfile(user.id);
-      }
-    }, 300);
-    
-    return data;
-  }, [user]);
+
+    try {
+      const refreshedProfile = await loadProfile(user.id);
+      setProfile(refreshedProfile);
+      return refreshedProfile;
+    } catch (refreshError) {
+      console.error('Error reloading profile after update:', refreshError);
+      return data;
+    }
+  }, [user, loadProfile]);
 
   return useMemo(() => ({
     session,

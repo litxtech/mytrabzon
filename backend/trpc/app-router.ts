@@ -20,6 +20,7 @@ import { uploadPostMediaProcedure } from "./routes/post/upload-media/route";
 import { getPostDetailProcedure } from "./routes/post/get-post-detail/route";
 import { updateProfileProcedure } from "./routes/user/update-profile/route";
 import { uploadAvatarProcedure } from "./routes/user/upload-avatar/route";
+import { getProfileProcedure } from "./routes/user/get-profile/route";
 
 export const appRouter = createTRPCRouter({
   example: createTRPCRouter({
@@ -32,6 +33,7 @@ export const appRouter = createTRPCRouter({
     updateDirectoryVisibility: updateDirectoryVisibilityProcedure,
     updateProfile: updateProfileProcedure,
     uploadAvatar: uploadAvatarProcedure,
+    getProfile: getProfileProcedure,
   }),
   chat: createTRPCRouter({
     getRooms: getRoomsProcedure,
