@@ -45,7 +45,8 @@
       ]
     },
     "web": {
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "bundler": "metro"
     },
     "plugins": [
       [
@@ -64,7 +65,8 @@
       ]
     ],
     "experiments": {
-      "typedRoutes": true
+      "typedRoutes": true,
+      "tsconfigPaths": true
     },
     "extra": {
       "router": {
@@ -76,6 +78,15 @@
     },
     "cli": {
       "appVersionSource": "local"
-    }
+    },
+    "sdkVersion": "50.0.0",
+    "jsEngine": "hermes",
+    "androidNavigationBar": {
+      "visible": "immersive",
+      "backgroundColor": "#ffffff"
+    },
+    "privacy": "unlisted",
+    "githubUrl": "https://github.com/your-username/mytrabzon",
+    "owner": "litxtech"
   }
 }
