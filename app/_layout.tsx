@@ -23,6 +23,10 @@ function RootLayoutNav() {
       <Stack.Screen name="post/[id]" options={{ title: "Gönderi" }} />
       <Stack.Screen name="profile/[id]" options={{ title: "Profil" }} />
       <Stack.Screen name="chat/[roomId]" options={{ title: "Sohbet" }} />
+      <Stack.Screen name="create-post" options={{ headerShown: false }} />
+      <Stack.Screen name="all-users" options={{ title: "Kullanıcılar" }} />
+      <Stack.Screen name="profile/edit" options={{ headerShown: false }} />
+      <Stack.Screen name="profile/settings" options={{ title: "Ayarlar" }} />
     </Stack>
   );
 }

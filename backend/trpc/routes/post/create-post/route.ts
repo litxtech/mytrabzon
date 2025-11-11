@@ -17,13 +17,16 @@ export const createPostProcedure = protectedProcedure
   .mutation(async ({ ctx, input }) => {
     const { supabase, user } = ctx;
 
+    console.log('Creating post with input:', input);
+    console.log('Media URLs:', input.media_urls);
+
     const { data, error } = await supabase
       .from("posts")
       .insert({
         user_id: user.id,
         content: input.content,
         district: input.district,
-        media_url: input.media_urls || null,
+        media_url: input.media_urls && input.media_urls.length > 0 ? input.media_urls : null,
         media_type: input.media_type || null,
         location_lat: input.location_lat || null,
         location_lng: input.location_lng || null,

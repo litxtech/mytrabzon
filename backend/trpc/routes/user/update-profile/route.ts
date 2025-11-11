@@ -36,6 +36,9 @@ export const updateProfileProcedure = protectedProcedure
           show_social_media: z.boolean().optional(),
         })
         .optional(),
+      show_in_directory: z.boolean().optional(),
+      email: z.string().optional(),
+      avatar_url: z.string().nullable().optional(),
     })
   )
   .mutation(async ({ ctx, input }) => {
@@ -57,6 +60,12 @@ export const updateProfileProcedure = protectedProcedure
       updateData.social_media = input.social_media;
     if (input.privacy_settings !== undefined)
       updateData.privacy_settings = input.privacy_settings;
+    if (input.show_in_directory !== undefined)
+      updateData.show_in_directory = input.show_in_directory;
+    if (input.email !== undefined)
+      updateData.email = input.email;
+    if (input.avatar_url !== undefined)
+      updateData.avatar_url = input.avatar_url;
 
     const { data, error } = await supabase
       .from("user_profiles")
