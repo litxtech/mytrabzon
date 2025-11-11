@@ -3,6 +3,7 @@
 # dependencies
 node_modules/
 bun.lockb
+bun.lock
 
 # Expo
 .expo/
