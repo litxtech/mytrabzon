@@ -86,23 +86,24 @@ export interface UserProfile {
 
 export interface Post {
   id: string;
-  user_id: string;
+  author_id: string;
   content: string;
-  media_url: string[] | null;
-  media_type: 'image' | 'video' | 'mixed' | null;
+  media: { type: 'image' | 'video'; path: string }[] | null;
   district: District;
-  location_lat: number | null;
-  location_lng: number | null;
-  location_name: string | null;
-  tags: string[] | null;
-  likes_count: number;
-  comments_count: number;
-  shares_count: number;
+  hashtags: string[] | null;
+  mentions: string[] | null;
+  visibility: 'public' | 'friends' | 'private';
+  like_count: number;
+  comment_count: number;
+  share_count: number;
   views_count: number;
   is_pinned: boolean;
+  edited: boolean;
+  archived: boolean;
   created_at: string;
   updated_at: string;
-  user?: UserProfile;
+  author?: UserProfile;
+  is_liked?: boolean;
 }
 
 export interface PostLike {

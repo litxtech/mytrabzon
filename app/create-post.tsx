@@ -131,7 +131,7 @@ export default function CreatePostScreen() {
       Alert.alert('Başarılı', 'Gönderiniz paylaşıldı!', [
         {
           text: 'Tamam',
-          onPress: () => router.back(),
+          onPress: () => router.replace('/(tabs)/feed'),
         },
       ]);
     } catch (error) {

@@ -9,48 +9,78 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
+
+import { useRouter } from 'expo-router';
+import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { DISTRICTS, DISTRICT_BADGES } from '@/constants/districts';
 import { Post, District } from '@/types/database';
-import { Heart, MessageCircle, Plus, Users } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp } from 'lucide-react-native';
+
+type SortType = 'new' | 'hot' | 'trending';
 
 export default function FeedScreen() {
-  const { profile } = useAuth();
+  const { } = useAuth();
   const router = useRouter();
   const [selectedDistrict, setSelectedDistrict] = useState<District | 'all'>('all');
+  const [sortType, setSortType] = useState<SortType>('new');
 
-  const { data: posts = [], isLoading, refetch } = useQuery({
-    queryKey: ['posts', selectedDistrict],
-    queryFn: async () => {
-      let query = supabase
-        .from('posts')
-        .select(`
-          *,
-          user:user_profiles(*)
-        `)
-        .order('created_at', { ascending: false });
+  const { data: postsData, isLoading, refetch } = trpc.post.getPosts.useQuery({
+    district: selectedDistrict === 'all' ? undefined : selectedDistrict,
+    sort: sortType,
+    limit: 20,
+    offset: 0,
+  });
 
-      if (selectedDistrict !== 'all') {
-        query = query.eq('district', selectedDistrict);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as Post[];
+  const likePostMutation = trpc.post.likePost.useMutation({
+    onSuccess: () => {
+      refetch();
     },
   });
+
+  const handleLike = async (postId: string) => {
+    try {
+      await likePostMutation.mutateAsync({ postId });
+    } catch (error) {
+      console.error('Like error:', error);
+    }
+  };
+
+  const renderSortTabs = () => (
+    <View style={styles.sortContainer}>
+      <TouchableOpacity
+        style={[styles.sortTab, sortType === 'new' && styles.sortTabActive]}
+        onPress={() => setSortType('new')}
+      >
+        <Text style={[styles.sortText, sortType === 'new' && styles.sortTextActive]}>
+          En Yeni
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.sortTab, sortType === 'trending' && styles.sortTabActive]}
+        onPress={() => setSortType('trending')}
+      >
+        <TrendingUp
+          size={16}
+          color={sortType === 'trending' ? COLORS.white : COLORS.text}
+        />
+        <Text style={[styles.sortText, sortType === 'trending' && styles.sortTextActive]}>
+          Trending
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   const renderDistrictFilter = () => (
     <View style={styles.filterContainer}>
       <FlatList
         horizontal
         showsHorizontalScrollIndicator={false}
-        data={[{ id: 'all', name: 'Tümü', badge: '🌍' }, ...DISTRICTS.map(d => ({ id: d, name: d, badge: DISTRICT_BADGES[d] }))]}
+        data={[
+          { id: 'all', name: 'Tümü', badge: '🌍' },
+          ...DISTRICTS.map((d) => ({ id: d, name: d, badge: DISTRICT_BADGES[d] })),
+        ]}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <TouchableOpacity
@@ -75,51 +105,86 @@ export default function FeedScreen() {
     </View>
   );
 
-  const renderPost = ({ item }: { item: Post }) => (
-    <TouchableOpacity
-      style={styles.postCard}
-      onPress={() => router.push(`/post/${item.id}`)}
-    >
-      <View style={styles.postHeader}>
-        <Image
-          source={{ uri: item.user?.avatar_url || 'https://via.placeholder.com/40' }}
-          style={styles.avatar}
-        />
-        <View style={styles.postHeaderInfo}>
-          <Text style={styles.postAuthor}>{item.user?.full_name}</Text>
-          <View style={styles.postMeta}>
-            <Text style={styles.postDistrict}>
-              {DISTRICT_BADGES[item.district]} {item.district}
-            </Text>
+  const renderPost = ({ item }: { item: Post }) => {
+    const firstMedia = item.media && item.media.length > 0 ? item.media[0] : null;
+
+    return (
+      <TouchableOpacity
+        style={styles.postCard}
+        onPress={() => router.push(`/post/${item.id}` as any)}
+      >
+        <View style={styles.postHeader}>
+          <Image
+            source={{
+              uri: item.author?.avatar_url || 'https://via.placeholder.com/40',
+            }}
+            style={styles.avatar}
+          />
+          <View style={styles.postHeaderInfo}>
+            <Text style={styles.postAuthor}>{item.author?.full_name}</Text>
+            <View style={styles.postMeta}>
+              <Text style={styles.postDistrict}>
+                {DISTRICT_BADGES[item.district]} {item.district}
+              </Text>
+              <Text style={styles.postTime}>
+                {' • '}
+                {new Date(item.created_at).toLocaleDateString('tr-TR', {
+                  day: 'numeric',
+                  month: 'short',
+                })}
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
 
-      <Text style={styles.postContent}>{item.content}</Text>
+        <Text style={styles.postContent} numberOfLines={10}>
+          {item.content}
+        </Text>
 
-      {item.media_url && (
-        <Image
-          source={{ uri: item.media_url }}
-          style={styles.postImage}
-          resizeMode="cover"
-        />
-      )}
+        {firstMedia && (
+          <Image
+            source={{ uri: firstMedia.path }}
+            style={styles.postImage}
+            resizeMode="cover"
+          />
+        )}
 
-      <View style={styles.postActions}>
-        <View style={styles.actionButton}>
-          <Heart size={20} color={COLORS.textLight} />
-          <Text style={styles.actionText}>{item.likes_count || 0}</Text>
+        {item.media && item.media.length > 1 && (
+          <View style={styles.mediaCountBadge}>
+            <Text style={styles.mediaCountText}>+{item.media.length - 1}</Text>
+          </View>
+        )}
+
+        <View style={styles.postActions}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => handleLike(item.id)}
+          >
+            <Heart
+              size={20}
+              color={item.is_liked ? COLORS.error : COLORS.textLight}
+              fill={item.is_liked ? COLORS.error : 'transparent'}
+            />
+            <Text style={styles.actionText}>{item.like_count || 0}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push(`/post/${item.id}` as any)}
+          >
+            <MessageCircle size={20} color={COLORS.textLight} />
+            <Text style={styles.actionText}>{item.comment_count || 0}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionButton}>
+            <Share2 size={20} color={COLORS.textLight} />
+            <Text style={styles.actionText}>{item.share_count || 0}</Text>
+          </TouchableOpacity>
         </View>
-        <View style={styles.actionButton}>
-          <MessageCircle size={20} color={COLORS.textLight} />
-          <Text style={styles.actionText}>{item.comments_count || 0}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>MyTrabzon</Text>
         <TouchableOpacity
@@ -130,6 +195,7 @@ export default function FeedScreen() {
         </TouchableOpacity>
       </View>
 
+      {renderSortTabs()}
       {renderDistrictFilter()}
 
       {isLoading ? (
@@ -138,7 +204,7 @@ export default function FeedScreen() {
         </View>
       ) : (
         <FlatList
-          data={posts}
+          data={postsData?.posts || []}
           renderItem={renderPost}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.feedList}
@@ -162,7 +228,7 @@ export default function FeedScreen() {
       >
         <Plus size={28} color={COLORS.white} />
       </TouchableOpacity>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -193,6 +259,33 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
+  },
+  sortContainer: {
+    flexDirection: 'row' as const,
+    backgroundColor: COLORS.white,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  sortTab: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 20,
+    backgroundColor: COLORS.background,
+    gap: SPACING.xs,
+  },
+  sortTabActive: {
+    backgroundColor: COLORS.primary,
+  },
+  sortText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    fontWeight: '600' as const,
+  },
+  sortTextActive: {
+    color: COLORS.white,
   },
   filterContainer: {
     backgroundColor: COLORS.white,
@@ -262,6 +355,10 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
   },
+  postTime: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+  },
   postContent: {
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.md,
@@ -272,6 +369,20 @@ const styles = StyleSheet.create({
   postImage: {
     width: '100%',
     height: 300,
+  },
+  mediaCountBadge: {
+    position: 'absolute' as const,
+    top: 70,
+    right: SPACING.md,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  mediaCountText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600' as const,
   },
   postActions: {
     flexDirection: 'row' as const,

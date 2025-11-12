@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { protectedProcedure } from "../../../create-context";
+import { publicProcedure } from "../../../create-context";
 
-export const getPostDetailProcedure = protectedProcedure
+export const getPostDetailProcedure = publicProcedure
   .input(
     z.object({
       postId: z.string().uuid(),
@@ -15,7 +15,7 @@ export const getPostDetailProcedure = protectedProcedure
       .select(
         `
         *,
-        user:user_profiles(*)
+        author:user_profiles!posts_author_id_fkey(*)
       `
       )
       .eq("id", input.postId)
@@ -25,15 +25,20 @@ export const getPostDetailProcedure = protectedProcedure
       throw new Error(error.message);
     }
 
-    const { data: liked } = await supabase
-      .from("post_likes")
-      .select("id")
-      .eq("post_id", input.postId)
-      .eq("user_id", user.id)
-      .single();
+    let is_liked = false;
+    if (user) {
+      const { data: liked } = await supabase
+        .from("post_likes")
+        .select("id")
+        .eq("post_id", input.postId)
+        .eq("user_id", user.id)
+        .single();
+      
+      is_liked = !!liked;
+    }
 
     return {
       ...post,
-      is_liked: !!liked,
+      is_liked,
     };
   });

@@ -18,6 +18,10 @@ import { likePostProcedure } from "./routes/post/like-post/route";
 import { deletePostProcedure } from "./routes/post/delete-post/route";
 import { uploadPostMediaProcedure } from "./routes/post/upload-media/route";
 import { getPostDetailProcedure } from "./routes/post/get-post-detail/route";
+import { addCommentProcedure } from "./routes/post/add-comment/route";
+import { getCommentsProcedure } from "./routes/post/get-comments/route";
+import { toggleCommentLikeProcedure } from "./routes/post/toggle-comment-like/route";
+import { sharePostProcedure } from "./routes/post/share-post/route";
 import { updateProfileProcedure } from "./routes/user/update-profile/route";
 import { uploadAvatarProcedure } from "./routes/user/upload-avatar/route";
 import { getProfileProcedure } from "./routes/user/get-profile/route";
@@ -53,6 +57,10 @@ export const appRouter = createTRPCRouter({
     deletePost: deletePostProcedure,
     uploadMedia: uploadPostMediaProcedure,
     getPostDetail: getPostDetailProcedure,
+    addComment: addCommentProcedure,
+    getComments: getCommentsProcedure,
+    toggleCommentLike: toggleCommentLikeProcedure,
+    sharePost: sharePostProcedure,
   }),
 });
 
