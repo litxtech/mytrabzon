@@ -15,7 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { DISTRICTS, DISTRICT_BADGES } from '@/constants/districts';
 import { Post, District } from '@/types/database';
-import { Heart, MessageCircle, Plus } from 'lucide-react-native';
+import { Heart, MessageCircle, Plus, Users } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -122,6 +122,12 @@ export default function FeedScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>MyTrabzon</Text>
+        <TouchableOpacity
+          style={styles.usersButton}
+          onPress={() => router.push('/all-users')}
+        >
+          <Users size={24} color={COLORS.primary} />
+        </TouchableOpacity>
       </View>
 
       {renderDistrictFilter()}
@@ -171,11 +177,22 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
   },
   headerTitle: {
     fontSize: FONT_SIZES.xl,
     fontWeight: '700' as const,
     color: COLORS.primary,
+  },
+  usersButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.background,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
   filterContainer: {
     backgroundColor: COLORS.white,

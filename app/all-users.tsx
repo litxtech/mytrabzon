@@ -8,10 +8,11 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Search, MapPin, ChevronRight } from 'lucide-react-native';
+import { Search, MapPin, ChevronRight, Users, User, UserCheck } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 
@@ -24,7 +25,10 @@ interface UserListItem {
   district: string;
   created_at: string;
   verified: boolean;
+  gender: 'male' | 'female' | 'other' | null;
 }
+
+type GenderFilter = 'all' | 'male' | 'female' | 'other';
 
 export default function AllUsersScreen() {
   const router = useRouter();
@@ -32,6 +36,7 @@ export default function AllUsersScreen() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [allUsers, setAllUsers] = useState<UserListItem[]>([]);
+  const [genderFilter, setGenderFilter] = useState<GenderFilter>('all');
 
   const debouncedSearch = useDebounce(search, 500);
 
@@ -40,6 +45,7 @@ export default function AllUsersScreen() {
       page,
       limit: 20,
       search: debouncedSearch,
+      gender: genderFilter,
     },
     {
       keepPreviousData: true,
@@ -61,6 +67,12 @@ export default function AllUsersScreen() {
 
   const handleSearchChange = useCallback((text: string) => {
     setSearch(text);
+    setPage(1);
+    setAllUsers([]);
+  }, []);
+
+  const handleGenderFilter = useCallback((gender: GenderFilter) => {
+    setGenderFilter(gender);
     setPage(1);
     setAllUsers([]);
   }, []);
@@ -175,6 +187,68 @@ export default function AllUsersScreen() {
         </View>
       </View>
 
+      <View style={styles.filterContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterContent}
+        >
+          <TouchableOpacity
+            style={[
+              styles.filterButton,
+              genderFilter === 'all' && styles.filterButtonActive,
+            ]}
+            onPress={() => handleGenderFilter('all')}
+          >
+            <Users size={18} color={genderFilter === 'all' ? COLORS.white : COLORS.primary} />
+            <Text
+              style={[
+                styles.filterButtonText,
+                genderFilter === 'all' && styles.filterButtonTextActive,
+              ]}
+            >
+              Tümü
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.filterButton,
+              genderFilter === 'male' && styles.filterButtonActive,
+            ]}
+            onPress={() => handleGenderFilter('male')}
+          >
+            <User size={18} color={genderFilter === 'male' ? COLORS.white : COLORS.primary} />
+            <Text
+              style={[
+                styles.filterButtonText,
+                genderFilter === 'male' && styles.filterButtonTextActive,
+              ]}
+            >
+              Erkek
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.filterButton,
+              genderFilter === 'female' && styles.filterButtonActive,
+            ]}
+            onPress={() => handleGenderFilter('female')}
+          >
+            <UserCheck size={18} color={genderFilter === 'female' ? COLORS.white : COLORS.primary} />
+            <Text
+              style={[
+                styles.filterButtonText,
+                genderFilter === 'female' && styles.filterButtonTextActive,
+              ]}
+            >
+              Kadın
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
       <FlatList
         data={allUsers}
         renderItem={renderUser}
@@ -233,9 +307,8 @@ const styles = StyleSheet.create({
   searchContainer: {
     backgroundColor: COLORS.white,
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
   },
   searchInputContainer: {
     flexDirection: 'row',
@@ -251,6 +324,39 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
     paddingVertical: SPACING.xs,
+  },
+  filterContainer: {
+    backgroundColor: COLORS.white,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  filterContent: {
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  filterButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 20,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    gap: SPACING.xs,
+  },
+  filterButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  filterButtonText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600' as const,
+    color: COLORS.primary,
+  },
+  filterButtonTextActive: {
+    color: COLORS.white,
   },
   listContent: {
     paddingVertical: SPACING.sm,

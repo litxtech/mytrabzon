@@ -7,18 +7,19 @@ export const getAllUsersProcedure = protectedProcedure
       page: z.number().min(1).default(1),
       limit: z.number().min(1).max(50).default(20),
       search: z.string().optional(),
+      gender: z.enum(['male', 'female', 'other', 'all']).optional(),
     })
   )
   .query(async ({ ctx, input }) => {
     const { supabase } = ctx;
-    const { page, limit, search } = input;
+    const { page, limit, search, gender } = input;
     const offset = (page - 1) * limit;
 
-    console.log('Getting all users:', { page, limit, search });
+    console.log('Getting all users:', { page, limit, search, gender });
 
     let query = supabase
       .from('user_profiles')
-      .select('id, full_name, avatar_url, bio, city, district, created_at, verified', { count: 'exact' })
+      .select('id, full_name, avatar_url, bio, city, district, created_at, verified, gender', { count: 'exact' })
       .eq('show_in_directory', true)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
@@ -26,6 +27,10 @@ export const getAllUsersProcedure = protectedProcedure
     if (search && search.trim()) {
       const searchTerm = `%${search.trim()}%`;
       query = query.or(`full_name.ilike.${searchTerm},email.ilike.${searchTerm}`);
+    }
+
+    if (gender && gender !== 'all') {
+      query = query.eq('gender', gender);
     }
 
     const { data, error, count } = await query;
