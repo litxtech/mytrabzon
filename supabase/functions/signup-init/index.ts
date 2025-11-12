@@ -1,0 +1,38 @@
+// deno-lint-ignore-file no-explicit-any
+import { Hono } from "https://esm.sh/hono@4.4.7";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const app = new Hono();
+
+function admin() {
+  const url = "https://xcvcplwimicylaxghiak.supabase.co";
+  const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhjdmNwbHdpbWljeWxheGdoaWFrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MTg1MDI3NSwiZXhwIjoyMDc3NDI2Mjc1fQ.5mZ9sFZ2GVYoKq5gUvJKbQjz3kbCMPr8g8J_2qz4E3E";
+  return createClient(url, key, { auth: { persistSession: false } });
+}
+
+app.post("/", async (c) => {
+  try {
+    const { uid, email } = await c.req.json();
+
+    if (!uid || typeof uid !== "string") {
+      return c.json({ ok: false, error: "uid_required" }, 400);
+    }
+
+    const sb = admin();
+
+    const { data, error } = await sb.rpc("assign_public_id", {
+      p_user_id: uid,
+      p_email: email ?? null,
+    });
+
+    if (error) {
+      return c.json({ ok: false, error: error.message }, 500);
+    }
+
+    return c.json({ ok: true, public_id: data });
+  } catch (e: any) {
+    return c.json({ ok: false, error: e?.message ?? "unexpected" }, 500);
+  }
+});
+
+export default app;
