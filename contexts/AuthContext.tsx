@@ -132,9 +132,14 @@ export const [AuthContext, useAuth] = createContextHook(() => {
   }, [user, loadProfile]);
 
   const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
-    if (!user) return;
+    if (!user) {
+      console.error('❌ Cannot update profile: No user logged in');
+      throw new Error('Kullanıcı oturumu bulunamadı');
+    }
 
-    console.log('Updating profile with:', updates);
+    console.log('🔄 Updating profile with:', JSON.stringify(updates, null, 2));
+    console.log('🔑 User ID:', user.id);
+
     const { data, error } = await supabase
       .from('user_profiles')
       .update(updates)
@@ -143,20 +148,32 @@ export const [AuthContext, useAuth] = createContextHook(() => {
       .single();
 
     if (error) {
-      console.error('Error updating profile:', error);
-      throw error;
+      console.error('❌ Error updating profile:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+      throw new Error(`Profile update failed: ${error.message}`);
     }
 
-    console.log('Profile updated successfully:', data);
-    setProfile(data);
+    if (!data) {
+      console.error('❌ Profile update returned no data');
+      throw new Error('Profil güncellenemedi, veri dönmedi');
+    }
+
+    console.log('✅ Profile updated successfully in database');
+    setProfile(data as UserProfile);
 
     try {
+      console.log('🔄 Refreshing profile to ensure consistency...');
       const refreshedProfile = await loadProfile(user.id);
       setProfile(refreshedProfile);
+      console.log('✅ Profile refreshed successfully');
       return refreshedProfile;
-    } catch (refreshError) {
-      console.error('Error reloading profile after update:', refreshError);
-      return data;
+    } catch (refreshError: any) {
+      console.error('⚠️ Error reloading profile after update:', refreshError);
+      return data as UserProfile;
     }
   }, [user, loadProfile]);
 

@@ -67,6 +67,11 @@ export const updateProfileProcedure = protectedProcedure
     if (input.avatar_url !== undefined)
       updateData.avatar_url = input.avatar_url;
 
+    updateData.updated_at = new Date().toISOString();
+
+    console.log('Updating profile with data:', JSON.stringify(updateData, null, 2));
+    console.log('User ID:', user.id);
+
     const { data, error } = await supabase
       .from("user_profiles")
       .update(updateData)
@@ -75,9 +80,20 @@ export const updateProfileProcedure = protectedProcedure
       .single();
 
     if (error) {
-      console.error("Profil güncelleme hatası:", error);
-      throw new Error(error.message);
+      console.error("❌ Profil güncelleme hatası:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+      throw new Error(`Profile update failed: ${error.message} (${error.code})`);
     }
 
+    if (!data) {
+      console.error("❌ Profile update returned no data");
+      throw new Error('Profile update returned no data');
+    }
+
+    console.log('✅ Profile updated successfully:', data.id);
     return data;
   });

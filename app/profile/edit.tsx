@@ -166,25 +166,25 @@ export default function EditProfileScreen() {
       setLoading(true);
 
       const updateData = {
-        full_name: formData.full_name,
+        full_name: formData.full_name || null,
         bio: formData.bio || null,
-        city: formData.city,
-        district: formData.district,
+        city: formData.city || null,
+        district: formData.district || 'Ortahisar',
         age: formData.age ? parseInt(formData.age) : null,
-        gender: formData.gender,
+        gender: formData.gender || null,
         phone: formData.phone || null,
-        email: formData.email,
+        email: formData.email || profile?.email || '',
         address: formData.address || null,
         height: formData.height ? parseInt(formData.height) : null,
         weight: formData.weight ? parseInt(formData.weight) : null,
-        social_media: socialMedia,
-        privacy_settings: privacy,
+        social_media: socialMedia || {},
+        privacy_settings: privacy || {},
         show_in_directory: showInDirectory,
       };
 
-      console.log('Saving profile with data:', updateData);
-      await updateProfile?.(updateData);
-      console.log('Profile saved successfully');
+      console.log('💾 Saving profile with data:', JSON.stringify(updateData, null, 2));
+      const result = await updateProfile?.(updateData);
+      console.log('✅ Profile saved successfully:', result);
       
       Alert.alert('Başarılı', 'Profil bilgileriniz güncellendi.', [
         {
@@ -192,9 +192,15 @@ export default function EditProfileScreen() {
           onPress: () => router.back(),
         },
       ]);
-    } catch (error) {
-      console.error('Profile update error:', error);
-      Alert.alert('Hata', 'Profil güncellenirken bir hata oluştu.');
+    } catch (error: any) {
+      console.error('❌ Profile update error:', {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+        full: error
+      });
+      const errorMessage = error?.message || 'Bilinmeyen bir hata oluştu';
+      Alert.alert('Hata', `Profil güncellenirken bir hata oluştu: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
