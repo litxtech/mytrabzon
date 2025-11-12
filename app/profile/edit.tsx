@@ -20,6 +20,7 @@ import { CITIES, GENDERS, SOCIAL_MEDIA_PLATFORMS, City, Gender } from '@/constan
 import { Camera, Trash2, ChevronDown, Eye, EyeOff, Save, Users } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { SocialMedia, PrivacySettings } from '@/types/database';
+import { trpc } from '@/lib/trpc';
 
 type PickerItem<T> = {
   label: string;
@@ -29,9 +30,25 @@ type PickerItem<T> = {
 export default function EditProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { profile, updateProfile } = useAuth();
-  const [loading, setLoading] = useState(false);
+  const { profile, refreshProfile } = useAuth();
   const [uploading, setUploading] = useState(false);
+  
+  const updateProfileMutation = trpc.user.updateProfile.useMutation({
+    onSuccess: async () => {
+      console.log('✅ Profile update successful, refreshing...');
+      await refreshProfile();
+      Alert.alert('Başarılı', 'Profil bilgileriniz güncellendi.', [
+        {
+          text: 'Tamam',
+          onPress: () => router.back(),
+        },
+      ]);
+    },
+    onError: (error) => {
+      console.error('❌ Profile update error:', error);
+      Alert.alert('Hata', `Profil güncellenirken bir hata oluştu: ${error.message}`);
+    },
+  });
 
   const [formData, setFormData] = useState({
     full_name: profile?.full_name || '',
@@ -124,7 +141,7 @@ export default function EditProfileScreen() {
         .from('avatars')
         .getPublicUrl(fileName);
 
-      await updateProfile?.({ avatar_url: publicUrl });
+      updateProfileMutation.mutate({ avatar_url: publicUrl });
       Alert.alert('Başarılı', 'Profil resmi güncellendi.');
     } catch (error) {
       console.error('Avatar upload error:', error);
@@ -147,7 +164,7 @@ export default function EditProfileScreen() {
             try {
               setUploading(true);
 
-              await updateProfile?.({ avatar_url: null });
+              updateProfileMutation.mutate({ avatar_url: null });
               Alert.alert('Başarılı', 'Profil resmi silindi.');
             } catch (error) {
               console.error('Avatar delete error:', error);
@@ -161,49 +178,26 @@ export default function EditProfileScreen() {
     );
   };
 
-  const handleSave = async () => {
-    try {
-      setLoading(true);
+  const handleSave = () => {
+    const updateData = {
+      full_name: formData.full_name || undefined,
+      bio: formData.bio || undefined,
+      city: formData.city || undefined,
+      district: formData.district || 'Ortahisar',
+      age: formData.age ? parseInt(formData.age) : undefined,
+      gender: formData.gender || undefined,
+      phone: formData.phone || undefined,
+      email: formData.email || profile?.email || '',
+      address: formData.address || undefined,
+      height: formData.height ? parseInt(formData.height) : undefined,
+      weight: formData.weight ? parseInt(formData.weight) : undefined,
+      social_media: socialMedia,
+      privacy_settings: privacy,
+      show_in_directory: showInDirectory,
+    };
 
-      const updateData = {
-        full_name: formData.full_name || null,
-        bio: formData.bio || null,
-        city: formData.city || null,
-        district: formData.district || 'Ortahisar',
-        age: formData.age ? parseInt(formData.age) : null,
-        gender: formData.gender || null,
-        phone: formData.phone || null,
-        email: formData.email || profile?.email || '',
-        address: formData.address || null,
-        height: formData.height ? parseInt(formData.height) : null,
-        weight: formData.weight ? parseInt(formData.weight) : null,
-        social_media: socialMedia || {},
-        privacy_settings: privacy || {},
-        show_in_directory: showInDirectory,
-      };
-
-      console.log('💾 Saving profile with data:', JSON.stringify(updateData, null, 2));
-      const result = await updateProfile?.(updateData);
-      console.log('✅ Profile saved successfully:', result);
-      
-      Alert.alert('Başarılı', 'Profil bilgileriniz güncellendi.', [
-        {
-          text: 'Tamam',
-          onPress: () => router.back(),
-        },
-      ]);
-    } catch (error: any) {
-      console.error('❌ Profile update error:', {
-        message: error?.message,
-        name: error?.name,
-        stack: error?.stack,
-        full: error
-      });
-      const errorMessage = error?.message || 'Bilinmeyen bir hata oluştu';
-      Alert.alert('Hata', `Profil güncellenirken bir hata oluştu: ${errorMessage}`);
-    } finally {
-      setLoading(false);
-    }
+    console.log('💾 Saving profile with data:', JSON.stringify(updateData, null, 2));
+    updateProfileMutation.mutate(updateData);
   };
 
   const renderPicker = <T extends string>(
@@ -252,8 +246,8 @@ export default function EditProfileScreen() {
           <Text style={styles.cancelButton}>İptal</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Profili Düzenle</Text>
-        <TouchableOpacity onPress={handleSave} disabled={loading}>
-          {loading ? (
+        <TouchableOpacity onPress={handleSave} disabled={updateProfileMutation.isPending}>
+          {updateProfileMutation.isPending ? (
             <ActivityIndicator size="small" color={COLORS.primary} />
           ) : (
             <Save size={24} color={COLORS.primary} />
