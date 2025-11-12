@@ -1,11 +1,14 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Image, Alert } from 'react-native';
+import React, { useEffect, useState, useMemo } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Image, Alert, ScrollView } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { MessageCircle, Users, MapPin, AlertCircle } from 'lucide-react-native';
+import { MessageCircle, Users, MapPin, AlertCircle, Inbox, UsersRound } from 'lucide-react-native';
+
+type TabType = 'inbox' | 'groups';
+type GroupCategory = 'genel' | 'yardim' | 'etkinlik' | 'is' | 'egitim';
 
 export default function ChatScreen() {
   const { user } = useAuth();
@@ -13,6 +16,8 @@ export default function ChatScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>('inbox');
+  const [selectedCategory, setSelectedCategory] = useState<GroupCategory | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -94,6 +99,63 @@ export default function ChatScreen() {
     return false;
   };
 
+  const directMessages = useMemo(() => {
+    return rooms.filter(room => room.type === 'direct');
+  }, [rooms]);
+
+  const groupRooms = useMemo(() => {
+    return rooms.filter(room => room.type === 'group');
+  }, [rooms]);
+
+  const getCategoryFromName = (name: string): GroupCategory | null => {
+    const lowerName = name.toLowerCase();
+    if (lowerName.includes('genel')) return 'genel';
+    if (lowerName.includes('yardım') || lowerName.includes('destek')) return 'yardim';
+    if (lowerName.includes('etkinlik')) return 'etkinlik';
+    if (lowerName.includes('iş') || lowerName.includes('ilan')) return 'is';
+    if (lowerName.includes('eğitim')) return 'egitim';
+    return null;
+  };
+
+  const categorizedGroups = useMemo(() => {
+    const categories: Record<GroupCategory, typeof groupRooms> = {
+      genel: [],
+      yardim: [],
+      etkinlik: [],
+      is: [],
+      egitim: [],
+    };
+
+    groupRooms.forEach(room => {
+      const category = getCategoryFromName(room.name || '');
+      if (category) {
+        categories[category].push(room);
+      }
+    });
+
+    return categories;
+  }, [groupRooms]);
+
+  const getCategoryTitle = (category: GroupCategory): string => {
+    switch (category) {
+      case 'genel': return 'Genel Sohbet';
+      case 'yardim': return 'Yardım & Destek';
+      case 'etkinlik': return 'Etkinlikler';
+      case 'is': return 'İş İlanları';
+      case 'egitim': return 'Eğitim';
+    }
+  };
+
+  const displayedRooms = useMemo(() => {
+    if (activeTab === 'inbox') {
+      return directMessages;
+    }
+    if (selectedCategory) {
+      return categorizedGroups[selectedCategory];
+    }
+    return [];
+  }, [activeTab, selectedCategory, directMessages, categorizedGroups]);
+
   if (!user) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -144,14 +206,92 @@ export default function ChatScreen() {
     );
   }
 
+  const renderTabBar = () => (
+    <View style={styles.tabBar}>
+      <TouchableOpacity
+        style={[styles.tab, activeTab === 'inbox' && styles.activeTab]}
+        onPress={() => setActiveTab('inbox')}
+      >
+        <Inbox size={20} color={activeTab === 'inbox' ? COLORS.primary : COLORS.textLight} />
+        <Text style={[styles.tabText, activeTab === 'inbox' && styles.activeTabText]}>Gelen Kutusu</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.tab, activeTab === 'groups' && styles.activeTab]}
+        onPress={() => {
+          setActiveTab('groups');
+          if (!selectedCategory) setSelectedCategory('genel');
+        }}
+      >
+        <UsersRound size={20} color={activeTab === 'groups' ? COLORS.primary : COLORS.textLight} />
+        <Text style={[styles.tabText, activeTab === 'groups' && styles.activeTabText]}>Gruplar</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderGroupCategories = () => {
+    if (activeTab !== 'groups') return null;
+
+    const categories: { key: GroupCategory; icon: typeof Users; label: string }[] = [
+      { key: 'genel', icon: MessageCircle, label: 'Genel Sohbet' },
+      { key: 'yardim', icon: AlertCircle, label: 'Yardım & Destek' },
+      { key: 'etkinlik', icon: MapPin, label: 'Etkinlikler' },
+      { key: 'is', icon: Users, label: 'İş İlanları' },
+      { key: 'egitim', icon: Users, label: 'Eğitim' },
+    ];
+
+    return (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.categoryScroll}
+        contentContainerStyle={styles.categoryScrollContent}
+      >
+        {categories.map(({ key, icon: Icon, label }) => {
+          const count = categorizedGroups[key].length;
+          return (
+            <TouchableOpacity
+              key={key}
+              style={[
+                styles.categoryButton,
+                selectedCategory === key && styles.selectedCategoryButton,
+              ]}
+              onPress={() => setSelectedCategory(key)}
+            >
+              <Icon
+                size={18}
+                color={selectedCategory === key ? COLORS.white : COLORS.textLight}
+              />
+              <Text
+                style={[
+                  styles.categoryButtonText,
+                  selectedCategory === key && styles.selectedCategoryButtonText,
+                ]}
+              >
+                {label}
+              </Text>
+              {count > 0 && (
+                <View style={styles.categoryBadge}>
+                  <Text style={styles.categoryBadgeText}>{count}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Sohbet</Text>
       </View>
 
+      {renderTabBar()}
+      {renderGroupCategories()}
+
       <FlatList
-        data={rooms}
+        data={displayedRooms}
         keyExtractor={(item) => item.id}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -201,8 +341,16 @@ export default function ChatScreen() {
         }}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Henüz sohbet yok</Text>
-            <Text style={styles.emptySubtext}>İlçe gruplarına katılarak başlayabilirsin</Text>
+            <Text style={styles.emptyText}>
+              {activeTab === 'inbox' ? 'Henüz mesaj yok' : 'Bu kategoride grup yok'}
+            </Text>
+            <Text style={styles.emptySubtext}>
+              {activeTab === 'inbox'
+                ? 'Kullanıcılarla sohbet başlatarak iletişime geçebilirsin'
+                : selectedCategory
+                ? `${getCategoryTitle(selectedCategory)} kategorisinde henüz grup bulunmuyor`
+                : 'Bir kategori seçin'}
+            </Text>
           </View>
         }
       />
@@ -340,5 +488,82 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.md,
     fontWeight: '600' as const,
+  },
+  tabBar: {
+    flexDirection: 'row' as const,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: SPACING.md,
+    gap: SPACING.xs,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  activeTab: {
+    borderBottomColor: COLORS.primary,
+  },
+  tabText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '500' as const,
+    color: COLORS.textLight,
+  },
+  activeTabText: {
+    color: COLORS.primary,
+    fontWeight: '700' as const,
+  },
+  categoryScroll: {
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  categoryScrollContent: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  categoryButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.background,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  selectedCategoryButton: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  categoryButtonText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '500' as const,
+    color: COLORS.textLight,
+  },
+  selectedCategoryButtonText: {
+    color: COLORS.white,
+    fontWeight: '600' as const,
+  },
+  categoryBadge: {
+    backgroundColor: COLORS.white,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: 6,
+    marginLeft: 2,
+  },
+  categoryBadgeText: {
+    color: COLORS.primary,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '700' as const,
   },
 });
