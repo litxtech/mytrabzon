@@ -188,6 +188,12 @@ const fetchRoomsViaSupabase = async (currentUserId: string): Promise<ChatRoomWit
     if (membershipsError) {
       const parsed = parseSupabaseError(membershipsError);
       console.error('Failed to fetch chat memberships', parsed);
+      
+      // Check for infinite recursion error
+      if (parsed.message.includes('infinite recursion') || parsed.message.includes('policy')) {
+        throw new Error('Veritabanı yetkilendirme hatası. Lütfen veritabanı RLS policy ayarlarını kontrol edin.');
+      }
+      
       throw new Error(parsed.message ?? 'Üyelik bilgisi alınamadı');
     }
 

@@ -19,7 +19,7 @@ import { DISTRICT_BADGES } from '@/constants/districts';
 import { District } from '@/types/database';
 import { X, Image as ImageIcon, Camera, MapPin } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import { FileSystem } from 'expo-file-system';
 
 export default function CreatePostScreen() {
   const router = useRouter();
@@ -93,7 +93,7 @@ export default function CreatePostScreen() {
       if (selectedImages.length > 0) {
         const uploadPromises = selectedImages.map(async (uri) => {
           const base64 = await FileSystem.readAsStringAsync(uri, {
-            encoding: 'base64' as FileSystem.EncodingType,
+            encoding: FileSystem.EncodingType.Base64,
           });
 
           const fileType = uri.toLowerCase().endsWith('.png')

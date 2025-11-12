@@ -30,5 +30,13 @@ export const retryOperation = async <T>(operation: () => Promise<T>, options: Re
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error('İşlem tekrarlarda başarısız oldu');
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+  
+  throw new Error(
+    typeof lastError === 'string' 
+      ? lastError 
+      : 'İşlem tekrarlarda başarısız oldu'
+  );
 };
