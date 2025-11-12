@@ -37,7 +37,7 @@ export const createPostProcedure = protectedProcedure
         })
         .select(`
           *,
-          user:user_profiles(*)
+          user:user_profiles!posts_user_id_fkey(*)
         `)
         .single();
 
