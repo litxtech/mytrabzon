@@ -1,4 +1,3 @@
-cat > supabase/functions/signup-init/index.ts << 'EOF'
 // deno-lint-ignore-file no-explicit-any
 import { Hono } from "https://esm.sh/hono@4.4.7";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
