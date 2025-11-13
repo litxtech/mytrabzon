@@ -163,12 +163,12 @@ export default function LoginScreen() {
 
   const checkProfileAndNavigate = async (userId: string) => {
     const { data: profile } = await supabase
-      .from('user_profiles')
+      .from('profiles')
       .select('*')
       .eq('id', userId)
       .single();
 
-    if (!profile) {
+    if (!profile || !profile.full_name) {
       router.replace('/auth/onboarding');
     } else {
       router.replace('/(tabs)/feed');

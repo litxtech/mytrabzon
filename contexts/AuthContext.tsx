@@ -14,7 +14,7 @@ export const [AuthContext, useAuth] = createContextHook(() => {
     console.log('Loading profile via Supabase', { userId });
 
     const { data, error } = await supabase
-      .from('user_profiles')
+      .from('profiles')
       .select('*')
       .eq('id', userId)
       .maybeSingle();
@@ -93,7 +93,7 @@ export const [AuthContext, useAuth] = createContextHook(() => {
         {
           event: 'UPDATE',
           schema: 'public',
-          table: 'user_profiles',
+          table: 'profiles',
           filter: `id=eq.${user.id}`,
         },
         (payload) => {
@@ -141,7 +141,7 @@ export const [AuthContext, useAuth] = createContextHook(() => {
     console.log('🔑 User ID:', user.id);
 
     const { data, error } = await supabase
-      .from('user_profiles')
+      .from('profiles')
       .update(updates)
       .eq('id', user.id)
       .select()
