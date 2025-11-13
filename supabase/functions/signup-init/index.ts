@@ -5,8 +5,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const app = new Hono();
 
 function admin() {
-  const url = "https://xcvcplwimicylaxghiak.supabase.co";
-  const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhjdmNwbHdpbWljeWxheGdoaWFrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MTg1MDI3NSwiZXhwIjoyMDc3NDI2Mjc1fQ.5mZ9sFZ2GVYoKq5gUvJKbQjz3kbCMPr8g8J_2qz4E3E";
+  const url = Deno.env.get("SUPABASE_URL") ?? "https://xcvcplwimicylaxghiak.supabase.co";
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhjdmNwbHdpbWljeWxheGdoaWFrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MTg1MDI3NSwiZXhwIjoyMDc3NDI2Mjc1fQ.5mZ9sFZ2GVYoKq5gUvJKbQjz3kbCMPr8g8J_2qz4E3E";
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
@@ -18,19 +18,55 @@ app.post("/", async (c) => {
       return c.json({ ok: false, error: "uid_required" }, 400);
     }
 
+    console.log("Signup init for user:", uid, email);
+
     const sb = admin();
 
+    // Önce profil var mı kontrol et
+    const { data: existingProfile } = await sb
+      .from("profiles")
+      .select("id, public_id")
+      .eq("id", uid)
+      .maybeSingle();
+
+    if (existingProfile?.public_id) {
+      console.log("User already has public_id:", existingProfile.public_id);
+      return c.json({ ok: true, public_id: existingProfile.public_id });
+    }
+
+    // Profil yoksa oluştur
+    if (!existingProfile) {
+      console.log("Creating profile for user:", uid);
+      const { error: profileError } = await sb
+        .from("profiles")
+        .insert({
+          id: uid,
+          email: email ?? "",
+          full_name: "Kullanıcı",
+          district: "Ortahisar",
+        });
+
+      if (profileError) {
+        console.error("Error creating profile:", profileError);
+        return c.json({ ok: false, error: profileError.message }, 500);
+      }
+    }
+
+    // Public ID ata
     const { data, error } = await sb.rpc("assign_public_id", {
       p_user_id: uid,
       p_email: email ?? null,
     });
 
     if (error) {
+      console.error("Error assigning public_id:", error);
       return c.json({ ok: false, error: error.message }, 500);
     }
 
+    console.log("Public ID assigned:", data);
     return c.json({ ok: true, public_id: data });
   } catch (e: any) {
+    console.error("Unexpected error:", e);
     return c.json({ ok: false, error: e?.message ?? "unexpected" }, 500);
   }
 });
