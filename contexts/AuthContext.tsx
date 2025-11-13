@@ -25,7 +25,33 @@ export const [AuthContext, useAuth] = createContextHook(() => {
     }
 
     if (!data) {
-      throw new Error('Profil bulunamadı');
+      console.warn('⚠️ Profile not found, creating it now...');
+      
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user) {
+        throw new Error('Profil bulunamadı ve kullanıcı bilgisi alınamadı');
+      }
+
+      const newProfile = {
+        id: userId,
+        email: userData.user.email || '',
+        full_name: userData.user.user_metadata?.full_name || 'Kullanıcı',
+        district: userData.user.user_metadata?.district || 'Ortahisar',
+      };
+
+      const { data: createdProfile, error: createError } = await supabase
+        .from('profiles')
+        .insert(newProfile)
+        .select()
+        .single();
+
+      if (createError) {
+        console.error('Failed to create profile:', createError);
+        throw new Error('Profil oluşturulamadı');
+      }
+
+      console.log('✅ Profile created successfully');
+      return createdProfile as UserProfile;
     }
 
     console.log('Profile loaded via Supabase successfully', { userId });
