@@ -24,7 +24,7 @@ export const getProfileProcedure = protectedProcedure
     });
 
     const { data, error } = await ctx.supabase
-      .from('user_profiles')
+      .from('profiles')
       .select('*')
       .eq('id', targetUserId)
       .maybeSingle();

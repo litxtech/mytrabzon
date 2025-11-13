@@ -27,11 +27,11 @@ export const getMessagesProcedure = protectedProcedure
       .from('messages')
       .select(`
         *,
-        user:user_profiles(*),
+        user:profiles(*),
         reply_to_message:messages!reply_to(
           id,
           content,
-          user:user_profiles(full_name, avatar_url)
+          user:profiles(full_name, avatar_url)
         )
       `)
       .eq('room_id', input.roomId)

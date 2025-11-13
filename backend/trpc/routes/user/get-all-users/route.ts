@@ -18,8 +18,8 @@ export const getAllUsersProcedure = protectedProcedure
     console.log('Getting all users:', { page, limit, search, gender });
 
     let query = supabase
-      .from('user_profiles')
-      .select('id, full_name, avatar_url, bio, city, district, created_at, verified, gender', { count: 'exact' })
+      .from('profiles')
+      .select('id, full_name, avatar_url, bio, city, district, created_at, verified, gender, public_id', { count: 'exact' })
       .eq('show_in_directory', true)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);

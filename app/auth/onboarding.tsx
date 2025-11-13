@@ -24,16 +24,26 @@ export default function OnboardingScreen() {
 
     setLoading(true);
     try {
-      const { error } = await supabase.from('user_profiles').insert({
-        id: user.id,
-        email: user.email || '',
-        full_name: fullName,
-        bio: bio || null,
-        district: selectedDistrict,
-        avatar_url: user.user_metadata?.avatar_url || null,
-        verified: false,
-        show_address: true,
-      });
+      const avatarUrlMetadata = user.user_metadata?.avatar_url;
+      const avatarUrl = typeof avatarUrlMetadata === 'string' ? avatarUrlMetadata : null;
+
+      const { error } = await supabase
+        .from('profiles')
+        .upsert(
+          {
+            id: user.id,
+            email: user.email ?? '',
+            full_name: fullName,
+            bio: bio || null,
+            district: selectedDistrict,
+            avatar_url: avatarUrl,
+            verified: false,
+            show_address: true,
+          },
+          {
+            onConflict: 'id',
+          }
+        );
 
       if (error) throw error;
 

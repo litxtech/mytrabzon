@@ -14,7 +14,7 @@ export const updateDirectoryVisibilityProcedure = protectedProcedure
     console.log('Updating directory visibility:', { userId: user.id, show_in_directory });
 
     const { error } = await supabase
-      .from('user_profiles')
+      .from('profiles')
       .update({ show_in_directory })
       .eq('id', user.id);
 

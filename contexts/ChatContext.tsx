@@ -45,7 +45,7 @@ const normalizeRoomsError = (error: unknown): NormalizedError => {
   };
 };
 
-const MESSAGE_SELECT_FIELDS = 'id, room_id, user_id, content, media_url, media_type, reply_to, is_edited, created_at, updated_at, user:user_profiles(*)';
+const MESSAGE_SELECT_FIELDS = 'id, room_id, user_id, content, media_url, media_type, reply_to, is_edited, created_at, updated_at, user:profiles(*)';
 
 type MemberWithProfile = ChatMember & { user?: UserProfile | null };
 
@@ -231,7 +231,7 @@ const fetchRoomsViaSupabase = async (currentUserId: string): Promise<ChatRoomWit
 
   const { data: membersRaw, error: membersError } = await supabase
     .from('chat_members')
-    .select('id, room_id, user_id, role, unread_count, last_read_at, joined_at, user:user_profiles(*)')
+    .select('id, room_id, user_id, role, unread_count, last_read_at, joined_at, user:profiles(*)')
     .in('room_id', roomIds);
 
   if (membersError) {

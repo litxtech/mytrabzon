@@ -109,7 +109,7 @@ export const getRoomsProcedure = protectedProcedure
       paginatedRooms.map(async (room) => {
         const { data: lastMessage, error: lastMessageError } = await ctx.supabase
           .from('messages')
-          .select('*, user:user_profiles(*)')
+          .select('*, user:profiles(*)')
           .eq('room_id', room.id)
           .order('created_at', { ascending: false })
           .limit(1)
@@ -125,7 +125,7 @@ export const getRoomsProcedure = protectedProcedure
 
         const { data: memberRows, error: membersError } = await ctx.supabase
           .from('chat_members')
-          .select('id, room_id, user_id, role, unread_count, last_read_at, joined_at, user:user_profiles(*)')
+          .select('id, room_id, user_id, role, unread_count, last_read_at, joined_at, user:profiles(*)')
           .eq('room_id', room.id);
 
         if (membersError) {

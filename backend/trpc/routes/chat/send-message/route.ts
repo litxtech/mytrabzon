@@ -35,7 +35,7 @@ export const sendMessageProcedure = protectedProcedure
         media_type: input.mediaType || null,
         reply_to: input.replyTo || null,
       })
-      .select('*, user:user_profiles(*)')
+      .select('*, user:profiles(*)')
       .single();
 
     if (error) {

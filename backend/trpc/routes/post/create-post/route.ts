@@ -54,7 +54,7 @@ export const createPostProcedure = protectedProcedure
         })
         .select(`
           *,
-          author:user_profiles!posts_author_id_fkey(*)
+          author:profiles!posts_author_id_fkey(*)
         `)
         .single();
 
