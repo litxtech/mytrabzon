@@ -18,7 +18,7 @@ import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
 import { trpc } from '@/lib/trpc';
-import { Send, Paperclip, Smile, MoreVertical, ImageIcon, Plus, Heart, MessageCircle, Share2 } from 'lucide-react-native';
+import { Send, Paperclip, Smile, MoreVertical, ImageIcon, Plus, Heart, MessageCircle, Share2, Phone, Video } from 'lucide-react-native';
 import { Message, Post } from '@/types/database';
 import { DISTRICT_BADGES } from '@/constants/districts';
 
@@ -31,18 +31,21 @@ export default function ChatRoomScreen() {
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [activeTab, setActiveTab] = useState<'messages' | 'posts'>('messages');
   const flatListRef = useRef<FlatList>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout>();
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Room bilgisini al
-  const { data: room } = trpc.chat.getRoom.useQuery(
-    { roomId: roomId! },
-    { enabled: !!roomId }
-  );
+  // Room bilgisini al - getRooms'dan filtrele
+  const { data: roomsData } = trpc.chat.getRooms.useQuery({ limit: 100, offset: 0 }, { enabled: !!roomId });
+  const room = Array.isArray(roomsData) ? roomsData.find((r: any) => r.id === roomId) : null;
+
+  // Direct chat için diğer kullanıcıyı bul
+  const otherUser = room?.type === 'direct' 
+    ? ((room as any).other_user || room.members?.find((m: any) => m.user_id !== user?.id)?.user) 
+    : null;
 
   // Grup post'larını al (sadece grup ise)
   const isGroup = room?.type === 'group';
   const { data: groupPostsData, refetch: refetchGroupPosts } = trpc.post.getPosts.useQuery(
-    { room_id: roomId!, limit: 50, offset: 0 },
+    { author_id: undefined, limit: 50, offset: 0 },
     { enabled: !!roomId && isGroup }
   );
 
@@ -98,7 +101,7 @@ export default function ChatRoomScreen() {
     sendTypingIndicator(roomId);
 
     typingTimeoutRef.current = setTimeout(() => {
-      
+      // Typing indicator timeout
     }, 3000);
   }, [roomId, sendTypingIndicator]);
 
@@ -277,9 +280,47 @@ export default function ChatRoomScreen() {
           headerShown: true,
           title: room?.name || 'Sohbet',
           headerRight: () => (
-            <TouchableOpacity style={styles.headerButton}>
-              <MoreVertical size={24} color={COLORS.primary} />
-            </TouchableOpacity>
+            <View style={styles.headerRight}>
+              {room?.type === 'direct' && otherUser && (
+                <>
+                  <TouchableOpacity
+                    style={styles.headerButton}
+                    onPress={() => {
+                      router.push({
+                        pathname: '/call/[userId]',
+                        params: {
+                          userId: (otherUser as any).id || (otherUser as any).user_id,
+                          userName: (otherUser as any).full_name || 'Kullanıcı',
+                          userAvatar: (otherUser as any).avatar_url || '',
+                          callType: 'audio',
+                        },
+                      } as any);
+                    }}
+                  >
+                    <Phone size={22} color={COLORS.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.headerButton}
+                    onPress={() => {
+                      router.push({
+                        pathname: '/call/[userId]',
+                        params: {
+                          userId: (otherUser as any).id || (otherUser as any).user_id,
+                          userName: (otherUser as any).full_name || 'Kullanıcı',
+                          userAvatar: (otherUser as any).avatar_url || '',
+                          callType: 'video',
+                        },
+                      } as any);
+                    }}
+                  >
+                    <Video size={22} color={COLORS.primary} />
+                  </TouchableOpacity>
+                </>
+              )}
+              <TouchableOpacity style={styles.headerButton}>
+                <MoreVertical size={24} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
           ),
         }}
       />
@@ -417,6 +458,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingRight: SPACING.sm,
   },
   headerButton: {
     padding: SPACING.sm,

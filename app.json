@@ -45,6 +45,10 @@
             {
               "scheme": "mytrabzon",
               "host": "*"
+            },
+            {
+              "scheme": "litxtech",
+              "host": "*"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]

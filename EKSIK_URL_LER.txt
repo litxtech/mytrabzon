@@ -1,0 +1,55 @@
+===========================================
+EKSİK REDIRECT URL'LER
+===========================================
+
+Şu an Supabase'de olanlar (11 adet):
+✅ https://www.litxtech.com/auth/reset-password
+✅ https://www.litxtech.com/auth/callback
+✅ https://www.litxtech.com/auth/confirm
+✅ http://localhost:3000
+✅ http://localhost:3000/auth/reset-password
+✅ http://localhost:3000/auth/callback
+✅ http://localhost:8081
+✅ http://localhost:8081/auth/reset-password
+✅ http://localhost:8081/auth/callback
+✅ litxtech://auth/callback
+✅ litxtech://auth/reset-password
+
+===========================================
+EKLENMESİ GEREKEN URL'LER (12 adet):
+===========================================
+
+MOBİL UYGULAMA (mytrabzon:// - app.json'da scheme bu):
+1. mytrabzon://auth/reset-password
+2. mytrabzon://auth/callback
+3. mytrabzon://auth/onboarding
+
+WEB SİTESİ (www olmadan):
+4. https://litxtech.com/auth/onboarding
+5. https://litxtech.com/auth/reset-password
+6. https://litxtech.com/auth/callback
+
+WEB SİTESİ (www ile - onboarding eksik):
+7. https://www.litxtech.com/auth/onboarding
+
+SUPABASE CALLBACK:
+8. https://xcvcplwimicylaxghiak.supabase.co/auth/v1/callback
+
+DEVELOPMENT (localhost - onboarding eksik):
+9. http://localhost:3000/auth/onboarding
+10. http://localhost:8081/auth/onboarding
+
+ALTERNATİF DEEP LINK (litxtech:// - onboarding eksik):
+11. litxtech://auth/onboarding
+
+TOPLAM: 11 mevcut + 12 eksik = 23 URL
+
+===========================================
+ÖNEMLİ NOTLAR:
+===========================================
+
+- app.json'da scheme "mytrabzon" olarak ayarlı
+- Ama "litxtech://" de kullanılıyor
+- Her iki deep link scheme'ini de desteklemek için ikisini de ekleyin
+- Onboarding URL'leri özellikle önemli (yeni kullanıcı kaydı için)
+

@@ -40,7 +40,13 @@ export default function EditProfileScreen() {
       Alert.alert('Başarılı', 'Profil bilgileriniz güncellendi.', [
         {
           text: 'Tamam',
-          onPress: () => router.back(),
+          onPress: () => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)/profile');
+            }
+          },
         },
       ]);
     },
@@ -338,7 +344,13 @@ export default function EditProfileScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace('/(tabs)/profile');
+          }
+        }}>
           <Text style={styles.cancelButton}>İptal</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Profili Düzenle</Text>

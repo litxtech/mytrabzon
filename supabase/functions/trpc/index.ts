@@ -325,26 +325,22 @@ const appRouter = createTRPCRouter({
 
         console.log('getAllUsers called with:', { search, gender });
 
+        // TÜM KULLANICILARI GÖSTER - show_in_directory filtresini kaldırdık
         let query = supabase
           .from('profiles')
-          .select('id, full_name, avatar_url, bio, city, district, created_at, verified, gender, public_id, privacy_settings', { count: 'exact' })
-          .eq('show_in_directory', true)
+          .select('id, full_name, avatar_url, bio, city, district, created_at, verified, gender, public_id, username', { count: 'exact' })
           .order('created_at', { ascending: false });
-
-        // Gizlilik ayarlarına göre filtreleme: 
-        // privacy_settings null ise veya profileVisible true ise göster
-        // (profileVisibility kontrolü filter'da yapılacak)
-        query = query.or('privacy_settings.is.null,privacy_settings->>profileVisible.eq.true,privacy_settings->>profileVisible.is.null');
 
         // Cinsiyet filtresi: sadece 'all' değilse filtrele
         if (gender && gender !== 'all') {
           query = query.eq('gender', gender);
         }
 
-        // Arama filtresi
+        // Arama filtresi - email için auth.users tablosuna join yapmamız gerekiyor
         if (search && search.trim()) {
-          const searchTerm = `%${search.trim()}%`;
-          query = query.or(`full_name.ilike.${searchTerm},email.ilike.${searchTerm}`);
+          const searchTerm = search.trim().toLowerCase();
+          // Önce profiles'da arama yap
+          query = query.or(`full_name.ilike.%${searchTerm}%,username.ilike.%${searchTerm}%,bio.ilike.%${searchTerm}%`);
         }
 
         const { data, error, count } = await query;
@@ -363,28 +359,28 @@ const appRouter = createTRPCRouter({
           });
         }
 
-        // Response'u serialize edilebilir hale getir ve gizlilik ayarlarını filtrele
-        const serializedUsers = (data || [])
-          .filter((user: any) => {
-            // Gizlilik ayarları kontrolü: profileVisibility !== "private"
-            if (user.privacy_settings && typeof user.privacy_settings === 'object') {
-              const profileVisible = user.privacy_settings.profileVisible;
-              const profileVisibility = user.privacy_settings.profileVisibility;
-              
-              // profileVisibility === "private" ise gösterme
-              if (profileVisibility === 'private') {
-                console.log('Filtering out user (private):', user.id);
-                return false;
-              }
-              
-              // profileVisible false ise gösterme
-              if (profileVisible === false) {
-                console.log('Filtering out user (profileVisible false):', user.id);
-                return false;
-              }
-            }
-            return true;
-          })
+        // Email araması için auth.users tablosundan email'leri al
+        let usersWithEmail = data || [];
+        if (search && search.trim() && data && data.length > 0) {
+          const userIds = data.map((u: any) => u.id);
+          const { data: authUsers } = await supabase
+            .from('auth.users')
+            .select('id, email')
+            .in('id', userIds);
+          
+          // Email araması yapıldıysa ve email'de eşleşme varsa filtrele
+          const searchTerm = search.trim().toLowerCase();
+          const matchingUserIds = authUsers?.filter((au: any) => 
+            au.email?.toLowerCase().includes(searchTerm)
+          ).map((au: any) => au.id) || [];
+          
+          if (matchingUserIds.length > 0) {
+            usersWithEmail = data.filter((u: any) => matchingUserIds.includes(u.id));
+          }
+        }
+
+        // Response'u serialize edilebilir hale getir - TÜM KULLANICILARI GÖSTER
+        const serializedUsers = usersWithEmail
           .map((user: any) => ({
             id: user.id,
             full_name: user.full_name,
@@ -396,6 +392,7 @@ const appRouter = createTRPCRouter({
             verified: user.verified || false,
             gender: user.gender,
             public_id: user.public_id,
+            username: user.username || null,
           }));
 
         console.log('getAllUsers filtered result:', { 
@@ -2768,46 +2765,64 @@ const appRouter = createTRPCRouter({
     createMatch: protectedProcedure
       .input(
         z.object({
-          team1_id: z.string().uuid(),
-          team2_id: z.string().uuid().optional(),
-          field_id: z.string().uuid(),
-          match_date: z.string(),
-          start_time: z.string(),
-          end_time: z.string().optional(),
+          field_name: z.string(),
           city: z.enum(['Trabzon', 'Giresun']),
-          district: z.string().optional(),
-          match_type: z.enum(['friendly', 'league', 'tournament', 'university']).default('friendly'),
-          status: z.enum(['scheduled', 'looking_for_opponent', 'looking_for_players']).default('scheduled'),
-          missing_players_count: z.number().default(0),
-          missing_positions: z.array(z.enum(['goalkeeper', 'defender', 'midfielder', 'forward'])).optional(),
-          is_public: z.boolean().default(true),
-          max_players: z.number().default(10),
-          notes: z.string().optional(),
+          district: z.string(),
+          match_date: z.string(),
+          team1_name: z.string().optional(),
+          team2_name: z.string().optional(),
+          max_players: z.number().optional(),
+          needed_players: z.number().optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
         const { supabase, user } = ctx;
         if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
 
+        // Önce field'ı bul veya oluştur
+        let fieldId: string;
+        const { data: existingField } = await supabase
+          .from('football_fields')
+          .select('id')
+          .eq('name', input.field_name)
+          .eq('city', input.city)
+          .eq('district', input.district)
+          .single();
+
+        if (existingField) {
+          fieldId = existingField.id;
+        } else {
+          // Yeni field oluştur
+          const { data: newField, error: fieldError } = await supabase
+            .from('football_fields')
+            .insert({
+              name: input.field_name,
+              city: input.city,
+              district: input.district,
+              created_by: user.id,
+            })
+            .select()
+            .single();
+
+          if (fieldError) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: fieldError.message });
+          fieldId = newField.id;
+        }
+
+        // Match oluştur
+        const matchDateTime = new Date(input.match_date);
         const { data, error } = await supabase
           .from('matches')
           .insert({
-            team1_id: input.team1_id,
-            team2_id: input.team2_id,
-            field_id: input.field_id,
-            match_date: input.match_date,
-            start_time: input.start_time,
-            end_time: input.end_time,
+            field_id: fieldId,
+            match_date: matchDateTime.toISOString(),
             city: input.city,
             district: input.district,
-            match_type: input.match_type,
-            status: input.status,
             organizer_id: user.id,
-            missing_players_count: input.missing_players_count,
-            missing_positions: input.missing_positions,
-            is_public: input.is_public,
-            max_players: input.max_players,
-            notes: input.notes,
+            status: input.needed_players && input.needed_players > 0 ? 'looking_for_players' : 'scheduled',
+            missing_players_count: input.needed_players || 0,
+            max_players: input.max_players || 10,
+            is_public: true,
+            match_type: 'friendly',
           })
           .select()
           .single();

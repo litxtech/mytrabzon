@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Alert, Linking, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Alert, Linking } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
@@ -18,39 +18,99 @@ export default function ResetPasswordScreen() {
   useEffect(() => {
     const initializeAuth = async () => {
       try {
+        // Supabase session kontrolü - eğer zaten recovery session varsa devam et
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          setInitializing(false);
+          return;
+        }
+
         // Deep link'ten gelen parametreleri kontrol et
         const initialUrl = await Linking.getInitialURL();
         
-        if (initialUrl) {
-          const url = new URL(initialUrl);
-          const token = url.searchParams.get('token');
-          const type = url.searchParams.get('type');
-          
-          if (token && type === 'recovery') {
-            // Token'ı Supabase'e set et
-            const { error } = await supabase.auth.verifyOtp({
-              token_hash: token,
-              type: 'recovery',
-            });
+        if (initialUrl && (initialUrl.includes('reset-password') || initialUrl.includes('mytrabzon://') || initialUrl.includes('litxtech://'))) {
+          // URL'den token'ı parse et
+          try {
+            // Manuel URL parsing (custom scheme'ler için)
+            const parseDeepLink = (urlString: string) => {
+              const params: Record<string, string> = {};
+              
+              // Query string'i bul
+              const queryIndex = urlString.indexOf('?');
+              if (queryIndex === -1) return params;
+              
+              const queryString = urlString.substring(queryIndex + 1);
+              const pairs = queryString.split('&');
+              
+              for (const pair of pairs) {
+                const [key, value] = pair.split('=');
+                if (key && value) {
+                  params[decodeURIComponent(key)] = decodeURIComponent(value);
+                }
+              }
+              
+              return params;
+            };
             
-            if (error) {
-              console.error('Token verification error:', error);
-              Alert.alert('Hata', 'Geçersiz veya süresi dolmuş link');
-              router.replace('/auth/login');
-              return;
+            const params = parseDeepLink(initialUrl);
+            const accessToken = params.access_token;
+            const refreshToken = params.refresh_token;
+            const type = params.type;
+            
+            console.log('Reset password URL params:', { accessToken: !!accessToken, refreshToken: !!refreshToken, type });
+            
+            if (accessToken && refreshToken) {
+              // Session'ı set et
+              const { error } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
+              
+              if (error) {
+                console.error('Session set error:', error);
+                Alert.alert('Hata', 'Geçersiz veya süresi dolmuş link');
+                router.replace('/auth/login');
+                return;
+              } else {
+                console.log('Session set successfully');
+              }
+            }
+          } catch (urlError: any) {
+            // URL parse hatası - alternatif yöntem dene
+            console.log('URL parse error, trying alternative method:', urlError.message);
+            
+            // Manuel parsing dene
+            const accessTokenMatch = initialUrl.match(/access_token=([^&]+)/);
+            const refreshTokenMatch = initialUrl.match(/refresh_token=([^&]+)/);
+            
+            if (accessTokenMatch && refreshTokenMatch) {
+              const accessToken = decodeURIComponent(accessTokenMatch[1]);
+              const refreshToken = decodeURIComponent(refreshTokenMatch[1]);
+              
+              const { error } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
+              
+              if (error) {
+                console.error('Session set error (alternative):', error);
+                Alert.alert('Hata', 'Geçersiz veya süresi dolmuş link');
+                router.replace('/auth/login');
+                return;
+              }
             }
           }
         }
         
         // Local search params'dan da kontrol et (web için)
-        if (params.token && params.type === 'recovery') {
-          const { error } = await supabase.auth.verifyOtp({
-            token_hash: params.token as string,
-            type: 'recovery',
+        if (params.access_token && params.refresh_token && params.type === 'recovery') {
+          const { error } = await supabase.auth.setSession({
+            access_token: params.access_token as string,
+            refresh_token: params.refresh_token as string,
           });
           
           if (error) {
-            console.error('Token verification error:', error);
+            console.error('Session set error:', error);
             Alert.alert('Hata', 'Geçersiz veya süresi dolmuş link');
             router.replace('/auth/login');
             return;
@@ -59,18 +119,90 @@ export default function ResetPasswordScreen() {
         
         // Deep link listener (uygulama açıkken link'e tıklanırsa)
         const subscription = Linking.addEventListener('url', async (event) => {
-          const url = new URL(event.url);
-          const token = url.searchParams.get('token');
-          const type = url.searchParams.get('type');
-          
-          if (token && type === 'recovery') {
-            const { error } = await supabase.auth.verifyOtp({
-              token_hash: token,
-              type: 'recovery',
-            });
-            
-            if (error) {
-              Alert.alert('Hata', 'Geçersiz veya süresi dolmuş link');
+          if (event.url.includes('reset-password') || event.url.includes('mytrabzon://') || event.url.includes('litxtech://')) {
+            try {
+              // Manuel URL parsing
+              const parseDeepLink = (urlString: string) => {
+                const params: Record<string, string> = {};
+                
+                const queryIndex = urlString.indexOf('?');
+                if (queryIndex === -1) return params;
+                
+                const queryString = urlString.substring(queryIndex + 1);
+                const pairs = queryString.split('&');
+                
+                for (const pair of pairs) {
+                  const [key, value] = pair.split('=');
+                  if (key && value) {
+                    params[decodeURIComponent(key)] = decodeURIComponent(value);
+                  }
+                }
+                
+                return params;
+              };
+              
+              const params = parseDeepLink(event.url);
+              const accessToken = params.access_token;
+              const refreshToken = params.refresh_token;
+              const type = params.type;
+              
+              console.log('Reset password listener params:', { accessToken: !!accessToken, refreshToken: !!refreshToken, type });
+              
+              if (accessToken && refreshToken) {
+                const { error } = await supabase.auth.setSession({
+                  access_token: accessToken,
+                  refresh_token: refreshToken,
+                });
+                
+                if (error) {
+                  Alert.alert('Hata', 'Geçersiz veya süresi dolmuş link');
+                } else {
+                  // Session başarıyla set edildi, sayfayı yenile
+                  router.replace('/auth/reset-password');
+                }
+              } else {
+                // Manuel parsing dene
+                const accessTokenMatch = event.url.match(/access_token=([^&]+)/);
+                const refreshTokenMatch = event.url.match(/refresh_token=([^&]+)/);
+                
+                if (accessTokenMatch && refreshTokenMatch) {
+                  const accessToken = decodeURIComponent(accessTokenMatch[1]);
+                  const refreshToken = decodeURIComponent(refreshTokenMatch[1]);
+                  
+                  const { error } = await supabase.auth.setSession({
+                    access_token: accessToken,
+                    refresh_token: refreshToken,
+                  });
+                  
+                  if (!error) {
+                    router.replace('/auth/reset-password');
+                  }
+                }
+              }
+            } catch (urlError: any) {
+              console.error('URL parse error:', urlError.message);
+              
+              // Son çare: Manuel parsing
+              try {
+                const accessTokenMatch = event.url.match(/access_token=([^&]+)/);
+                const refreshTokenMatch = event.url.match(/refresh_token=([^&]+)/);
+                
+                if (accessTokenMatch && refreshTokenMatch) {
+                  const accessToken = decodeURIComponent(accessTokenMatch[1]);
+                  const refreshToken = decodeURIComponent(refreshTokenMatch[1]);
+                  
+                  const { error } = await supabase.auth.setSession({
+                    access_token: accessToken,
+                    refresh_token: refreshToken,
+                  });
+                  
+                  if (!error) {
+                    router.replace('/auth/reset-password');
+                  }
+                }
+              } catch (manualError) {
+                console.error('Manual parsing also failed:', manualError);
+              }
             }
           }
         });
@@ -132,7 +264,7 @@ export default function ResetPasswordScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.content}>
           <ActivityIndicator size="large" color={COLORS.white} />
-          <Text style={styles.loadingText}>Yükleniyor...</Text>
+          <Text style={styles.subtitle}>Yükleniyor...</Text>
         </View>
       </SafeAreaView>
     );

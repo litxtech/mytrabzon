@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert, FlatList } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
@@ -7,7 +7,7 @@ import { DISTRICT_BADGES } from '../../constants/districts';
 import { useRouter } from 'expo-router';
 import { Footer } from '../../components/Footer';
 import { SupportPanel } from '../../components/SupportPanel';
-import { trpc } from '../../lib/trpc';
+import { trpc, adminTrpcClient } from '../../lib/trpc';
 import { Post } from '../../types/database';
 export default function ProfileScreen() {
   const { profile, user, signOut } = useAuth();
@@ -16,9 +16,30 @@ export default function ProfileScreen() {
 
   const deleteAccountMutation = trpc.user.requestAccountDeletion.useMutation();
   
-  // Admin kontrolü - Sadece belirli kullanıcı görecek (UID: 98542f02-11f8-4ccd-b38d-4dd42066daa7)
-  const ADMIN_USER_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
-  const isAdmin = user?.id === ADMIN_USER_ID;
+  // Admin kontrolü - admin_users tablosundan direkt kontrol et
+  const [isAdmin, setIsAdmin] = useState(false);
+  
+  useEffect(() => {
+    if (!user?.id) {
+      setIsAdmin(false);
+      return;
+    }
+    
+    // Supabase'den direkt kontrol et
+    const checkAdmin = async () => {
+      const { supabase } = await import('../../lib/supabase');
+      const { data, error } = await supabase
+        .from('admin_users')
+        .select('id, role, is_active')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .maybeSingle();
+      
+      setIsAdmin(!!data && !error);
+    };
+    
+    checkAdmin();
+  }, [user?.id]);
 
   // KYC durumu kontrolü
   const { data: kycData } = trpc.kyc.get.useQuery(undefined, {

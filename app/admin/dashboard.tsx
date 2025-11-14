@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,14 +27,70 @@ import {
 } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { trpc } from '../../lib/trpc';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 export default function AdminDashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [checkingAdmin, setCheckingAdmin] = useState(true);
+
+  // Admin kontrolü
+  useEffect(() => {
+    const checkAdminAccess = async () => {
+      if (!user?.id) {
+        setIsAdmin(false);
+        setCheckingAdmin(false);
+        Alert.alert('Hata', 'Giriş yapmanız gerekiyor', [
+          { text: 'Tamam', onPress: () => router.replace('/auth/login') },
+        ]);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('admin_users')
+          .select('id, role, is_active')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (error) {
+          console.error('Admin check error:', error);
+          setIsAdmin(false);
+        } else {
+          setIsAdmin(!!data);
+          if (!data) {
+            Alert.alert('Yetkisiz Erişim', 'Bu sayfaya erişim yetkiniz yok.', [
+              { text: 'Tamam', onPress: () => router.back() },
+            ]);
+          }
+        }
+      } catch (err: any) {
+        console.error('Admin check exception:', err);
+        setIsAdmin(false);
+        Alert.alert('Hata', 'Yetki kontrolü yapılamadı', [
+          { text: 'Tamam', onPress: () => router.back() },
+        ]);
+      } finally {
+        setCheckingAdmin(false);
+      }
+    };
+
+    checkAdminAccess();
+  }, [user?.id, router]);
 
   // Gerçek verileri çek
-  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = trpc.admin.getStats.useQuery();
+  const { data: stats, isLoading: statsLoading, refetch: refetchStats, error: statsError } = trpc.admin.getStats.useQuery(
+    undefined,
+    {
+      enabled: isAdmin === true, // Sadece admin ise query çalışsın
+      retry: false,
+    }
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -155,6 +212,44 @@ export default function AdminDashboardScreen() {
     },
   ];
 
+  // Admin kontrolü yapılıyorsa bekle
+  if (checkingAdmin) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Yetki kontrol ediliyor...</Text>
+      </View>
+    );
+  }
+
+  // Admin değilse göster
+  if (isAdmin === false) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <Shield size={48} color={COLORS.error} />
+        <Text style={styles.errorText}>Yetkisiz Erişim</Text>
+        <Text style={styles.errorSubtext}>Bu sayfaya erişim yetkiniz yok.</Text>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <Text style={styles.backButtonText}>Geri Dön</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // Hata durumu
+  if (statsError) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <AlertCircle size={48} color={COLORS.error} />
+        <Text style={styles.errorText}>Hata Oluştu</Text>
+        <Text style={styles.errorSubtext}>{statsError.message || 'Veriler yüklenemedi'}</Text>
+        <TouchableOpacity style={styles.backButton} onPress={() => refetchStats()}>
+          <Text style={styles.backButtonText}>Tekrar Dene</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   if (statsLoading && !stats) {
     return (
       <View style={[styles.container, styles.centerContent]}>
@@ -243,6 +338,32 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
+    marginTop: SPACING.md,
+  },
+  errorText: {
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '700',
+    color: COLORS.error,
+    marginTop: SPACING.md,
+  },
+  errorSubtext: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textLight,
+    textAlign: 'center',
+    marginTop: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+  },
+  backButton: {
+    marginTop: SPACING.lg,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderRadius: 12,
+  },
+  backButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
   },
   header: {
     backgroundColor: COLORS.white,

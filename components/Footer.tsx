@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, TouchableOpacity, Linking, Modal, ScrollView } 
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import { X } from 'lucide-react-native';
-import { AppLogo } from './AppLogo';
 
 export function Footer() {
   const [selectedPolicy, setSelectedPolicy] = useState<any>(null);
@@ -56,63 +55,8 @@ export function Footer() {
   return (
     <>
       <View style={styles.container}>
-        <AppLogo size="small" style={styles.logo} />
         <Text style={styles.versionText}>MyTrabzon v1.0</Text>
         <Text style={styles.tagline}>Trabzon&apos;un Dijital Sesi</Text>
-        
-        <View style={styles.divider} />
-        
-        {/* Şirket Bilgileri */}
-        {companyInfo && (
-          <>
-            {companyInfo.company_name && (
-              <Text style={styles.companyName}>{companyInfo.company_name}</Text>
-            )}
-            
-            {companyInfo.website && (
-              <TouchableOpacity onPress={handleWebsitePress}>
-                <Text style={styles.websiteLink}>{companyInfo.website}</Text>
-              </TouchableOpacity>
-            )}
-            
-            <View style={styles.contactContainer}>
-              {companyInfo.phone && (
-                <TouchableOpacity onPress={handlePhonePress}>
-                  <Text style={styles.contactText}>{companyInfo.phone}</Text>
-                </TouchableOpacity>
-              )}
-              {companyInfo.email && (
-                <TouchableOpacity onPress={handleEmailPress}>
-                  <Text style={styles.contactText}>{companyInfo.email}</Text>
-                </TouchableOpacity>
-              )}
-              {companyInfo.address && (
-                <Text style={styles.addressText}>{companyInfo.address}</Text>
-              )}
-            </View>
-          </>
-        )}
-
-        {/* Fallback: Eğer company info yoksa eski bilgileri göster */}
-        {!companyInfo && (
-          <>
-            <Text style={styles.developedBy}>Developed by</Text>
-            <Text style={styles.companyName}>LITXTECH LLC</Text>
-            
-            <TouchableOpacity onPress={() => handleLinkPress('https://www.litxtech.com')}>
-              <Text style={styles.websiteLink}>www.litxtech.com</Text>
-            </TouchableOpacity>
-            
-            <View style={styles.contactContainer}>
-              <TouchableOpacity onPress={() => handleLinkPress('tel:+13072715151')}>
-                <Text style={styles.contactText}>+1 307 271 5151</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleLinkPress('mailto:support@litxtech.com')}>
-                <Text style={styles.contactText}>support@litxtech.com</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
         
         {/* Politikalar */}
         {activePolicies.length > 0 && (
@@ -133,7 +77,7 @@ export function Footer() {
           </>
         )}
         
-        <Text style={styles.copyright}>© 2025 LITXTECH LLC. Tüm hakları saklıdır.</Text>
+        <Text style={styles.copyright}>© 2025 MyTrabzon. Tüm hakları saklıdır.</Text>
       </View>
 
       {/* Policy Modal */}
@@ -181,9 +125,6 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     padding: SPACING.xl,
     paddingBottom: SPACING.xxl,
-  },
-  logo: {
-    marginBottom: SPACING.md,
   },
   versionText: {
     fontSize: FONT_SIZES.sm,

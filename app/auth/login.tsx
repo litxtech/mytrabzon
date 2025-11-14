@@ -41,8 +41,8 @@ export default function LoginScreen() {
           password,
           options: {
             emailRedirectTo: Platform.select({
-              web: window.location.origin,
-              default: 'mytrabzon://auth/callback',
+              web: typeof window !== 'undefined' ? `${window.location.origin}/auth/onboarding` : 'https://www.litxtech.com/auth/onboarding',
+              default: 'mytrabzon://auth/onboarding',
             }),
           }
         });
@@ -83,7 +83,7 @@ export default function LoginScreen() {
         email: trimmedEmail,
         options: {
           emailRedirectTo: Platform.select({
-            web: window.location.origin,
+            web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
             default: 'mytrabzon://auth/callback',
           }),
         }
@@ -115,15 +115,18 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      // Her zaman mobil deep link kullan
-      const redirectUrl = 'mytrabzon://auth/reset-password';
+      // Platform'a göre redirect URL belirle
+      const redirectUrl = Platform.select({
+        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/reset-password` : 'https://www.litxtech.com/auth/reset-password',
+        default: 'mytrabzon://auth/reset-password',
+      });
       
       const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
         redirectTo: redirectUrl,
       });
       
       if (error) throw error;
-      Alert.alert('Başarılı', 'Şifre sıfırlama linki email adresinize gönderildi!');
+      Alert.alert('Başarılı', 'Şifre sıfırlama linki email adresinize gönderildi! Linke tıklayarak şifrenizi sıfırlayabilirsiniz.');
       setMode('login');
     } catch (error: any) {
       console.error('Error resetting password:', error);
@@ -137,27 +140,29 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const redirectUrl = Platform.select({
-        web: window.location.origin,
+        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
         default: 'mytrabzon://auth/callback',
       });
 
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: redirectUrl,
+          skipBrowserRedirect: Platform.OS !== 'web',
         },
       });
 
       if (error) throw error;
 
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (sessionData.session) {
-        checkProfileAndNavigate(sessionData.session.user.id);
+      // Web'de OAuth browser'da açılır, mobilde otomatik yönlendirme olur
+      if (Platform.OS === 'web' && data.url) {
+        // Web'de browser'da aç
+        window.location.href = data.url;
       }
+      // Mobilde OAuth tamamlandıktan sonra callback'te session kontrol edilecek
     } catch (error: any) {
-      console.error('Error during login:', error);
-      Alert.alert('Hata', 'Giriş yapılırken bir hata oluştu');
-    } finally {
+      console.error('Error during Google login:', error);
+      Alert.alert('Hata', error.message || 'Google ile giriş yapılırken bir hata oluştu');
       setLoading(false);
     }
   };

@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { MessageCircle, Users, MapPin, AlertCircle, Inbox, UsersRound } from 'lucide-react-native';
+import { MessageCircle, Users, MapPin, AlertCircle, Inbox, UsersRound, Plus } from 'lucide-react-native';
 
 type TabType = 'inbox' | 'groups';
 type GroupCategory = 'genel' | 'yardim' | 'etkinlik' | 'is' | 'egitim';
@@ -281,10 +281,38 @@ export default function ChatScreen() {
     );
   };
 
+  const handleCreateGroup = () => {
+    router.push('/chat/create-group' as any);
+  };
+
+  const handleNewMessage = () => {
+    router.push('/chat/new-message' as any);
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Sohbet</Text>
+        <View style={styles.headerButtons}>
+          {activeTab === 'inbox' && (
+            <TouchableOpacity
+              style={styles.newMessageButton}
+              onPress={handleNewMessage}
+            >
+              <Plus size={20} color={COLORS.white} />
+              <Text style={styles.newMessageButtonText}>Yeni Mesaj</Text>
+            </TouchableOpacity>
+          )}
+          {activeTab === 'groups' && (
+            <TouchableOpacity
+              style={styles.createGroupButton}
+              onPress={handleCreateGroup}
+            >
+              <Users size={20} color={COLORS.white} />
+              <Text style={styles.createGroupButtonText}>Grup Oluştur</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {renderTabBar()}
@@ -587,5 +615,38 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontSize: FONT_SIZES.xs,
     fontWeight: '700' as const,
+  },
+  headerButtons: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.sm,
+  },
+  newMessageButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 20,
+    gap: SPACING.xs,
+  },
+  newMessageButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600' as const,
+  },
+  createGroupButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 20,
+    gap: SPACING.xs,
+  },
+  createGroupButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600' as const,
   },
 });
