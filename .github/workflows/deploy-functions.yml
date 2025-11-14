@@ -1,0 +1,78 @@
+name: Deploy Supabase Edge Functions
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'supabase/functions/**'
+      - '.github/workflows/deploy-functions.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy All Edge Functions
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Login to Supabase
+        run: |
+          echo "${{ secrets.SUPABASE_ACCESS_TOKEN }}" | supabase login --token -
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Link to Supabase Project
+        run: |
+          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy All Edge Functions
+        run: |
+          echo "🚀 Deploying all Supabase Edge Functions..."
+          
+          # Functions dizinindeki tüm klasörleri bul ve deploy et
+          for fn in $(ls -d supabase/functions/*/); do
+            fn_name=$(basename "$fn")
+            
+            # signup-init gibi özel function'ları atla (eğer gerekirse)
+            # if [ "$fn_name" = "signup-init" ]; then
+            #   continue
+            # fi
+            
+            echo "📦 Deploying function: $fn_name"
+            
+            # Her function'ı deploy et
+            supabase functions deploy "$fn_name" --no-verify-jwt || {
+              echo "❌ Failed to deploy $fn_name"
+              exit 1
+            }
+            
+            echo "✅ Successfully deployed $fn_name"
+          done
+          
+          echo "🎉 All functions deployed successfully!"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: List Deployed Functions
+        run: |
+          echo "📋 Listing all deployed functions:"
+          supabase functions list
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+

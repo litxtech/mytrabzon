@@ -1,5 +1,6 @@
 import { createTRPCReact } from "@trpc/react-query";
 import { httpLink } from "@trpc/client";
+// AppRouter type - Backend'deki type'ı kullan (Supabase Edge Function'dan export edilen type ile uyumlu)
 import type { AppRouter } from "@/backend/trpc/app-router";
 import superjson from "superjson";
 import { supabase } from "@/lib/supabase";
@@ -10,82 +11,91 @@ export const trpc = createTRPCReact<AppRouter>();
 
 const stripTrailingSlash = (url: string) => url.replace(/\/$/, "");
 
-const resolveFromManifest = () => {
-  const hostUri =
-    Constants.expoConfig?.hostUri ??
-    Constants.expoConfig?.extra?.expoGo?.debuggerHost ??
-    Constants.manifest2?.extra?.expoGo?.debuggerHost ??
-    Constants.manifest?.debuggerHost ??
-    null;
-
-  if (!hostUri) {
-    return null;
+// Get Supabase Edge Function URL for main app
+const getBaseUrl = () => {
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim();
+  
+  if (!supabaseUrl) {
+    console.warn("EXPO_PUBLIC_SUPABASE_URL not set, falling back to localhost");
+    return "http://127.0.0.1:54321/functions/v1/trpc";
   }
-
-  const cleaned = hostUri
-    .replace(/^exp:\/\//, "")
-    .replace(/^https?:\/\//, "");
-
-  const [hostPart, portPartWithPath] = cleaned.split(":");
-  const host = hostPart?.split("/")[0] ?? "127.0.0.1";
-  const port = portPartWithPath?.split("/")[0];
-
-  if (host.endsWith(".exp.direct")) {
-    return `https://${host}`;
-  }
-
-  const resolvedPort = port ?? "8081";
-  return `http://${host}:${resolvedPort}`;
+  
+  // Supabase Edge Functions URL format:
+  // https://[project-ref].supabase.co/functions/v1/[function-name]
+  // tRPC endpoint path'i boş string olduğu için, base URL'e /api/trpc eklememiz gerekiyor
+  const baseUrl = `${stripTrailingSlash(supabaseUrl)}/functions/v1/trpc/api/trpc`;
+  console.log("tRPC base URL (Supabase Edge Functions)", baseUrl);
+  return baseUrl;
 };
 
-const getBaseUrl = () => {
-  const explicit = process.env.EXPO_PUBLIC_RORK_API_BASE_URL?.trim();
-  if (explicit) {
-    const sanitized = stripTrailingSlash(explicit);
-    console.log("tRPC base URL (env)", sanitized);
-    return sanitized;
+// Get Admin Worker URL
+const getAdminBaseUrl = () => {
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim();
+  
+  if (!supabaseUrl) {
+    console.warn("EXPO_PUBLIC_SUPABASE_URL not set, falling back to localhost");
+    return "http://127.0.0.1:54321/functions/v1/admin-worker";
   }
-
-  if (Platform.OS === "web" && typeof window !== "undefined" && window.location?.origin) {
-    const origin = stripTrailingSlash(window.location.origin);
-    console.log("tRPC base URL (web origin)", origin);
-    return origin;
-  }
-
-  const manifestUrl = resolveFromManifest();
-  if (manifestUrl) {
-    const sanitized = stripTrailingSlash(manifestUrl);
-    console.log("tRPC base URL (manifest)", sanitized);
-    return sanitized;
-  }
-
-  const fallback = "http://127.0.0.1:8081";
-  console.warn("tRPC base URL falling back to localhost", fallback);
-  return fallback;
+  
+  const baseUrl = `${stripTrailingSlash(supabaseUrl)}/functions/v1/admin-worker/api/trpc`;
+  console.log("Admin Worker base URL", baseUrl);
+  return baseUrl;
 };
 
 const baseUrl = getBaseUrl();
+const adminBaseUrl = getAdminBaseUrl();
 
+// Shared headers function
+const getAuthHeaders = async () => {
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    
+    if (error) {
+      console.warn("Failed to get session for tRPC header:", error.message);
+      return {};
+    }
+    
+    const token = data?.session?.access_token;
+
+    if (token) {
+      console.log("✅ Adding auth token to tRPC request");
+      return {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      };
+    } else {
+      console.warn("⚠️ No auth token available - request will be unauthenticated");
+    }
+  } catch (error) {
+    console.error("Failed to attach Supabase auth header", error);
+  }
+
+  return {
+    "Content-Type": "application/json",
+  };
+};
+
+// Main app tRPC client
 export const trpcClient = trpc.createClient({
   links: [
     httpLink({
-      url: `${baseUrl}/api/trpc`,
+      url: baseUrl,
       transformer: superjson,
       async headers() {
-        try {
-          const { data } = await supabase.auth.getSession();
-          const token = data.session?.access_token;
+        return await getAuthHeaders();
+      },
+    }),
+  ],
+});
 
-          if (token) {
-            return {
-              Authorization: `Bearer ${token}`,
-            };
-          }
-        } catch (error) {
-          console.error("Failed to attach Supabase auth header", error);
-        }
-
-        return {};
+// Admin Worker tRPC client
+export const adminTrpcClient = trpc.createClient({
+  links: [
+    httpLink({
+      url: adminBaseUrl,
+      transformer: superjson,
+      async headers() {
+        return await getAuthHeaders();
       },
     }),
   ],

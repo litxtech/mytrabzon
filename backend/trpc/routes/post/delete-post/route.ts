@@ -14,18 +14,22 @@ export const deletePostProcedure = protectedProcedure
       .from("posts")
       .select("*")
       .eq("id", input.postId)
-      .eq("user_id", user.id)
+      .eq("author_id", user.id)
       .single();
 
     if (fetchError || !post) {
       throw new Error("Post bulunamadı veya yetkisiz erişim");
     }
 
-    if (post.media_url && Array.isArray(post.media_url)) {
-      for (const url of post.media_url) {
-        const path = url.split("/storage/v1/object/public/posts/")[1];
-        if (path) {
-          await supabase.storage.from("posts").remove([path]);
+    // Media dosyalarını sil
+    if (post.media && Array.isArray(post.media)) {
+      for (const mediaItem of post.media) {
+        if (mediaItem.path) {
+          const path = mediaItem.path.split("/storage/v1/object/public/posts/")[1] || 
+                       mediaItem.path.split("posts/")[1];
+          if (path) {
+            await supabase.storage.from("posts").remove([path]);
+          }
         }
       }
     }
@@ -34,7 +38,7 @@ export const deletePostProcedure = protectedProcedure
       .from("posts")
       .delete()
       .eq("id", input.postId)
-      .eq("user_id", user.id);
+      .eq("author_id", user.id);
 
     if (error) {
       throw new Error(error.message);

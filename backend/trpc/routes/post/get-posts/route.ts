@@ -34,12 +34,22 @@ export const getPostsProcedure = publicProcedure
 
       if (input.author_id) {
         query = query.eq("author_id", input.author_id);
-      }
-
-      if (input.visibility) {
-        query = query.eq("visibility", input.visibility);
+        // Eğer kullanıcı kendi gönderilerini görüntülüyorsa, tüm visibility seviyelerini göster
+        if (user && input.author_id === user.id) {
+          // Kullanıcı kendi gönderilerini görüntülüyor, visibility filtresi uygulama
+        } else {
+          // Başka birinin gönderilerini görüntülüyor, sadece public göster
+          if (!input.visibility) {
+            query = query.eq("visibility", "public");
+          }
+        }
       } else {
-        query = query.eq("visibility", "public");
+        // Genel feed için visibility filtresi
+        if (input.visibility) {
+          query = query.eq("visibility", input.visibility);
+        } else {
+          query = query.eq("visibility", "public");
+        }
       }
 
       if (input.sort === "new") {

@@ -14,11 +14,11 @@ export const getCommentsProcedure = publicProcedure
 
     try {
       const { data, error, count } = await supabase
-        .from("post_comments")
+        .from("comments")
         .select(
           `
           *,
-          user:user_profiles!post_comments_user_id_fkey(*)
+          user:profiles!comments_user_id_fkey(*)
         `,
           { count: "exact" }
         )

@@ -1,5 +1,5 @@
 import { Tabs, useRouter } from "expo-router";
-import { Home, MessageCircle, Bell, User } from "lucide-react-native";
+import { Home, MessageCircle, Bell, User, Video } from "lucide-react-native";
 import React, { useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { COLORS } from "@/constants/theme";
@@ -34,6 +34,13 @@ export default function TabLayout() {
         options={{
           title: "Akış",
           tabBarIcon: ({ color }) => <Home size={24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="reels"
+        options={{
+          title: "Reels",
+          tabBarIcon: ({ color }) => <Video size={24} color={color} />,
         }}
       />
       <Tabs.Screen

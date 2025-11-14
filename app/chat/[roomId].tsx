@@ -11,23 +11,46 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  ScrollView,
 } from 'react-native';
-import { useLocalSearchParams, Stack } from 'expo-router';
+import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
 import { trpc } from '@/lib/trpc';
-import { Send, Paperclip, Smile, MoreVertical } from 'lucide-react-native';
-import { Message } from '@/types/database';
+import { Send, Paperclip, Smile, MoreVertical, ImageIcon, Plus, Heart, MessageCircle, Share2 } from 'lucide-react-native';
+import { Message, Post } from '@/types/database';
+import { DISTRICT_BADGES } from '@/constants/districts';
 
 export default function ChatRoomScreen() {
   const { roomId } = useLocalSearchParams<{ roomId: string }>();
+  const router = useRouter();
   const { user, profile } = useAuth();
   const { messages, loadMessages, subscribeToRoom, unsubscribeFromRoom, sendTypingIndicator, typingIndicators } = useChat();
   const [messageText, setMessageText] = useState('');
   const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [activeTab, setActiveTab] = useState<'messages' | 'posts'>('messages');
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
+
+  // Room bilgisini al
+  const { data: room } = trpc.chat.getRoom.useQuery(
+    { roomId: roomId! },
+    { enabled: !!roomId }
+  );
+
+  // Grup post'larını al (sadece grup ise)
+  const isGroup = room?.type === 'group';
+  const { data: groupPostsData, refetch: refetchGroupPosts } = trpc.post.getPosts.useQuery(
+    { room_id: roomId!, limit: 50, offset: 0 },
+    { enabled: !!roomId && isGroup }
+  );
+
+  const likePostMutation = trpc.post.likePost.useMutation({
+    onSuccess: () => {
+      refetchGroupPosts();
+    },
+  });
 
   const sendMessageMutation = trpc.chat.sendMessage.useMutation({
     onSuccess: () => {
@@ -52,6 +75,7 @@ export default function ChatRoomScreen() {
     return () => {
       unsubscribeFromRoom(roomId);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);
 
   const handleSendMessage = () => {
@@ -127,6 +151,113 @@ export default function ChatRoomScreen() {
     );
   };
 
+  const formatCount = (count: number | null | undefined): string => {
+    if (!count) return '0';
+    if (count >= 1000) {
+      return `${(count / 1000).toFixed(1)}K`;
+    }
+    return count.toString();
+  };
+
+  const formatPostTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Şimdi';
+    if (diffMins < 60) return `${diffMins} dk önce`;
+    if (diffHours < 24) return `${diffHours} sa önce`;
+    if (diffDays === 1) return 'Dün';
+    if (diffDays < 7) return `${diffDays} gün önce`;
+    return date.toLocaleDateString('tr-TR', {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const handleLike = async (postId: string) => {
+    try {
+      await likePostMutation.mutateAsync({ postId });
+    } catch (error) {
+      console.error('Like error:', error);
+    }
+  };
+
+  const renderGroupPost = ({ item }: { item: Post }) => {
+    const firstMedia = item.media && item.media.length > 0 ? item.media[0] : null;
+
+    return (
+      <View style={styles.postCard}>
+        <View style={styles.postHeader}>
+          <Image
+            source={{
+              uri: item.author?.avatar_url || 'https://via.placeholder.com/40',
+            }}
+            style={styles.postAvatar}
+          />
+          <View style={styles.postHeaderInfo}>
+            <Text style={styles.postAuthor}>{item.author?.full_name}</Text>
+            <View style={styles.postMeta}>
+              <Text style={styles.postDistrict}>
+                {DISTRICT_BADGES[item.district as keyof typeof DISTRICT_BADGES] || '📍'} {item.district}
+              </Text>
+              <Text style={styles.postTime}>
+                {' • '}
+                {formatPostTime(item.created_at)}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <Text style={styles.postContent}>{item.content}</Text>
+
+        {firstMedia && (
+          <Image
+            source={{ uri: firstMedia.path }}
+            style={styles.postImage}
+            resizeMode="cover"
+          />
+        )}
+
+        {item.media && item.media.length > 1 && (
+          <View style={styles.mediaCountBadge}>
+            <Text style={styles.mediaCountText}>+{item.media.length - 1}</Text>
+          </View>
+        )}
+
+        <View style={styles.postActions}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => handleLike(item.id)}
+          >
+            <Heart
+              size={18}
+              color={item.is_liked ? COLORS.error : COLORS.textLight}
+              fill={item.is_liked ? COLORS.error : 'transparent'}
+            />
+            <Text style={styles.actionText}>{formatCount(item.like_count)}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push(`/post/${item.id}` as any)}
+          >
+            <MessageCircle size={18} color={COLORS.textLight} />
+            <Text style={styles.actionText}>{formatCount(item.comment_count)}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionButton}>
+            <Share2 size={18} color={COLORS.textLight} />
+            <Text style={styles.actionText}>{formatCount(item.share_count)}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   const roomMessages = messages[roomId || ''] || [];
   const roomTyping = typingIndicators[roomId || ''] || [];
 
@@ -135,7 +266,7 @@ export default function ChatRoomScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          title: 'Sohbet',
+          title: room?.name || 'Sohbet',
           headerRight: () => (
             <TouchableOpacity style={styles.headerButton}>
               <MoreVertical size={24} color={COLORS.primary} />
@@ -149,23 +280,60 @@ export default function ChatRoomScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        <FlatList
-          ref={flatListRef}
-          data={roomMessages}
-          keyExtractor={(item) => item.id}
-          renderItem={renderMessage}
-          inverted
-          contentContainerStyle={styles.messagesList}
-          ListFooterComponent={
-            roomTyping.length > 0 ? (
-              <View style={styles.typingContainer}>
-                <Text style={styles.typingText}>
-                  {roomTyping.map(t => t.user_name).join(', ')} yazıyor...
-                </Text>
+        {/* Tab Bar - Sadece grup ise göster */}
+        {isGroup && (
+          <View style={styles.tabBar}>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'messages' && styles.tabActive]}
+              onPress={() => setActiveTab('messages')}
+            >
+              <Text style={[styles.tabText, activeTab === 'messages' && styles.tabTextActive]}>
+                Mesajlar
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'posts' && styles.tabActive]}
+              onPress={() => setActiveTab('posts')}
+            >
+              <Text style={[styles.tabText, activeTab === 'posts' && styles.tabTextActive]}>
+                Gönderiler
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {activeTab === 'messages' ? (
+          <FlatList
+            ref={flatListRef}
+            data={roomMessages}
+            keyExtractor={(item) => item.id}
+            renderItem={renderMessage}
+            inverted
+            contentContainerStyle={styles.messagesList}
+            ListFooterComponent={
+              roomTyping.length > 0 ? (
+                <View style={styles.typingContainer}>
+                  <Text style={styles.typingText}>
+                    {roomTyping.map(t => t.user_name).join(', ')} yazıyor...
+                  </Text>
+                </View>
+              ) : null
+            }
+          />
+        ) : (
+          <FlatList
+            data={groupPostsData?.posts || []}
+            renderItem={renderGroupPost}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.postsList}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>Henüz gönderi yok</Text>
+                <Text style={styles.emptySubtext}>İlk paylaşımı yapan sen ol!</Text>
               </View>
-            ) : null
-          }
-        />
+            }
+          />
+        )}
 
         {replyTo && (
           <View style={styles.replyPreview}>
@@ -181,43 +349,56 @@ export default function ChatRoomScreen() {
           </View>
         )}
 
-        <View style={styles.inputContainer}>
-          <TouchableOpacity style={styles.attachButton}>
-            <Paperclip size={24} color={COLORS.textLight} />
-          </TouchableOpacity>
+        {/* Input Container - Sadece mesajlar sekmesinde göster */}
+        {activeTab === 'messages' && (
+          <View style={styles.inputContainer}>
+            <TouchableOpacity style={styles.attachButton}>
+              <Paperclip size={24} color={COLORS.textLight} />
+            </TouchableOpacity>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Mesaj yaz..."
-            placeholderTextColor={COLORS.textLight}
-            value={messageText}
-            onChangeText={(text) => {
-              setMessageText(text);
-              handleTyping();
-            }}
-            multiline
-            maxLength={1000}
-          />
+            <TextInput
+              style={styles.input}
+              placeholder="Mesaj yaz..."
+              placeholderTextColor={COLORS.textLight}
+              value={messageText}
+              onChangeText={(text) => {
+                setMessageText(text);
+                handleTyping();
+              }}
+              multiline
+              maxLength={1000}
+            />
 
-          <TouchableOpacity style={styles.emojiButton}>
-            <Smile size={24} color={COLORS.textLight} />
-          </TouchableOpacity>
+            <TouchableOpacity style={styles.emojiButton}>
+              <Smile size={24} color={COLORS.textLight} />
+            </TouchableOpacity>
 
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                (!messageText.trim() || sendMessageMutation.isPending) && styles.sendButtonDisabled,
+              ]}
+              onPress={handleSendMessage}
+              disabled={!messageText.trim() || sendMessageMutation.isPending}
+            >
+              {sendMessageMutation.isPending ? (
+                <ActivityIndicator size="small" color={COLORS.white} />
+              ) : (
+                <Send size={20} color={COLORS.white} />
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* FAB - Gönderiler sekmesinde göster */}
+        {activeTab === 'posts' && isGroup && (
           <TouchableOpacity
-            style={[
-              styles.sendButton,
-              (!messageText.trim() || sendMessageMutation.isPending) && styles.sendButtonDisabled,
-            ]}
-            onPress={handleSendMessage}
-            disabled={!messageText.trim() || sendMessageMutation.isPending}
+            style={styles.fab}
+            onPress={() => router.push(`/create-post?room_id=${roomId}` as any)}
           >
-            {sendMessageMutation.isPending ? (
-              <ActivityIndicator size="small" color={COLORS.white} />
-            ) : (
-              <Send size={20} color={COLORS.white} />
-            )}
+            <Plus size={28} color={COLORS.white} />
           </TouchableOpacity>
-        </View>
+        )}
       </KeyboardAvoidingView>
     </>
   );
@@ -389,5 +570,145 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     backgroundColor: COLORS.border,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomColor: COLORS.primary,
+  },
+  tabText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textLight,
+    fontWeight: '600',
+  },
+  tabTextActive: {
+    color: COLORS.primary,
+  },
+  postsList: {
+    paddingVertical: SPACING.sm,
+  },
+  postCard: {
+    backgroundColor: COLORS.white,
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.md,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  postHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.md,
+  },
+  postAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: SPACING.sm,
+  },
+  postHeaderInfo: {
+    flex: 1,
+  },
+  postAuthor: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  postMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  postDistrict: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+  },
+  postTime: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+  },
+  postContent: {
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.md,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    lineHeight: 20,
+  },
+  postImage: {
+    width: '100%',
+    height: 300,
+  },
+  mediaCountBadge: {
+    position: 'absolute',
+    top: 70,
+    right: SPACING.md,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  mediaCountText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+  },
+  postActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.md,
+    gap: SPACING.lg,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  actionText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+    fontWeight: '600',
+  },
+  fab: {
+    position: 'absolute',
+    right: SPACING.lg,
+    bottom: SPACING.lg,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  emptyContainer: {
+    padding: SPACING.xxl,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
+  },
+  emptySubtext: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textLight,
+    textAlign: 'center',
   },
 });

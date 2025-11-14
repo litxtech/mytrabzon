@@ -26,7 +26,7 @@ export const requestAccountDeletionProcedure = publicProcedure.mutation(async ({
     deletionDate.setDate(deletionDate.getDate() + 7);
 
     const { error: updateError } = await supabase
-      .from("user_profiles")
+      .from("profiles")
       .update({
         deletion_requested_at: new Date().toISOString(),
         deletion_scheduled_at: deletionDate.toISOString(),

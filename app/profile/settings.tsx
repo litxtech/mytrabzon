@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,13 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
+import { trpc } from '@/lib/trpc';
 import { 
   ChevronLeft, 
   Bell, 
@@ -20,25 +22,97 @@ import {
   MessageSquare
 } from 'lucide-react-native';
 
+interface UserSettings {
+  notifications: {
+    push: boolean;
+    email: boolean;
+    sms: boolean;
+    likes: boolean;
+    comments: boolean;
+    follows: boolean;
+    messages: boolean;
+  };
+  privacy: {
+    profileVisible: boolean;
+    showOnline: boolean;
+    allowMessages: boolean;
+    allowTagging: boolean;
+  };
+}
+
 export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { profile, refreshProfile } = useAuth();
 
-  const [notifications, setNotifications] = useState({
-    push: true,
-    email: true,
-    sms: false,
-    likes: true,
-    comments: true,
-    follows: true,
-    messages: true,
-  });
+  // Default settings
+  const defaultSettings: UserSettings = {
+    notifications: {
+      push: true,
+      email: true,
+      sms: false,
+      likes: true,
+      comments: true,
+      follows: true,
+      messages: true,
+    },
+    privacy: {
+      profileVisible: true,
+      showOnline: true,
+      allowMessages: true,
+      allowTagging: true,
+    },
+  };
 
-  const [privacy, setPrivacy] = useState({
-    profileVisible: true,
-    showOnline: true,
-    allowMessages: true,
-    allowTagging: true,
+  // Load settings from profile
+  const loadSettings = (): UserSettings => {
+    if (!profile?.privacy_settings) {
+      return defaultSettings;
+    }
+
+    const privacySettings = profile.privacy_settings as any;
+    
+    return {
+      notifications: {
+        push: privacySettings.notifications?.push ?? defaultSettings.notifications.push,
+        email: privacySettings.notifications?.email ?? defaultSettings.notifications.email,
+        sms: privacySettings.notifications?.sms ?? defaultSettings.notifications.sms,
+        likes: privacySettings.notifications?.likes ?? defaultSettings.notifications.likes,
+        comments: privacySettings.notifications?.comments ?? defaultSettings.notifications.comments,
+        follows: privacySettings.notifications?.follows ?? defaultSettings.notifications.follows,
+        messages: privacySettings.notifications?.messages ?? defaultSettings.notifications.messages,
+      },
+      privacy: {
+        profileVisible: privacySettings.privacy?.profileVisible ?? defaultSettings.privacy.profileVisible,
+        showOnline: privacySettings.privacy?.showOnline ?? defaultSettings.privacy.showOnline,
+        allowMessages: privacySettings.privacy?.allowMessages ?? defaultSettings.privacy.allowMessages,
+        allowTagging: privacySettings.privacy?.allowTagging ?? defaultSettings.privacy.allowTagging,
+      },
+    };
+  };
+
+  const [settings, setSettings] = useState<UserSettings>(defaultSettings);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Load settings when profile changes
+  useEffect(() => {
+    if (profile) {
+      const loadedSettings = loadSettings();
+      setSettings(loadedSettings);
+    }
+  }, [profile?.privacy_settings]);
+
+  const updateProfileMutation = trpc.user.updateProfile.useMutation({
+    onSuccess: async () => {
+      await refreshProfile();
+      Alert.alert('Başarılı', 'Ayarlarınız kaydedildi.');
+      setIsLoading(false);
+    },
+    onError: (error) => {
+      console.error('Settings update error:', error);
+      Alert.alert('Hata', `Ayarlar kaydedilirken bir hata oluştu: ${error.message}`);
+      setIsLoading(false);
+    },
   });
 
   const renderSection = (title: string, IconComponent: React.ReactNode) => (
@@ -64,12 +138,31 @@ export default function SettingsScreen() {
         onValueChange={onValueChange}
         trackColor={{ false: COLORS.border, true: COLORS.primary }}
         thumbColor={COLORS.white}
+        disabled={isLoading}
       />
     </View>
   );
 
-  const handleSaveSettings = () => {
-    Alert.alert('Başarılı', 'Ayarlarınız kaydedildi.');
+  const handleSaveSettings = async () => {
+    if (!profile) {
+      Alert.alert('Hata', 'Profil bilgisi bulunamadı.');
+      return;
+    }
+
+    setIsLoading(true);
+
+    // Merge with existing privacy_settings
+    const existingPrivacySettings = (profile.privacy_settings || {}) as any;
+    
+    const updatedPrivacySettings = {
+      ...existingPrivacySettings,
+      notifications: settings.notifications,
+      privacy: settings.privacy,
+    };
+
+    updateProfileMutation.mutate({
+      privacy_settings: updatedPrivacySettings,
+    });
   };
 
   return (
@@ -88,22 +181,22 @@ export default function SettingsScreen() {
           
           {renderToggle(
             'Push Bildirimleri',
-            notifications.push,
-            (value) => setNotifications({ ...notifications, push: value }),
+            settings.notifications.push,
+            (value) => setSettings({ ...settings, notifications: { ...settings.notifications, push: value } }),
             'Uygulama bildirimleri'
           )}
           
           {renderToggle(
             'E-posta Bildirimleri',
-            notifications.email,
-            (value) => setNotifications({ ...notifications, email: value }),
+            settings.notifications.email,
+            (value) => setSettings({ ...settings, notifications: { ...settings.notifications, email: value } }),
             'E-posta ile bildirimler'
           )}
           
           {renderToggle(
             'SMS Bildirimleri',
-            notifications.sms,
-            (value) => setNotifications({ ...notifications, sms: value }),
+            settings.notifications.sms,
+            (value) => setSettings({ ...settings, notifications: { ...settings.notifications, sms: value } }),
             'SMS ile bildirimler'
           )}
         </View>
@@ -113,29 +206,29 @@ export default function SettingsScreen() {
           
           {renderToggle(
             'Beğeniler',
-            notifications.likes,
-            (value) => setNotifications({ ...notifications, likes: value }),
+            settings.notifications.likes,
+            (value) => setSettings({ ...settings, notifications: { ...settings.notifications, likes: value } }),
             'Paylaşımlarınız beğenildiğinde bildir'
           )}
           
           {renderToggle(
             'Yorumlar',
-            notifications.comments,
-            (value) => setNotifications({ ...notifications, comments: value }),
+            settings.notifications.comments,
+            (value) => setSettings({ ...settings, notifications: { ...settings.notifications, comments: value } }),
             'Yeni yorum geldiğinde bildir'
           )}
           
           {renderToggle(
             'Takip',
-            notifications.follows,
-            (value) => setNotifications({ ...notifications, follows: value }),
+            settings.notifications.follows,
+            (value) => setSettings({ ...settings, notifications: { ...settings.notifications, follows: value } }),
             'Biri sizi takip ettiğinde bildir'
           )}
           
           {renderToggle(
             'Mesajlar',
-            notifications.messages,
-            (value) => setNotifications({ ...notifications, messages: value }),
+            settings.notifications.messages,
+            (value) => setSettings({ ...settings, notifications: { ...settings.notifications, messages: value } }),
             'Yeni mesaj geldiğinde bildir'
           )}
         </View>
@@ -145,29 +238,29 @@ export default function SettingsScreen() {
           
           {renderToggle(
             'Profil Görünürlüğü',
-            privacy.profileVisible,
-            (value) => setPrivacy({ ...privacy, profileVisible: value }),
+            settings.privacy.profileVisible,
+            (value) => setSettings({ ...settings, privacy: { ...settings.privacy, profileVisible: value } }),
             'Profilinizi herkes görebilir'
           )}
           
           {renderToggle(
             'Çevrimiçi Durumu',
-            privacy.showOnline,
-            (value) => setPrivacy({ ...privacy, showOnline: value }),
+            settings.privacy.showOnline,
+            (value) => setSettings({ ...settings, privacy: { ...settings.privacy, showOnline: value } }),
             'Çevrimiçi olduğunuzda göster'
           )}
           
           {renderToggle(
             'Mesaj İzinleri',
-            privacy.allowMessages,
-            (value) => setPrivacy({ ...privacy, allowMessages: value }),
+            settings.privacy.allowMessages,
+            (value) => setSettings({ ...settings, privacy: { ...settings.privacy, allowMessages: value } }),
             'Herkes size mesaj gönderebilir'
           )}
           
           {renderToggle(
             'Etiketlenme İzni',
-            privacy.allowTagging,
-            (value) => setPrivacy({ ...privacy, allowTagging: value }),
+            settings.privacy.allowTagging,
+            (value) => setSettings({ ...settings, privacy: { ...settings.privacy, allowTagging: value } }),
             'Paylaşımlarda etiketlenebilirsiniz'
           )}
         </View>
@@ -198,10 +291,15 @@ export default function SettingsScreen() {
         </View>
 
         <TouchableOpacity 
-          style={styles.saveButton}
+          style={[styles.saveButton, isLoading && styles.saveButtonDisabled]}
           onPress={handleSaveSettings}
+          disabled={isLoading}
         >
-          <Text style={styles.saveButtonText}>Ayarları Kaydet</Text>
+          {isLoading ? (
+            <ActivityIndicator size="small" color={COLORS.white} />
+          ) : (
+            <Text style={styles.saveButtonText}>Ayarları Kaydet</Text>
+          )}
         </TouchableOpacity>
 
         <View style={{ height: SPACING.xl }} />
@@ -294,6 +392,9 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderRadius: 8,
     alignItems: 'center',
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
   },
   saveButtonText: {
     fontSize: FONT_SIZES.md,

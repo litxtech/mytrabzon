@@ -14,17 +14,16 @@ export const addCommentProcedure = protectedProcedure
 
     try {
       const { data, error } = await supabase
-        .from("post_comments")
+        .from("comments")
         .insert({
           post_id: input.post_id,
           user_id: user.id,
           content: input.content,
-          mentions: input.mentions && input.mentions.length > 0 ? input.mentions : null,
-          like_count: 0,
+          likes_count: 0,
         })
         .select(`
           *,
-          user:user_profiles!post_comments_user_id_fkey(*)
+          user:profiles!comments_user_id_fkey(*)
         `)
         .single();
 

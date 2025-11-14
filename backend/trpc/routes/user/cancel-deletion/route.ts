@@ -23,7 +23,7 @@ export const cancelAccountDeletionProcedure = publicProcedure.mutation(async ({ 
     }
 
     const { error: updateError } = await supabase
-      .from("user_profiles")
+      .from("profiles")
       .update({
         deletion_requested_at: null,
         deletion_scheduled_at: null,

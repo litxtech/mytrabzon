@@ -73,7 +73,7 @@ export const updateProfileProcedure = protectedProcedure
     console.log('User ID:', user.id);
 
     const { data, error } = await supabase
-      .from("user_profiles")
+      .from("profiles")
       .update(updateData)
       .eq("id", user.id)
       .select()

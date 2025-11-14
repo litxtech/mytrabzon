@@ -12,30 +12,57 @@ import {
 
 import { useRouter } from 'expo-router';
 import { trpc } from '@/lib/trpc';
-import { useAuth } from '@/contexts/AuthContext';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { DISTRICTS, DISTRICT_BADGES } from '@/constants/districts';
 import { Post, District } from '@/types/database';
 import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '@/contexts/AuthContext';
 
 type SortType = 'new' | 'hot' | 'trending';
 
 export default function FeedScreen() {
-  const { } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const [selectedDistrict, setSelectedDistrict] = useState<District | 'all'>('all');
   const [sortType, setSortType] = useState<SortType>('new');
 
-  const { data: postsData, isLoading, refetch } = trpc.post.getPosts.useQuery({
+  const formatCount = (count: number | null | undefined): string => {
+    if (!count) return '0';
+    if (count >= 1000) {
+      return `${(count / 1000).toFixed(1)}K`;
+    }
+    return count.toString();
+  };
+
+  // Kişiselleştirilmiş feed kullan (eğer kullanıcı giriş yaptıysa)
+  const { data: personalizedFeedData, isLoading: isLoadingPersonalized } = trpc.post.getPersonalizedFeed.useQuery(
+    { limit: 20, offset: 0 },
+    { enabled: !!user?.id }
+  );
+
+  // Fallback: Normal feed (giriş yapmamış kullanıcılar için)
+  const { data: postsData, isLoading: isLoadingNormal, refetch } = trpc.post.getPosts.useQuery({
     district: selectedDistrict === 'all' ? undefined : selectedDistrict,
     sort: sortType,
     limit: 20,
     offset: 0,
+  }, {
+    enabled: !user?.id, // Sadece giriş yapmamış kullanıcılar için
   });
+
+  // Hangi feed'i kullanacağız?
+  const feedData = user?.id ? personalizedFeedData : postsData;
+  const isLoading = user?.id ? isLoadingPersonalized : isLoadingNormal;
 
   const likePostMutation = trpc.post.likePost.useMutation({
     onSuccess: () => {
-      refetch();
+      if (user?.id) {
+        // Personalized feed için refetch yok, query otomatik güncellenir
+      } else {
+        refetch();
+      }
     },
   });
 
@@ -165,18 +192,18 @@ export default function FeedScreen() {
               color={item.is_liked ? COLORS.error : COLORS.textLight}
               fill={item.is_liked ? COLORS.error : 'transparent'}
             />
-            <Text style={styles.actionText}>{item.like_count || 0}</Text>
+            <Text style={styles.actionText}>{formatCount(item.like_count)}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => router.push(`/post/${item.id}` as any)}
           >
             <MessageCircle size={20} color={COLORS.textLight} />
-            <Text style={styles.actionText}>{item.comment_count || 0}</Text>
+            <Text style={styles.actionText}>{formatCount(item.comment_count)}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton}>
             <Share2 size={20} color={COLORS.textLight} />
-            <Text style={styles.actionText}>{item.share_count || 0}</Text>
+            <Text style={styles.actionText}>{formatCount(item.share_count)}</Text>
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -185,11 +212,12 @@ export default function FeedScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, SPACING.md) }]}>
         <Text style={styles.headerTitle}>MyTrabzon</Text>
         <TouchableOpacity
           style={styles.usersButton}
           onPress={() => router.push('/all-users')}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <Users size={24} color={COLORS.primary} />
         </TouchableOpacity>
@@ -204,7 +232,7 @@ export default function FeedScreen() {
         </View>
       ) : (
         <FlatList
-          data={postsData?.posts || []}
+          data={feedData?.posts || []}
           renderItem={renderPost}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.feedList}
@@ -215,7 +243,9 @@ export default function FeedScreen() {
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>Henüz gönderi yok</Text>
               <Text style={styles.emptySubtext}>
-                İlk paylaşımı yapan sen ol!
+                {user?.id 
+                  ? 'Takip ettiğin kullanıcıların gönderileri burada görünecek'
+                  : 'İlk paylaşımı yapan sen ol!'}
               </Text>
             </View>
           }
@@ -240,12 +270,13 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: COLORS.white,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
+    paddingBottom: SPACING.md,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'space-between' as const,
+    minHeight: 60,
   },
   headerTitle: {
     fontSize: FONT_SIZES.xl,
@@ -253,12 +284,13 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
   usersButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: COLORS.background,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
+    marginTop: 2,
   },
   sortContainer: {
     flexDirection: 'row' as const,
@@ -368,7 +400,9 @@ const styles = StyleSheet.create({
   },
   postImage: {
     width: '100%',
-    height: 300,
+    aspectRatio: 16 / 9, // Responsive aspect ratio
+    maxHeight: 400,
+    minHeight: 200,
   },
   mediaCountBadge: {
     position: 'absolute' as const,

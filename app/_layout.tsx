@@ -18,8 +18,12 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="auth/login" options={{ headerShown: false }} />
       <Stack.Screen name="auth/onboarding" options={{ headerShown: false }} />
-      <Stack.Screen name="admin/login" options={{ title: "Admin Girişi" }} />
       <Stack.Screen name="admin/dashboard" options={{ title: "Admin Paneli" }} />
+      <Stack.Screen name="admin/users" options={{ title: "Kullanıcı Yönetimi" }} />
+      <Stack.Screen name="admin/policies" options={{ title: "Politika Yönetimi" }} />
+      <Stack.Screen name="admin/company-info" options={{ title: "Şirket Bilgileri" }} />
+      <Stack.Screen name="admin/support" options={{ title: "Destek Ticket'ları" }} />
+      <Stack.Screen name="admin/policy-view/[id]" options={{ title: "Politika" }} />
       <Stack.Screen name="post/[id]" options={{ title: "Gönderi" }} />
       <Stack.Screen name="profile/[id]" options={{ title: "Profil" }} />
       <Stack.Screen name="chat/[roomId]" options={{ title: "Sohbet" }} />
@@ -27,6 +31,8 @@ function RootLayoutNav() {
       <Stack.Screen name="all-users" options={{ title: "Kullanıcılar" }} />
       <Stack.Screen name="profile/edit" options={{ headerShown: false }} />
       <Stack.Screen name="profile/settings" options={{ title: "Ayarlar" }} />
+      <Stack.Screen name="kyc/verify" options={{ headerShown: false }} />
+      <Stack.Screen name="admin/kyc" options={{ title: "KYC Başvuruları" }} />
     </Stack>
   );
 }

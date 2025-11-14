@@ -5,8 +5,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const app = new Hono();
 
 function admin() {
-  const url = Deno.env.get("SUPABASE_URL") ?? "https://xcvcplwimicylaxghiak.supabase.co";
-  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhjdmNwbHdpbWljeWxheGdoaWFrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MTg1MDI3NSwiZXhwIjoyMDc3NDI2Mjc1fQ.5mZ9sFZ2GVYoKq5gUvJKbQjz3kbCMPr8g8J_2qz4E3E";
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  
+  if (!url || !key) {
+    throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in environment variables");
+  }
+  
   return createClient(url, key, { auth: { persistSession: false } });
 }
 

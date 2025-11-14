@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "lib": ["deno.window"],
+    "strict": true
+  },
+  "imports": {
+    "@trpc/server": "npm:@trpc/server@^11.7.1",
+    "zod": "npm:zod@^4.1.12",
+    "superjson": "npm:superjson@^2.2.5"
+  }
+}
+

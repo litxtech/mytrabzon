@@ -1,0 +1,6 @@
+# Supabase Edge Functions (Deno runtime - TypeScript linter hataları normal)
+# supabase/functions/ - Geçici olarak devre dışı (yapılandırma için)
+
+# Markdown dosyaları (formatlama uyarıları önemli değil)
+*.md
+

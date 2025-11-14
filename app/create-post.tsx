@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,8 +10,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
@@ -19,17 +18,37 @@ import { DISTRICT_BADGES } from '@/constants/districts';
 import { District } from '@/types/database';
 import { X, Image as ImageIcon, Camera, MapPin } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { FileSystem } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 export default function CreatePostScreen() {
   const router = useRouter();
+  const { edit, room_id } = useLocalSearchParams<{ edit?: string; room_id?: string }>();
   const { profile } = useAuth();
   const [content, setContent] = useState('');
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const isEditMode = !!edit;
+  const isGroupPost = !!room_id;
 
   const createPostMutation = trpc.post.createPost.useMutation();
+  const updatePostMutation = trpc.post.updatePost.useMutation();
   const uploadMediaMutation = trpc.post.uploadMedia.useMutation();
+  
+  // Edit modunda gönderiyi yükle
+  const { data: existingPost, isLoading: isLoadingPost } = trpc.post.getPostDetail.useQuery(
+    { postId: edit! },
+    { enabled: isEditMode && !!edit }
+  );
+
+  useEffect(() => {
+    if (existingPost && isEditMode) {
+      setContent(existingPost.content || '');
+      // Mevcut medya varsa URL'lerini ekle
+      if (existingPost.media && Array.isArray(existingPost.media)) {
+        setSelectedImages(existingPost.media.map((m: { path: string }) => m.path));
+      }
+    }
+  }, [existingPost, isEditMode]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -93,7 +112,7 @@ export default function CreatePostScreen() {
       if (selectedImages.length > 0) {
         const uploadPromises = selectedImages.map(async (uri) => {
           const base64 = await FileSystem.readAsStringAsync(uri, {
-            encoding: FileSystem.EncodingType.Base64,
+            encoding: 'base64' as any,
           });
 
           const fileType = uri.toLowerCase().endsWith('.png')
@@ -116,24 +135,42 @@ export default function CreatePostScreen() {
         mediaUrls = await Promise.all(uploadPromises);
       }
 
-      await createPostMutation.mutateAsync({
-        content: content.trim() || ' ',
-        district: profile.district,
-        media_urls: mediaUrls.length > 0 ? mediaUrls : undefined,
-        media_type:
-          mediaUrls.length > 0
-            ? mediaUrls.some((url) => url.includes('video'))
-              ? 'video'
-              : 'image'
-            : undefined,
-      });
+      if (isEditMode && edit) {
+        // Gönderiyi güncelle
+        await updatePostMutation.mutateAsync({
+          postId: edit,
+          content: content.trim() || ' ',
+          media_urls: mediaUrls.length > 0 ? mediaUrls : undefined,
+        });
 
-      Alert.alert('Başarılı', 'Gönderiniz paylaşıldı!', [
-        {
-          text: 'Tamam',
-          onPress: () => router.replace('/(tabs)/feed'),
-        },
-      ]);
+        Alert.alert('Başarılı', 'Gönderiniz güncellendi!', [
+          {
+            text: 'Tamam',
+            onPress: () => router.back(),
+          },
+        ]);
+      } else {
+        // Yeni gönderi oluştur
+        await createPostMutation.mutateAsync({
+          content: content.trim() || ' ',
+          district: profile.district,
+          media_urls: mediaUrls.length > 0 ? mediaUrls : undefined,
+          room_id: isGroupPost ? room_id : undefined, // Grup post'u için room_id ekle
+        });
+
+        Alert.alert('Başarılı', 'Gönderiniz paylaşıldı!', [
+          {
+            text: 'Tamam',
+            onPress: () => {
+              if (isGroupPost && room_id) {
+                router.replace(`/chat/${room_id}`);
+              } else {
+                router.replace('/(tabs)/feed');
+              }
+            },
+          },
+        ]);
+      }
     } catch (error) {
       console.error('Post oluşturma hatası:', error);
       const errorMessage = error instanceof Error ? error.message : 'Gönderi oluşturulurken bir hata oluştu';
@@ -149,7 +186,7 @@ export default function CreatePostScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
           <X size={24} color={COLORS.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Yeni Gönderi</Text>
+        <Text style={styles.headerTitle}>{isEditMode ? 'Gönderiyi Düzenle' : 'Yeni Gönderi'}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -247,13 +284,13 @@ export default function CreatePostScreen() {
 
         <TouchableOpacity
           onPress={handleSubmit}
-          disabled={isUploading}
-          style={[styles.shareButton, isUploading && styles.shareButtonDisabled]}
+          disabled={isUploading || isLoadingPost}
+          style={[styles.shareButton, (isUploading || isLoadingPost) && styles.shareButtonDisabled]}
         >
-          {isUploading ? (
+          {(isUploading || isLoadingPost) ? (
             <ActivityIndicator color={COLORS.white} size="small" />
           ) : (
-            <Text style={styles.shareButtonText}>Paylaş</Text>
+            <Text style={styles.shareButtonText}>{isEditMode ? 'Güncelle' : 'Paylaş'}</Text>
           )}
         </TouchableOpacity>
       </View>

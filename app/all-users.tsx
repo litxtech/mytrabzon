@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Search, MapPin, ChevronRight, Users, User, UserCheck } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
+import { CallButtons } from '@/components/CallButtons';
 
 interface UserListItem {
   id: string;
@@ -40,24 +41,22 @@ export default function AllUsersScreen() {
 
   const debouncedSearch = useDebounce(search, 500);
 
-  const { data, isLoading, isFetching, refetch } = trpc.user.getAllUsers.useQuery(
-    {
-      page,
-      limit: 20,
-      search: debouncedSearch,
-      gender: genderFilter,
-    },
-    {
-      keepPreviousData: true,
-      onSuccess: (newData) => {
-        if (page === 1) {
-          setAllUsers(newData.users);
-        } else {
-          setAllUsers((prev) => [...prev, ...newData.users]);
-        }
-      },
+  const { data, isLoading, isFetching, refetch } = trpc.user.getAllUsers.useQuery({
+    page,
+    limit: 20,
+    search: debouncedSearch,
+    gender: genderFilter,
+  });
+
+  useEffect(() => {
+    if (data) {
+      if (page === 1) {
+        setAllUsers(data.users);
+      } else {
+        setAllUsers((prev) => [...prev, ...data.users]);
+      }
     }
-  );
+  }, [data, page]);
 
   const handleLoadMore = useCallback(() => {
     if (data?.hasMore && !isFetching) {
@@ -121,7 +120,14 @@ export default function AllUsersScreen() {
             </Text>
           </View>
         </View>
-        <ChevronRight size={20} color={COLORS.textLight} />
+        <View style={styles.userActions}>
+          <CallButtons
+            targetUserId={item.id}
+            targetUserName={item.full_name}
+            targetUserAvatar={item.avatar_url || undefined}
+          />
+          <ChevronRight size={20} color={COLORS.textLight} />
+        </View>
       </TouchableOpacity>
     ),
     [handleUserPress]
@@ -408,6 +414,11 @@ const styles = StyleSheet.create({
   locationText: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
+  },
+  userActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
   },
   emptyContainer: {
     flex: 1,

@@ -22,9 +22,47 @@ import { addCommentProcedure } from "./routes/post/add-comment/route";
 import { getCommentsProcedure } from "./routes/post/get-comments/route";
 import { toggleCommentLikeProcedure } from "./routes/post/toggle-comment-like/route";
 import { sharePostProcedure } from "./routes/post/share-post/route";
+import { updatePostProcedure } from "./routes/post/update-post/route";
+import { getPersonalizedFeedProcedure } from "./routes/post/get-personalized-feed/route";
+import { getReelsFeedProcedure } from "./routes/post/get-reels-feed/route";
+import { getReelsProcedure } from "./routes/post/get-reels/route";
+import { uploadReelProcedure } from "./routes/post/upload-reel/route";
+import { trackPostViewProcedure } from "./routes/post/track-post-view/route";
+import { trackReelViewProcedure } from "./routes/post/track-reel-view/route";
+import { likeReelProcedure } from "./routes/post/like-reel/route";
+import { shareReelProcedure } from "./routes/post/share-reel/route";
 import { updateProfileProcedure } from "./routes/user/update-profile/route";
 import { uploadAvatarProcedure } from "./routes/user/upload-avatar/route";
 import { getProfileProcedure } from "./routes/user/get-profile/route";
+import { checkAdminProcedure } from "./routes/admin/check-admin/route";
+import { getUsersProcedure } from "./routes/admin/get-users/route";
+import { banUserProcedure } from "./routes/admin/ban-user/route";
+import { unbanUserProcedure } from "./routes/admin/unban-user/route";
+import { giveBlueTickProcedure } from "./routes/admin/give-blue-tick/route";
+import { removeBlueTickProcedure } from "./routes/admin/remove-blue-tick/route";
+import {
+  getPoliciesProcedure,
+  getAllPoliciesProcedure,
+  createPolicyProcedure,
+  updatePolicyProcedure,
+  deletePolicyProcedure,
+} from "./routes/admin/get-policies/route";
+import {
+  getCompanyInfoProcedure,
+  updateCompanyInfoProcedure,
+} from "./routes/admin/company-info/route";
+import { getStatsProcedure } from "./routes/admin/get-stats/route";
+import {
+  getSupportTicketsProcedure,
+  updateSupportTicketProcedure,
+} from "./routes/admin/support-tickets/route";
+import { createKycProcedure } from "./routes/kyc/create-kyc/route";
+import { getKycProcedure } from "./routes/kyc/get-kyc/route";
+import {
+  getKycRequestsProcedure,
+  approveKycProcedure,
+  rejectKycProcedure,
+} from "./routes/admin/kyc-requests/route";
 
 export const appRouter = createTRPCRouter({
   example: createTRPCRouter({
@@ -55,12 +93,46 @@ export const appRouter = createTRPCRouter({
     getPosts: getPostsProcedure,
     likePost: likePostProcedure,
     deletePost: deletePostProcedure,
+    updatePost: updatePostProcedure,
     uploadMedia: uploadPostMediaProcedure,
     getPostDetail: getPostDetailProcedure,
     addComment: addCommentProcedure,
     getComments: getCommentsProcedure,
     toggleCommentLike: toggleCommentLikeProcedure,
     sharePost: sharePostProcedure,
+    getPersonalizedFeed: getPersonalizedFeedProcedure,
+    getReelsFeed: getReelsFeedProcedure,
+    getReels: getReelsProcedure,
+    uploadReel: uploadReelProcedure,
+    trackPostView: trackPostViewProcedure,
+    trackReelView: trackReelViewProcedure,
+    likeReel: likeReelProcedure,
+    shareReel: shareReelProcedure,
+  }),
+  admin: createTRPCRouter({
+    checkAdmin: checkAdminProcedure,
+    getUsers: getUsersProcedure,
+    banUser: banUserProcedure,
+    unbanUser: unbanUserProcedure,
+    giveBlueTick: giveBlueTickProcedure,
+    removeBlueTick: removeBlueTickProcedure,
+    getPolicies: getPoliciesProcedure,
+    getAllPolicies: getAllPoliciesProcedure,
+    createPolicy: createPolicyProcedure,
+    updatePolicy: updatePolicyProcedure,
+    deletePolicy: deletePolicyProcedure,
+    getCompanyInfo: getCompanyInfoProcedure,
+    updateCompanyInfo: updateCompanyInfoProcedure,
+    getStats: getStatsProcedure,
+    getSupportTickets: getSupportTicketsProcedure,
+    updateSupportTicket: updateSupportTicketProcedure,
+    getKycRequests: getKycRequestsProcedure,
+    approveKyc: approveKycProcedure,
+    rejectKyc: rejectKycProcedure,
+  }),
+  kyc: createTRPCRouter({
+    create: createKycProcedure,
+    get: getKycProcedure,
   }),
 });
 

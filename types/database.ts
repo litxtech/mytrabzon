@@ -85,6 +85,23 @@ export interface UserProfile {
 }
 
 export interface Post {
+  post_type?: 'image' | 'video' | 'reel';
+  type?: 'image' | 'video' | 'reel'; // Reels için
+  video_url?: string; // Reels için
+  thumbnail_url?: string; // Reels için
+  width?: number; // Reels için
+  height?: number; // Reels için
+  duration_seconds?: number; // Reels için
+  tags?: string[]; // Reels için
+  video_metadata?: {
+    width?: number;
+    height?: number;
+    duration?: number;
+    video_url?: string;
+    thumbnail_url?: string;
+  };
+  save_count?: number;
+  view_count?: number;
   id: string;
   author_id: string;
   content: string;

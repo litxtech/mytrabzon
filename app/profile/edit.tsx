@@ -14,11 +14,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
 import { DISTRICTS, getDistrictsByCity } from '@/constants/districts';
-import { CITIES, GENDERS, SOCIAL_MEDIA_PLATFORMS, City, Gender } from '@/constants/cities';
+import { CITIES, GENDERS, SOCIAL_MEDIA_PLATFORMS, City } from '@/constants/cities';
 import { Camera, Trash2, ChevronDown, Eye, EyeOff, Save, Users } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { SocialMedia, PrivacySettings } from '@/types/database';
 import { trpc } from '@/lib/trpc';
 
@@ -47,6 +47,21 @@ export default function EditProfileScreen() {
     onError: (error) => {
       console.error('❌ Profile update error:', error);
       Alert.alert('Hata', `Profil güncellenirken bir hata oluştu: ${error.message}`);
+    },
+  });
+
+  const uploadAvatarMutation = trpc.user.uploadAvatar.useMutation({
+    onSuccess: async (result) => {
+      if (result?.url) {
+        console.log('✅ Avatar uploaded successfully, URL:', result.url);
+        // Profile otomatik güncellendi, refresh et
+        await refreshProfile();
+        Alert.alert('Başarılı', 'Profil resmi güncellendi.');
+      }
+    },
+    onError: (error) => {
+      console.error('❌ Avatar upload error:', error);
+      Alert.alert('Hata', `Profil resmi yüklenirken bir hata oluştu: ${error.message}`);
     },
   });
 
@@ -122,27 +137,21 @@ export default function EditProfileScreen() {
     try {
       setUploading(true);
 
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      
+      // React Native'de blob() çalışmıyor, base64 kullan
       const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
-      const fileName = `${profile?.id}/${Date.now()}.${fileExt}`;
+      const fileName = `${Date.now()}.${fileExt}`;
+      
+      // Base64'e çevir
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: 'base64' as any,
+      });
 
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(fileName, blob, {
-          contentType: `image/${fileExt}`,
-          upsert: true,
-        });
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(fileName);
-
-      updateProfileMutation.mutate({ avatar_url: publicUrl });
-      Alert.alert('Başarılı', 'Profil resmi güncellendi.');
+      // tRPC uploadAvatar mutation'ını kullan
+      await uploadAvatarMutation.mutateAsync({
+        base64Data: base64,
+        fileType: `image/${fileExt}`,
+        fileName: fileName,
+      });
     } catch (error) {
       console.error('Avatar upload error:', error);
       Alert.alert('Hata', 'Profil resmi yüklenirken bir hata oluştu.');

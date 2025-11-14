@@ -26,18 +26,34 @@ export const [AuthContext, useAuth] = createContextHook(() => {
 
     if (!data) {
       console.warn('Profile not found, creating one...');
+      
+      // User bilgisini al
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      
+      // Email kolonu olmayabilir, kontrol et
+      const profileData: any = {
+        id: userId,
+        full_name: currentUser?.user_metadata?.full_name || 'Kullanıcı',
+        district: currentUser?.user_metadata?.district || 'Ortahisar',
+      };
+      
+      // Email kolonu varsa ekle
+      if (currentUser?.email) {
+        profileData.email = currentUser.email;
+      }
+      
       const { error: insertError } = await supabase
         .from('profiles')
-        .insert({
-          id: userId,
-          email: '',
-          full_name: 'Kullanıcı',
-          district: 'Ortahisar',
-        });
+        .insert(profileData);
       
       if (insertError) {
-        console.error('Failed to create profile:', insertError);
-        throw new Error('Profil oluşturulamadı');
+        console.error('Failed to create profile:', {
+          message: insertError.message,
+          details: insertError.details,
+          hint: insertError.hint,
+          code: insertError.code,
+        });
+        throw new Error(`Profil oluşturulamadı: ${insertError.message}`);
       }
       
       const { data: newProfile, error: newError } = await supabase

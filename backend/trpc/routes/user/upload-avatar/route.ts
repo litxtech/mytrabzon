@@ -42,7 +42,7 @@ export const uploadAvatarProcedure = protectedProcedure
     } = supabase.storage.from("avatars").getPublicUrl(data.path);
 
     const { error: updateError } = await supabase
-      .from("user_profiles")
+      .from("profiles")
       .update({ avatar_url: publicUrl })
       .eq("id", user.id);
 

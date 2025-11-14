@@ -33,6 +33,14 @@ export default function PostDetailScreen() {
   const { user } = useAuth();
   const [commentText, setCommentText] = useState('');
 
+  const formatCount = (count: number | null | undefined): string => {
+    if (!count) return '0';
+    if (count >= 1000) {
+      return `${(count / 1000).toFixed(1)}K`;
+    }
+    return count.toString();
+  };
+
   const { data: post, isLoading, refetch } = trpc.post.getPostDetail.useQuery({
     postId: id!,
   });
@@ -127,7 +135,7 @@ export default function PostDetailScreen() {
               <Text style={styles.postAuthor}>{post.author?.full_name}</Text>
               <View style={styles.postMeta}>
                 <Text style={styles.postDistrict}>
-                  {DISTRICT_BADGES[post.district]} {post.district}
+                  {DISTRICT_BADGES[post.district as keyof typeof DISTRICT_BADGES] || '📍'} {post.district}
                 </Text>
                 <Text style={styles.postTime}>
                   {' • '}
@@ -150,7 +158,7 @@ export default function PostDetailScreen() {
 
           {post.media && post.media.length > 0 && (
             <ScrollView horizontal pagingEnabled style={styles.mediaContainer}>
-              {post.media.map((mediaItem, index) => (
+              {post.media.map((mediaItem: any, index: number) => (
                 <Image
                   key={index}
                   source={{ uri: mediaItem.path }}
@@ -168,15 +176,15 @@ export default function PostDetailScreen() {
                 color={post.is_liked ? COLORS.error : COLORS.textLight}
                 fill={post.is_liked ? COLORS.error : 'transparent'}
               />
-              <Text style={styles.actionText}>{post.like_count || 0}</Text>
+              <Text style={styles.actionText}>{formatCount(post.like_count)}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.actionButton}>
               <MessageCircle size={24} color={COLORS.textLight} />
-              <Text style={styles.actionText}>{post.comment_count || 0}</Text>
+              <Text style={styles.actionText}>{formatCount(post.comment_count)}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.actionButton}>
               <Share2 size={24} color={COLORS.textLight} />
-              <Text style={styles.actionText}>{post.share_count || 0}</Text>
+              <Text style={styles.actionText}>{formatCount(post.share_count)}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -304,8 +312,10 @@ const styles = StyleSheet.create({
     maxHeight: 400,
   },
   postImage: {
-    width: 400,
-    height: 400,
+    width: '100%',
+    aspectRatio: 16 / 9, // Responsive aspect ratio
+    maxHeight: 400,
+    minHeight: 200,
   },
   postActions: {
     flexDirection: 'row' as const,
@@ -391,6 +401,7 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
     maxHeight: 100,
+    minHeight: 40,
   },
   sendButton: {
     width: 36,
