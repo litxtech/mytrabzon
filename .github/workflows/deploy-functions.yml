@@ -32,6 +32,13 @@ jobs:
           echo "🚀 Deploying all Supabase Edge Functions..."
           echo "🔍 Auto-detecting functions in supabase/functions/..."
           
+          # PROJECT_REF'i bir kez tanımla (döngü dışında)
+          PROJECT_REF="${{ secrets.SUPABASE_PROJECT_REF }}"
+          if [ -z "$PROJECT_REF" ]; then
+            PROJECT_REF="xcvcplwimicylaxghiak"
+          fi
+          echo "📌 Using project ref: $PROJECT_REF"
+          
           # Otomatik olarak supabase/functions/ klasöründeki TÜM fonksiyonları bul
           FAILED_FUNCTIONS=()
           SUCCESSFUL_FUNCTIONS=()
@@ -52,16 +59,12 @@ jobs:
             echo "----------------------------------------"
             
             # Her function'ı deploy et (başarısız olsa bile devam et)
-            PROJECT_REF="${{ secrets.SUPABASE_PROJECT_REF }}"
-            if [ -z "$PROJECT_REF" ]; then
-              PROJECT_REF="xcvcplwimicylaxghiak"
-            fi
-            
             if supabase functions deploy "$fn_name" --project-ref "$PROJECT_REF" --no-verify-jwt; then
               echo "✅ Successfully deployed $fn_name"
               SUCCESSFUL_FUNCTIONS+=("$fn_name")
             else
-              echo "❌ Failed to deploy $fn_name"
+              DEPLOY_EXIT_CODE=$?
+              echo "❌ Failed to deploy $fn_name (exit code: $DEPLOY_EXIT_CODE)"
               FAILED_FUNCTIONS+=("$fn_name")
             fi
           done
@@ -104,6 +107,6 @@ jobs:
           if [ -z "$PROJECT_REF" ]; then
             PROJECT_REF="xcvcplwimicylaxghiak"
           fi
-          supabase functions list --project-ref "$PROJECT_REF"
+          supabase functions list --project-ref "$PROJECT_REF" || echo "⚠️  Could not list functions (non-critical)"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
