@@ -43,27 +43,71 @@ jobs:
         run: |
           echo "🚀 Deploying all Supabase Edge Functions..."
           
-          # Functions dizinindeki tüm klasörleri bul ve deploy et
-          for fn in $(ls -d supabase/functions/*/); do
-            fn_name=$(basename "$fn")
+          # Deploy edilecek fonksiyonların listesi
+          FUNCTIONS=(
+            "admin-worker"
+            "trpc"
+            "chat-get-rooms"
+            "chat-get-messages"
+            "chat-send-message"
+            "chat-create-room"
+            "chat-mark-as-read"
+            "chat-delete-message"
+            "chat-add-reaction"
+            "chat-block-user"
+            "chat-unblock-user"
+            "kyc-create"
+            "kyc-get"
+            "signup-init"
+          )
+          
+          FAILED_FUNCTIONS=()
+          SUCCESSFUL_FUNCTIONS=()
+          
+          # Her fonksiyonu deploy et
+          for fn_name in "${FUNCTIONS[@]}"; do
+            # Fonksiyon dizini var mı kontrol et
+            if [ ! -d "supabase/functions/$fn_name" ]; then
+              echo "⚠️  Skipping $fn_name (directory not found)"
+              continue
+            fi
             
-            # signup-init gibi özel function'ları atla (eğer gerekirse)
-            # if [ "$fn_name" = "signup-init" ]; then
-            #   continue
-            # fi
-            
+            echo ""
             echo "📦 Deploying function: $fn_name"
+            echo "----------------------------------------"
             
-            # Her function'ı deploy et
-            supabase functions deploy "$fn_name" --no-verify-jwt || {
+            # Her function'ı deploy et (başarısız olsa bile devam et)
+            if supabase functions deploy "$fn_name" --no-verify-jwt; then
+              echo "✅ Successfully deployed $fn_name"
+              SUCCESSFUL_FUNCTIONS+=("$fn_name")
+            else
               echo "❌ Failed to deploy $fn_name"
-              exit 1
-            }
-            
-            echo "✅ Successfully deployed $fn_name"
+              FAILED_FUNCTIONS+=("$fn_name")
+            fi
           done
           
-          echo "🎉 All functions deployed successfully!"
+          echo ""
+          echo "=========================================="
+          echo "📊 Deployment Summary"
+          echo "=========================================="
+          echo "✅ Successful: ${#SUCCESSFUL_FUNCTIONS[@]} functions"
+          for fn in "${SUCCESSFUL_FUNCTIONS[@]}"; do
+            echo "   - $fn"
+          done
+          
+          if [ ${#FAILED_FUNCTIONS[@]} -gt 0 ]; then
+            echo ""
+            echo "❌ Failed: ${#FAILED_FUNCTIONS[@]} functions"
+            for fn in "${FAILED_FUNCTIONS[@]}"; do
+              echo "   - $fn"
+            done
+            echo ""
+            echo "⚠️  Some functions failed to deploy. Check logs above."
+            exit 1
+          else
+            echo ""
+            echo "🎉 All functions deployed successfully!"
+          fi
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
