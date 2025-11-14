@@ -45,6 +45,7 @@ const appRouter = createTRPCRouter({
           address: z.string().optional(),
           height: z.number().optional(),
           weight: z.number().optional(),
+          username: z.string().min(3).max(30).regex(/^[a-zA-Z0-9._]+$/).optional(),
           social_media: z.object({
             instagram: z.string().optional(),
             twitter: z.string().optional(),
@@ -88,6 +89,45 @@ const appRouter = createTRPCRouter({
         const updateData: Record<string, unknown> = {};
 
         if (!user) throw new Error("Unauthorized");
+
+        // Username validation ve availability check
+        if (input.username !== undefined) {
+          const trimmedUsername = input.username.trim().toLowerCase();
+          
+          // Validation kuralları
+          if (trimmedUsername.length < 3) {
+            throw new Error("Kullanıcı adı en az 3 karakter olmalıdır");
+          }
+          if (trimmedUsername.length > 30) {
+            throw new Error("Kullanıcı adı en fazla 30 karakter olabilir");
+          }
+          if (!/^[a-zA-Z0-9._]+$/.test(trimmedUsername)) {
+            throw new Error("Kullanıcı adı sadece harf, rakam, nokta ve alt çizgi içerebilir");
+          }
+          if (trimmedUsername.startsWith('.') || trimmedUsername.endsWith('.')) {
+            throw new Error("Kullanıcı adı nokta ile başlayamaz veya bitemez");
+          }
+          if (trimmedUsername.includes('..')) {
+            throw new Error("Kullanıcı adı ardışık nokta içeremez");
+          }
+
+          // Availability check (RPC function kullan)
+          const { data: isAvailable, error: checkError } = await supabase.rpc('is_username_available', {
+            p_username: trimmedUsername,
+            p_user_id: user.id,
+          });
+
+          if (checkError) {
+            console.error("Username availability check error:", checkError);
+            throw new Error("Kullanıcı adı kontrolü sırasında bir hata oluştu");
+          }
+
+          if (!isAvailable) {
+            throw new Error("Bu kullanıcı adı zaten kullanılıyor");
+          }
+
+          updateData.username = trimmedUsername;
+        }
 
         if (input.full_name !== undefined) updateData.full_name = input.full_name;
         if (input.bio !== undefined) updateData.bio = input.bio;
@@ -136,6 +176,65 @@ const appRouter = createTRPCRouter({
           created_at: data.created_at ? new Date(data.created_at).toISOString() : null,
           updated_at: data.updated_at ? new Date(data.updated_at).toISOString() : null,
         };
+      }),
+
+    checkUsername: publicProcedure
+      .input(z.object({ username: z.string().min(1) }))
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        const trimmedUsername = input.username.trim().toLowerCase();
+
+        // Validation
+        if (trimmedUsername.length < 3) {
+          return { available: false, valid: false, message: "Kullanıcı adı en az 3 karakter olmalıdır" };
+        }
+        if (trimmedUsername.length > 30) {
+          return { available: false, valid: false, message: "Kullanıcı adı en fazla 30 karakter olabilir" };
+        }
+        if (!/^[a-zA-Z0-9._]+$/.test(trimmedUsername)) {
+          return { available: false, valid: false, message: "Kullanıcı adı sadece harf, rakam, nokta ve alt çizgi içerebilir" };
+        }
+        if (trimmedUsername.startsWith('.') || trimmedUsername.endsWith('.')) {
+          return { available: false, valid: false, message: "Kullanıcı adı nokta ile başlayamaz veya bitemez" };
+        }
+        if (trimmedUsername.includes('..')) {
+          return { available: false, valid: false, message: "Kullanıcı adı ardışık nokta içeremez" };
+        }
+
+        // Availability check
+        const { data: isAvailable, error } = await supabase.rpc('is_username_available', {
+          p_username: trimmedUsername,
+          p_user_id: user?.id || null,
+        });
+
+        if (error) {
+          console.error("Username availability check error:", error);
+          return { available: false, valid: true, message: "Kontrol sırasında bir hata oluştu" };
+        }
+
+        return {
+          available: isAvailable || false,
+          valid: true,
+          message: isAvailable ? "Bu kullanıcı adı müsait" : "Bu kullanıcı adı zaten kullanılıyor",
+        };
+      }),
+
+    suggestUsername: publicProcedure
+      .input(z.object({ base: z.string().optional() }))
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+        const base = input.base?.trim() || 'user';
+
+        const { data: suggestions, error } = await supabase.rpc('suggest_username', {
+          p_base_username: base,
+        });
+
+        if (error) {
+          console.error("Username suggestion error:", error);
+          return { suggestions: [] };
+        }
+
+        return { suggestions: suggestions || [] };
       }),
 
     uploadAvatar: protectedProcedure
@@ -885,6 +984,8 @@ const appRouter = createTRPCRouter({
     getPersonalizedFeed: protectedProcedure
       .input(
         z.object({
+          district: z.string().optional(),
+          sort: z.enum(["new", "hot", "trending"]).default("new"),
           limit: z.number().min(1).max(50).default(20),
           offset: z.number().min(0).default(0),
         })
@@ -893,18 +994,81 @@ const appRouter = createTRPCRouter({
         const { supabase, user } = ctx;
         if (!user) throw new Error("Unauthorized");
 
-        const { data, error } = await supabase.rpc('get_personalized_feed', {
-          p_user_id: user.id,
-          p_limit: input.limit,
-          p_offset: input.offset,
-        });
+        // Önce takip edilen kullanıcıları al
+        const { data: following } = await supabase
+          .from('user_follows')
+          .select('following_id')
+          .eq('follower_id', user.id);
+
+        const followingIds = following?.map(f => f.following_id) || [];
+        followingIds.push(user.id); // Kendi gönderilerini de ekle
+
+        // Post sorgusu oluştur
+        let query = supabase
+          .from("posts")
+          .select(
+            `
+            *,
+            author:profiles!posts_author_id_fkey(*)
+          `,
+            { count: "exact" }
+          )
+          .eq("archived", false)
+          .eq("is_deleted", false)
+          .is('room_id', null)
+          .eq("visibility", "public");
+
+        // Takip edilen kullanıcıların gönderileri + kendi gönderileri
+        if (followingIds.length > 0) {
+          query = query.in("author_id", followingIds);
+        } else {
+          // Takip edilen yoksa sadece kendi gönderilerini göster
+          query = query.eq("author_id", user.id);
+        }
+
+        // District filtresi
+        if (input.district && input.district !== "all") {
+          query = query.eq("district", input.district);
+        }
+
+        // Sorting
+        if (input.sort === "new") {
+          query = query.order("created_at", { ascending: false });
+        } else if (input.sort === "hot" || input.sort === "trending") {
+          query = query.order("like_count", { ascending: false });
+          query = query.order("created_at", { ascending: false });
+        }
+
+        query = query.range(input.offset, input.offset + input.limit - 1);
+
+        const { data, error, count } = await query;
 
         if (error) {
           console.error("Error fetching personalized feed:", error);
           throw new Error(error.message);
         }
 
-        return data || [];
+        // Like durumlarını kontrol et
+        let postsWithLikes = data || [];
+        const postIds = postsWithLikes.map((p: any) => p.id);
+        if (postIds.length > 0) {
+          const { data: likes } = await supabase
+            .from("post_likes")
+            .select("post_id")
+            .in("post_id", postIds)
+            .eq("user_id", user.id);
+
+          const likedPostIds = new Set(likes?.map((l: any) => l.post_id) || []);
+          postsWithLikes = postsWithLikes.map((post: any) => ({
+            ...post,
+            is_liked: likedPostIds.has(post.id)
+          }));
+        }
+
+        return {
+          posts: postsWithLikes,
+          total: count || 0,
+        };
       }),
 
     getReelsFeed: protectedProcedure
@@ -2033,6 +2197,1472 @@ const appRouter = createTRPCRouter({
           total: count || 0,
           hasMore: count ? input.offset + input.limit < count : false,
         };
+      }),
+  }),
+
+  // ===================================================================
+  // HALI SAHA UYGULAMASI ROUTER
+  // ===================================================================
+  football: createTRPCRouter({
+    // 1. "Bugün maç var mı?" - Ana özellik
+    getTodayMatches: publicProcedure
+      .input(
+        z.object({
+          city: z.enum(['Trabzon', 'Giresun']).optional(),
+          limit: z.number().min(1).max(100).default(20),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+        const today = new Date().toISOString().split('T')[0];
+
+        let query = supabase
+          .from('matches')
+          .select(`
+            *,
+            team1:teams!matches_team1_id_fkey(id, name, logo_url, jersey_color),
+            team2:teams!matches_team2_id_fkey(id, name, logo_url, jersey_color),
+            field:football_fields(id, name, district, address),
+            organizer:profiles!matches_organizer_id_fkey(id, full_name, avatar_url)
+          `, { count: 'exact' })
+          .eq('match_date', today)
+          .in('status', ['scheduled', 'looking_for_opponent', 'looking_for_players'])
+          .order('start_time', { ascending: true })
+          .range(input.offset, input.offset + input.limit - 1);
+
+        if (input.city) {
+          query = query.eq('city', input.city);
+        }
+
+        const { data, error, count } = await query;
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return {
+          matches: data || [],
+          total: count || 0,
+          hasMore: count ? input.offset + input.limit < count : false,
+        };
+      }),
+
+    // 2. Eksik oyuncu sistemi
+    createMissingPlayerPost: protectedProcedure
+      .input(
+        z.object({
+          match_id: z.string().uuid(),
+          position_needed: z.enum(['goalkeeper', 'defender', 'midfielder', 'forward', 'any']),
+          city: z.enum(['Trabzon', 'Giresun']),
+          district: z.string().optional(),
+          field_name: z.string().optional(),
+          match_time: z.string(),
+          expires_at: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Maç bilgisini kontrol et
+        const { data: match } = await supabase
+          .from('matches')
+          .select('id, organizer_id, match_date, start_time')
+          .eq('id', input.match_id)
+          .single();
+
+        if (!match) throw new TRPCError({ code: 'NOT_FOUND', message: 'Maç bulunamadı' });
+
+        const { data, error } = await supabase
+          .from('missing_player_posts')
+          .insert({
+            match_id: input.match_id,
+            posted_by: user.id,
+            position_needed: input.position_needed,
+            city: input.city,
+            district: input.district,
+            field_name: input.field_name,
+            match_time: input.match_time,
+            expires_at: input.expires_at || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          })
+          .select()
+          .single();
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        // Maç durumunu güncelle
+        await supabase
+          .from('matches')
+          .update({ status: 'looking_for_players', missing_players_count: 1 })
+          .eq('id', input.match_id);
+
+        return data;
+      }),
+
+    getMissingPlayerPosts: publicProcedure
+      .input(
+        z.object({
+          city: z.enum(['Trabzon', 'Giresun']).optional(),
+          position: z.enum(['goalkeeper', 'defender', 'midfielder', 'forward', 'any']).optional(),
+          limit: z.number().min(1).max(100).default(20),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+
+        let query = supabase
+          .from('missing_player_posts')
+          .select(`
+            *,
+            match:matches(id, match_date, start_time, field_id, team1_id),
+            posted_by_user:profiles!missing_player_posts_posted_by_fkey(id, full_name, avatar_url),
+            field:matches!missing_player_posts_match_id_fkey(football_fields(id, name, district, address))
+          `, { count: 'exact' })
+          .eq('is_filled', false)
+          .gt('expires_at', new Date().toISOString())
+          .order('match_time', { ascending: true })
+          .range(input.offset, input.offset + input.limit - 1);
+
+        if (input.city) {
+          query = query.eq('city', input.city);
+        }
+        if (input.position) {
+          query = query.eq('position_needed', input.position);
+        }
+
+        const { data, error, count } = await query;
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return {
+          posts: data || [],
+          total: count || 0,
+          hasMore: count ? input.offset + input.limit < count : false,
+        };
+      }),
+
+    applyToMissingPlayerPost: protectedProcedure
+      .input(
+        z.object({
+          post_id: z.string().uuid(),
+          message: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // İlanı kontrol et
+        const { data: post } = await supabase
+          .from('missing_player_posts')
+          .select('id, is_filled, match_id')
+          .eq('id', input.post_id)
+          .single();
+
+        if (!post) throw new TRPCError({ code: 'NOT_FOUND', message: 'İlan bulunamadı' });
+        if (post.is_filled) throw new TRPCError({ code: 'BAD_REQUEST', message: 'İlan zaten doldurulmuş' });
+
+        // Başvuru oluştur
+        const { data, error } = await supabase
+          .from('missing_player_applications')
+          .insert({
+            post_id: input.post_id,
+            applicant_id: user.id,
+            message: input.message,
+          })
+          .select()
+          .single();
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return data;
+      }),
+
+    acceptMissingPlayerApplication: protectedProcedure
+      .input(
+        z.object({
+          application_id: z.string().uuid(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Başvuruyu kontrol et
+        const { data: application } = await supabase
+          .from('missing_player_applications')
+          .select(`
+            *,
+            post:missing_player_posts(id, posted_by, match_id, is_filled)
+          `)
+          .eq('id', input.application_id)
+          .single();
+
+        if (!application) throw new TRPCError({ code: 'NOT_FOUND' });
+        if (application.post.posted_by !== user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Bu ilanı yönetme yetkiniz yok' });
+        }
+        if (application.post.is_filled) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'İlan zaten doldurulmuş' });
+        }
+
+        // Başvuruyu kabul et
+        await supabase
+          .from('missing_player_applications')
+          .update({ status: 'accepted', responded_at: new Date().toISOString() })
+          .eq('id', input.application_id);
+
+        // Diğer başvuruları reddet
+        await supabase
+          .from('missing_player_applications')
+          .update({ status: 'rejected', responded_at: new Date().toISOString() })
+          .eq('post_id', application.post.id)
+          .neq('id', input.application_id)
+          .eq('status', 'pending');
+
+        // İlanı doldurulmuş olarak işaretle
+        await supabase
+          .from('missing_player_posts')
+          .update({
+            is_filled: true,
+            filled_by: application.applicant_id,
+            filled_at: new Date().toISOString(),
+          })
+          .eq('id', application.post.id);
+
+        // Maça katılımcı olarak ekle
+        await supabase
+          .from('match_participants')
+          .insert({
+            match_id: application.post.match_id,
+            user_id: application.applicant_id,
+            is_confirmed: true,
+            confirmed_at: new Date().toISOString(),
+          });
+
+        // Bildirim oluştur
+        await supabase
+          .from('football_notifications')
+          .insert({
+            user_id: application.applicant_id,
+            type: 'application_accepted',
+            title: 'Başvurunuz kabul edildi!',
+            message: 'Eksik oyuncu ilanına başvurunuz kabul edildi. Maça katılabilirsiniz.',
+            data: { match_id: application.post.match_id, post_id: application.post.id },
+          });
+
+        return { success: true };
+      }),
+
+    // 3. Takım sistemi
+    createTeam: protectedProcedure
+      .input(
+        z.object({
+          name: z.string().min(1).max(100),
+          city: z.enum(['Trabzon', 'Giresun']),
+          logo_url: z.string().optional(),
+          jersey_color: z.string().optional(),
+          description: z.string().optional(),
+          is_university_team: z.boolean().default(false),
+          university_id: z.string().uuid().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const { data, error } = await supabase
+          .from('teams')
+          .insert({
+            name: input.name,
+            city: input.city,
+            logo_url: input.logo_url,
+            jersey_color: input.jersey_color,
+            description: input.description,
+            captain_id: user.id,
+            is_university_team: input.is_university_team,
+            university_id: input.university_id,
+          })
+          .select()
+          .single();
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        // Kaptanı takım üyesi olarak ekle
+        await supabase
+          .from('team_members')
+          .insert({
+            team_id: data.id,
+            user_id: user.id,
+            role: 'captain',
+            is_active: true,
+          });
+
+        return data;
+      }),
+
+    getTeams: publicProcedure
+      .input(
+        z.object({
+          city: z.enum(['Trabzon', 'Giresun']).optional(),
+          is_university_team: z.boolean().optional(),
+          limit: z.number().min(1).max(100).default(20),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+
+        let query = supabase
+          .from('teams')
+          .select(`
+            *,
+            captain:profiles!teams_captain_id_fkey(id, full_name, avatar_url)
+          `, { count: 'exact' })
+          .eq('is_active', true)
+          .order('points', { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+
+        if (input.city) {
+          query = query.eq('city', input.city);
+        }
+        if (input.is_university_team !== undefined) {
+          query = query.eq('is_university_team', input.is_university_team);
+        }
+
+        const { data, error, count } = await query;
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return {
+          teams: data || [],
+          total: count || 0,
+          hasMore: count ? input.offset + input.limit < count : false,
+        };
+      }),
+
+    // 4. Rakip bulma
+    createOpponentRequest: protectedProcedure
+      .input(
+        z.object({
+          team_id: z.string().uuid(),
+          field_id: z.string().uuid(),
+          match_date: z.string(),
+          start_time: z.string(),
+          city: z.enum(['Trabzon', 'Giresun']),
+          district: z.string().optional(),
+          match_type: z.enum(['friendly', 'league', 'tournament']).default('friendly'),
+          preferred_team_level: z.enum(['beginner', 'intermediate', 'advanced', 'any']).optional(),
+          notes: z.string().optional(),
+          expires_at: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Takım kaptanı kontrolü
+        const { data: team } = await supabase
+          .from('teams')
+          .select('id, captain_id')
+          .eq('id', input.team_id)
+          .single();
+
+        if (!team) throw new TRPCError({ code: 'NOT_FOUND', message: 'Takım bulunamadı' });
+        if (team.captain_id !== user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Sadece takım kaptanı rakip bulma ilanı açabilir' });
+        }
+
+        const { data, error } = await supabase
+          .from('opponent_requests')
+          .insert({
+            team_id: input.team_id,
+            posted_by: user.id,
+            field_id: input.field_id,
+            match_date: input.match_date,
+            start_time: input.start_time,
+            city: input.city,
+            district: input.district,
+            match_type: input.match_type,
+            preferred_team_level: input.preferred_team_level,
+            notes: input.notes,
+            expires_at: input.expires_at || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          })
+          .select()
+          .single();
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return data;
+      }),
+
+    getOpponentRequests: publicProcedure
+      .input(
+        z.object({
+          city: z.enum(['Trabzon', 'Giresun']).optional(),
+          limit: z.number().min(1).max(100).default(20),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+
+        let query = supabase
+          .from('opponent_requests')
+          .select(`
+            *,
+            team:teams(id, name, logo_url, jersey_color, city),
+            field:football_fields(id, name, district, address),
+            posted_by_user:profiles!opponent_requests_posted_by_fkey(id, full_name, avatar_url)
+          `, { count: 'exact' })
+          .eq('is_filled', false)
+          .gt('expires_at', new Date().toISOString())
+          .order('match_date', { ascending: true })
+          .range(input.offset, input.offset + input.limit - 1);
+
+        if (input.city) {
+          query = query.eq('city', input.city);
+        }
+
+        const { data, error, count } = await query;
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return {
+          requests: data || [],
+          total: count || 0,
+          hasMore: count ? input.offset + input.limit < count : false,
+        };
+      }),
+
+    // 5. Saha rehberi
+    getFields: publicProcedure
+      .input(
+        z.object({
+          city: z.enum(['Trabzon', 'Giresun']).optional(),
+          district: z.string().optional(),
+          limit: z.number().min(1).max(100).default(20),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+
+        let query = supabase
+          .from('football_fields')
+          .select('*', { count: 'exact' })
+          .eq('is_active', true)
+          .order('rating', { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+
+        if (input.city) {
+          query = query.eq('city', input.city);
+        }
+        if (input.district) {
+          query = query.eq('district', input.district);
+        }
+
+        const { data, error, count } = await query;
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return {
+          fields: data || [],
+          total: count || 0,
+          hasMore: count ? input.offset + input.limit < count : false,
+        };
+      }),
+
+    getFieldDetails: publicProcedure
+      .input(z.object({ field_id: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+
+        const { data, error } = await supabase
+          .from('football_fields')
+          .select(`
+            *,
+            reviews:field_reviews(rating, comment, created_at, user:profiles(id, full_name, avatar_url))
+          `)
+          .eq('id', input.field_id)
+          .single();
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        if (!data) throw new TRPCError({ code: 'NOT_FOUND' });
+
+        return data;
+      }),
+
+    // 6. Oyuncu istatistikleri
+    getPlayerStats: publicProcedure
+      .input(
+        z.object({
+          user_id: z.string().uuid(),
+          team_id: z.string().uuid().optional(),
+          limit: z.number().min(1).max(100).default(20),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+
+        let query = supabase
+          .from('player_stats')
+          .select(`
+            *,
+            match:matches(id, match_date, team1_id, team2_id, team1_score, team2_score)
+          `, { count: 'exact' })
+          .eq('user_id', input.user_id)
+          .order('match_date', { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+
+        if (input.team_id) {
+          query = query.eq('team_id', input.team_id);
+        }
+
+        const { data, error, count } = await query;
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        // Toplam istatistikler
+        const { data: totals } = await supabase
+          .from('player_stats')
+          .select('goals, assists, matches:match_id')
+          .eq('user_id', input.user_id);
+
+        const totalGoals = totals?.reduce((sum, stat) => sum + (stat.goals || 0), 0) || 0;
+        const totalAssists = totals?.reduce((sum, stat) => sum + (stat.assists || 0), 0) || 0;
+        const totalMatches = new Set(totals?.map(s => s.matches) || []).size;
+
+        return {
+          stats: data || [],
+          total: count || 0,
+          hasMore: count ? input.offset + input.limit < count : false,
+          totals: {
+            goals: totalGoals,
+            assists: totalAssists,
+            matches: totalMatches,
+          },
+        };
+      }),
+
+    // 7. Maç oluşturma
+    createMatch: protectedProcedure
+      .input(
+        z.object({
+          team1_id: z.string().uuid(),
+          team2_id: z.string().uuid().optional(),
+          field_id: z.string().uuid(),
+          match_date: z.string(),
+          start_time: z.string(),
+          end_time: z.string().optional(),
+          city: z.enum(['Trabzon', 'Giresun']),
+          district: z.string().optional(),
+          match_type: z.enum(['friendly', 'league', 'tournament', 'university']).default('friendly'),
+          status: z.enum(['scheduled', 'looking_for_opponent', 'looking_for_players']).default('scheduled'),
+          missing_players_count: z.number().default(0),
+          missing_positions: z.array(z.enum(['goalkeeper', 'defender', 'midfielder', 'forward'])).optional(),
+          is_public: z.boolean().default(true),
+          max_players: z.number().default(10),
+          notes: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const { data, error } = await supabase
+          .from('matches')
+          .insert({
+            team1_id: input.team1_id,
+            team2_id: input.team2_id,
+            field_id: input.field_id,
+            match_date: input.match_date,
+            start_time: input.start_time,
+            end_time: input.end_time,
+            city: input.city,
+            district: input.district,
+            match_type: input.match_type,
+            status: input.status,
+            organizer_id: user.id,
+            missing_players_count: input.missing_players_count,
+            missing_positions: input.missing_positions,
+            is_public: input.is_public,
+            max_players: input.max_players,
+            notes: input.notes,
+          })
+          .select()
+          .single();
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return data;
+      }),
+
+    // 8. Takım detayı
+    getTeamDetails: publicProcedure
+      .input(z.object({ team_id: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+
+        const { data, error } = await supabase
+          .from('teams')
+          .select(`
+            *,
+            captain:profiles!teams_captain_id_fkey(id, full_name, avatar_url),
+            members:team_members(
+              id,
+              role,
+              position,
+              jersey_number,
+              joined_at,
+              is_active,
+              user:profiles!team_members_user_id_fkey(id, full_name, avatar_url)
+            )
+          `)
+          .eq('id', input.team_id)
+          .single();
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        if (!data) throw new TRPCError({ code: 'NOT_FOUND' });
+
+        // Kullanıcının takım üyeliğini kontrol et
+        if (user) {
+          const { data: membership } = await supabase
+            .from('team_members')
+            .select('role, position, jersey_number')
+            .eq('team_id', input.team_id)
+            .eq('user_id', user.id)
+            .single();
+          
+          data.user_membership = membership || null;
+          data.is_captain = data.captain_id === user.id;
+        }
+
+        return data;
+      }),
+
+    // 9. Takım güncelleme
+    updateTeam: protectedProcedure
+      .input(
+        z.object({
+          team_id: z.string().uuid(),
+          name: z.string().min(1).max(100).optional(),
+          logo_url: z.string().optional(),
+          jersey_color: z.string().optional(),
+          description: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Kaptan kontrolü
+        const { data: team } = await supabase
+          .from('teams')
+          .select('id, captain_id')
+          .eq('id', input.team_id)
+          .single();
+
+        if (!team) throw new TRPCError({ code: 'NOT_FOUND' });
+        if (team.captain_id !== user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Sadece takım kaptanı güncelleyebilir' });
+        }
+
+        const updateData: Record<string, unknown> = {};
+        if (input.name !== undefined) updateData.name = input.name;
+        if (input.logo_url !== undefined) updateData.logo_url = input.logo_url;
+        if (input.jersey_color !== undefined) updateData.jersey_color = input.jersey_color;
+        if (input.description !== undefined) updateData.description = input.description;
+
+        const { data, error } = await supabase
+          .from('teams')
+          .update(updateData)
+          .eq('id', input.team_id)
+          .select()
+          .single();
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return data;
+      }),
+
+    // 10. Takıma üye ekle
+    addTeamMember: protectedProcedure
+      .input(
+        z.object({
+          team_id: z.string().uuid(),
+          user_id: z.string().uuid().optional(), // Belirtilmezse kendini ekler
+          role: z.enum(['member', 'vice_captain']).default('member'),
+          position: z.enum(['goalkeeper', 'defender', 'midfielder', 'forward', 'any']).optional(),
+          jersey_number: z.number().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const targetUserId = input.user_id || user.id;
+
+        // Kaptan kontrolü (kendini ekliyorsa kontrol yok)
+        if (targetUserId !== user.id) {
+          const { data: team } = await supabase
+            .from('teams')
+            .select('id, captain_id')
+            .eq('id', input.team_id)
+            .single();
+
+          if (!team) throw new TRPCError({ code: 'NOT_FOUND' });
+          if (team.captain_id !== user.id) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Sadece takım kaptanı üye ekleyebilir' });
+          }
+        }
+
+        const { data, error } = await supabase
+          .from('team_members')
+          .insert({
+            team_id: input.team_id,
+            user_id: targetUserId,
+            role: input.role,
+            position: input.position,
+            jersey_number: input.jersey_number,
+            is_active: true,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          if (error.code === '23505') {
+            throw new TRPCError({ code: 'CONFLICT', message: 'Kullanıcı zaten takımda' });
+          }
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        }
+
+        // Bildirim gönder
+        if (targetUserId !== user.id) {
+          await supabase
+            .from('football_notifications')
+            .insert({
+              user_id: targetUserId,
+              type: 'team_invitation',
+              title: 'Takıma davet edildiniz!',
+              message: `Bir takıma üye olarak eklendiniz.`,
+              data: { team_id: input.team_id },
+            });
+        }
+
+        return data;
+      }),
+
+    // 11. Takımdan üye çıkar
+    removeTeamMember: protectedProcedure
+      .input(
+        z.object({
+          team_id: z.string().uuid(),
+          user_id: z.string().uuid().optional(), // Belirtilmezse kendini çıkarır
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const targetUserId = input.user_id || user.id;
+
+        // Kaptan kontrolü (kendini çıkarıyorsa kontrol yok)
+        if (targetUserId !== user.id) {
+          const { data: team } = await supabase
+            .from('teams')
+            .select('id, captain_id')
+            .eq('id', input.team_id)
+            .single();
+
+          if (!team) throw new TRPCError({ code: 'NOT_FOUND' });
+          if (team.captain_id !== user.id) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Sadece takım kaptanı üye çıkarabilir' });
+          }
+        }
+
+        const { error } = await supabase
+          .from('team_members')
+          .delete()
+          .eq('team_id', input.team_id)
+          .eq('user_id', targetUserId);
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return { success: true };
+      }),
+
+    // 12. Rakip ilanına başvur
+    applyToOpponentRequest: protectedProcedure
+      .input(
+        z.object({
+          request_id: z.string().uuid(),
+          team_id: z.string().uuid(),
+          message: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Takım kaptanı kontrolü
+        const { data: team } = await supabase
+          .from('teams')
+          .select('id, captain_id')
+          .eq('id', input.team_id)
+          .single();
+
+        if (!team) throw new TRPCError({ code: 'NOT_FOUND', message: 'Takım bulunamadı' });
+        if (team.captain_id !== user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Sadece takım kaptanı başvurabilir' });
+        }
+
+        // İlanı kontrol et
+        const { data: request } = await supabase
+          .from('opponent_requests')
+          .select('id, is_filled, team_id')
+          .eq('id', input.request_id)
+          .single();
+
+        if (!request) throw new TRPCError({ code: 'NOT_FOUND', message: 'İlan bulunamadı' });
+        if (request.is_filled) throw new TRPCError({ code: 'BAD_REQUEST', message: 'İlan zaten doldurulmuş' });
+        if (request.team_id === input.team_id) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Kendi ilanınıza başvurulamaz' });
+        }
+
+        const { data, error } = await supabase
+          .from('opponent_applications')
+          .insert({
+            request_id: input.request_id,
+            team_id: input.team_id,
+            message: input.message,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          if (error.code === '23505') {
+            throw new TRPCError({ code: 'CONFLICT', message: 'Zaten başvuruda bulundunuz' });
+          }
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        }
+
+        // Bildirim gönder
+        const { data: requestOwner } = await supabase
+          .from('opponent_requests')
+          .select('posted_by')
+          .eq('id', input.request_id)
+          .single();
+
+        if (requestOwner) {
+          await supabase
+            .from('football_notifications')
+            .insert({
+              user_id: requestOwner.posted_by,
+              type: 'opponent_found',
+              title: 'Yeni rakip başvurusu!',
+              message: 'Rakip bulma ilanınıza bir takım başvurdu.',
+              data: { request_id: input.request_id, team_id: input.team_id },
+            });
+        }
+
+        return data;
+      }),
+
+    // 13. Rakip başvurusunu kabul et
+    acceptOpponentApplication: protectedProcedure
+      .input(
+        z.object({
+          application_id: z.string().uuid(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Başvuruyu kontrol et
+        const { data: application } = await supabase
+          .from('opponent_applications')
+          .select(`
+            *,
+            request:opponent_requests(id, team_id, posted_by, is_filled, match_date, start_time, field_id)
+          `)
+          .eq('id', input.application_id)
+          .single();
+
+        if (!application) throw new TRPCError({ code: 'NOT_FOUND' });
+        if (application.request.posted_by !== user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Bu ilanı yönetme yetkiniz yok' });
+        }
+        if (application.request.is_filled) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'İlan zaten doldurulmuş' });
+        }
+
+        // Başvuruyu kabul et
+        await supabase
+          .from('opponent_applications')
+          .update({ status: 'accepted', responded_at: new Date().toISOString() })
+          .eq('id', input.application_id);
+
+        // Diğer başvuruları reddet
+        await supabase
+          .from('opponent_applications')
+          .update({ status: 'rejected', responded_at: new Date().toISOString() })
+          .eq('request_id', application.request.id)
+          .neq('id', input.application_id)
+          .eq('status', 'pending');
+
+        // İlanı doldurulmuş olarak işaretle
+        await supabase
+          .from('opponent_requests')
+          .update({
+            is_filled: true,
+            accepted_team_id: application.team_id,
+            accepted_at: new Date().toISOString(),
+          })
+          .eq('id', application.request.id);
+
+        // Maç oluştur
+        const { data: match } = await supabase
+          .from('matches')
+          .insert({
+            team1_id: application.request.team_id,
+            team2_id: application.team_id,
+            field_id: application.request.field_id,
+            match_date: application.request.match_date,
+            start_time: application.request.start_time,
+            city: application.request.city,
+            match_type: application.request.match_type,
+            status: 'scheduled',
+            organizer_id: user.id,
+          })
+          .select()
+          .single();
+
+        // Bildirim gönder
+        const { data: acceptedTeam } = await supabase
+          .from('teams')
+          .select('captain_id')
+          .eq('id', application.team_id)
+          .single();
+
+        if (acceptedTeam) {
+          await supabase
+            .from('football_notifications')
+            .insert({
+              user_id: acceptedTeam.captain_id,
+              type: 'opponent_found',
+              title: 'Başvurunuz kabul edildi!',
+              message: 'Rakip bulma başvurunuz kabul edildi. Maç oluşturuldu.',
+              data: { match_id: match?.id, request_id: application.request.id },
+            });
+        }
+
+        return { success: true, match };
+      }),
+
+    // 14. Maç detayı
+    getMatchDetails: publicProcedure
+      .input(z.object({ match_id: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+
+        const { data, error } = await supabase
+          .from('matches')
+          .select(`
+            *,
+            team1:teams!matches_team1_id_fkey(id, name, logo_url, jersey_color),
+            team2:teams!matches_team2_id_fkey(id, name, logo_url, jersey_color),
+            field:football_fields(id, name, district, address, latitude, longitude),
+            organizer:profiles!matches_organizer_id_fkey(id, full_name, avatar_url),
+            participants:match_participants(
+              id,
+              position,
+              is_confirmed,
+              user:profiles!match_participants_user_id_fkey(id, full_name, avatar_url),
+              team:teams(id, name, logo_url)
+            )
+          `)
+          .eq('id', input.match_id)
+          .single();
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        if (!data) throw new TRPCError({ code: 'NOT_FOUND' });
+
+        // Kullanıcının katılım durumunu kontrol et
+        if (user) {
+          const { data: participation } = await supabase
+            .from('match_participants')
+            .select('id, position, is_confirmed')
+            .eq('match_id', input.match_id)
+            .eq('user_id', user.id)
+            .single();
+          
+          data.user_participation = participation || null;
+          data.is_organizer = data.organizer_id === user.id;
+        }
+
+        return data;
+      }),
+
+    // 15. Maç sonucunu kaydet
+    updateMatchResult: protectedProcedure
+      .input(
+        z.object({
+          match_id: z.string().uuid(),
+          team1_score: z.number().min(0),
+          team2_score: z.number().min(0),
+          status: z.enum(['completed', 'cancelled']).default('completed'),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Organizatör kontrolü
+        const { data: match } = await supabase
+          .from('matches')
+          .select('id, organizer_id, team1_id, team2_id, status')
+          .eq('id', input.match_id)
+          .single();
+
+        if (!match) throw new TRPCError({ code: 'NOT_FOUND' });
+        if (match.organizer_id !== user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Sadece maç organizatörü sonuç girebilir' });
+        }
+
+        const updateData: Record<string, unknown> = {
+          team1_score: input.team1_score,
+          team2_score: input.team2_score,
+          status: input.status,
+        };
+
+        // Takım istatistiklerini güncelle
+        if (input.status === 'completed' && match.team1_id && match.team2_id) {
+          const team1Won = input.team1_score > input.team2_score;
+          const team2Won = input.team2_score > input.team1_score;
+          const draw = input.team1_score === input.team2_score;
+
+          // Team1 istatistikleri
+          const { data: team1 } = await supabase
+            .from('teams')
+            .select('wins, draws, losses, goals_scored, goals_conceded, total_matches, points')
+            .eq('id', match.team1_id)
+            .single();
+
+          if (team1) {
+            await supabase
+              .from('teams')
+              .update({
+                total_matches: (team1.total_matches || 0) + 1,
+                wins: team1Won ? (team1.wins || 0) + 1 : (team1.wins || 0),
+                draws: draw ? (team1.draws || 0) + 1 : (team1.draws || 0),
+                losses: team2Won ? (team1.losses || 0) + 1 : (team1.losses || 0),
+                goals_scored: (team1.goals_scored || 0) + input.team1_score,
+                goals_conceded: (team1.goals_conceded || 0) + input.team2_score,
+                points: team1Won ? (team1.points || 0) + 3 : draw ? (team1.points || 0) + 1 : (team1.points || 0),
+              })
+              .eq('id', match.team1_id);
+          }
+
+          // Team2 istatistikleri
+          const { data: team2 } = await supabase
+            .from('teams')
+            .select('wins, draws, losses, goals_scored, goals_conceded, total_matches, points')
+            .eq('id', match.team2_id)
+            .single();
+
+          if (team2) {
+            await supabase
+              .from('teams')
+              .update({
+                total_matches: (team2.total_matches || 0) + 1,
+                wins: team2Won ? (team2.wins || 0) + 1 : (team2.wins || 0),
+                draws: draw ? (team2.draws || 0) + 1 : (team2.draws || 0),
+                losses: team1Won ? (team2.losses || 0) + 1 : (team2.losses || 0),
+                goals_scored: (team2.goals_scored || 0) + input.team2_score,
+                goals_conceded: (team2.goals_conceded || 0) + input.team1_score,
+                points: team2Won ? (team2.points || 0) + 3 : draw ? (team2.points || 0) + 1 : (team2.points || 0),
+              })
+              .eq('id', match.team2_id);
+          }
+        }
+
+        const { data, error } = await supabase
+          .from('matches')
+          .update(updateData)
+          .eq('id', input.match_id)
+          .select()
+          .single();
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return data;
+      }),
+
+    // 16. Oyuncu istatistiği ekle
+    addPlayerStats: protectedProcedure
+      .input(
+        z.object({
+          match_id: z.string().uuid(),
+          user_id: z.string().uuid(),
+          goals: z.number().min(0).default(0),
+          assists: z.number().min(0).default(0),
+          yellow_cards: z.number().min(0).default(0),
+          red_cards: z.number().min(0).default(0),
+          saves: z.number().min(0).default(0),
+          clean_sheets: z.number().min(0).default(0),
+          man_of_the_match: z.boolean().default(false),
+          rating: z.number().min(0).max(5).optional(),
+          position: z.enum(['goalkeeper', 'defender', 'midfielder', 'forward']).optional(),
+          minutes_played: z.number().min(0).default(0),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Organizatör kontrolü
+        const { data: match } = await supabase
+          .from('matches')
+          .select('id, organizer_id, match_date, team1_id, team2_id')
+          .eq('id', input.match_id)
+          .single();
+
+        if (!match) throw new TRPCError({ code: 'NOT_FOUND' });
+        if (match.organizer_id !== user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Sadece maç organizatörü istatistik ekleyebilir' });
+        }
+
+        // Kullanıcının maça katılıp katılmadığını kontrol et
+        const { data: participation } = await supabase
+          .from('match_participants')
+          .select('id, team_id')
+          .eq('match_id', input.match_id)
+          .eq('user_id', input.user_id)
+          .single();
+
+        if (!participation) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Kullanıcı bu maça katılmamış' });
+        }
+
+        const { data, error } = await supabase
+          .from('player_stats')
+          .insert({
+            user_id: input.user_id,
+            team_id: participation.team_id,
+            match_id: input.match_id,
+            goals: input.goals,
+            assists: input.assists,
+            yellow_cards: input.yellow_cards,
+            red_cards: input.red_cards,
+            saves: input.saves,
+            clean_sheets: input.clean_sheets,
+            man_of_the_match: input.man_of_the_match,
+            rating: input.rating,
+            position: input.position,
+            minutes_played: input.minutes_played,
+            match_date: match.match_date,
+          })
+          .select()
+          .single();
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return data;
+      }),
+
+    // 17. Maça katıl
+    joinMatch: protectedProcedure
+      .input(
+        z.object({
+          match_id: z.string().uuid(),
+          position: z.enum(['goalkeeper', 'defender', 'midfielder', 'forward']).optional(),
+          team_id: z.string().uuid().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Maç kontrolü
+        const { data: match } = await supabase
+          .from('matches')
+          .select('id, max_players, current_players_count, status')
+          .eq('id', input.match_id)
+          .single();
+
+        if (!match) throw new TRPCError({ code: 'NOT_FOUND' });
+        if (match.status !== 'scheduled' && match.status !== 'looking_for_players') {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Bu maça katılamazsınız' });
+        }
+        if (match.current_players_count >= match.max_players) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Maç dolu' });
+        }
+
+        const { data, error } = await supabase
+          .from('match_participants')
+          .insert({
+            match_id: input.match_id,
+            user_id: user.id,
+            team_id: input.team_id,
+            position: input.position,
+            is_confirmed: false,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          if (error.code === '23505') {
+            throw new TRPCError({ code: 'CONFLICT', message: 'Zaten bu maça katıldınız' });
+          }
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        }
+
+        return data;
+      }),
+
+    // 18. Maçtan ayrıl
+    leaveMatch: protectedProcedure
+      .input(z.object({ match_id: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const { error } = await supabase
+          .from('match_participants')
+          .delete()
+          .eq('match_id', input.match_id)
+          .eq('user_id', user.id);
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return { success: true };
+      }),
+
+    // 19. Saha rezervasyonu oluştur
+    createReservation: protectedProcedure
+      .input(
+        z.object({
+          field_id: z.string().uuid(),
+          reservation_date: z.string(),
+          start_time: z.string(),
+          end_time: z.string(),
+          match_id: z.string().uuid().optional(),
+          price: z.number().optional(),
+          notes: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Sahanın o saatte müsait olup olmadığını kontrol et
+        const { data: existing } = await supabase
+          .from('field_reservations')
+          .select('id')
+          .eq('field_id', input.field_id)
+          .eq('reservation_date', input.reservation_date)
+          .eq('start_time', input.start_time)
+          .eq('is_available', true)
+          .single();
+
+        if (!existing) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Bu saat müsait değil' });
+        }
+
+        const { data, error } = await supabase
+          .from('field_reservations')
+          .update({
+            is_available: false,
+            reserved_by: user.id,
+            match_id: input.match_id,
+            price: input.price,
+            notes: input.notes,
+          })
+          .eq('id', existing.id)
+          .select()
+          .single();
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return data;
+      }),
+
+    // 20. Rezervasyonları listele
+    getReservations: publicProcedure
+      .input(
+        z.object({
+          field_id: z.string().uuid().optional(),
+          reservation_date: z.string().optional(),
+          limit: z.number().min(1).max(100).default(20),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+
+        let query = supabase
+          .from('field_reservations')
+          .select(`
+            *,
+            field:football_fields(id, name, district, address),
+            reserved_by_user:profiles!field_reservations_reserved_by_fkey(id, full_name, avatar_url),
+            match:matches(id, team1_id, team2_id)
+          `, { count: 'exact' })
+          .order('reservation_date', { ascending: true })
+          .order('start_time', { ascending: true })
+          .range(input.offset, input.offset + input.limit - 1);
+
+        if (input.field_id) {
+          query = query.eq('field_id', input.field_id);
+        }
+        if (input.reservation_date) {
+          query = query.eq('reservation_date', input.reservation_date);
+        }
+
+        const { data, error, count } = await query;
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return {
+          reservations: data || [],
+          total: count || 0,
+          hasMore: count ? input.offset + input.limit < count : false,
+        };
+      }),
+
+    // 21. Saha yorumu ekle
+    createFieldReview: protectedProcedure
+      .input(
+        z.object({
+          field_id: z.string().uuid(),
+          match_id: z.string().uuid().optional(),
+          rating: z.number().min(1).max(5),
+          comment: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const { data, error } = await supabase
+          .from('field_reviews')
+          .insert({
+            field_id: input.field_id,
+            user_id: user.id,
+            match_id: input.match_id,
+            rating: input.rating,
+            comment: input.comment,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          if (error.code === '23505') {
+            throw new TRPCError({ code: 'CONFLICT', message: 'Bu saha için zaten yorum yaptınız' });
+          }
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        }
+
+        return data;
+      }),
+
+    // 22. Saha yorumlarını listele
+    getFieldReviews: publicProcedure
+      .input(
+        z.object({
+          field_id: z.string().uuid(),
+          limit: z.number().min(1).max(100).default(20),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+
+        const { data, error, count } = await supabase
+          .from('field_reviews')
+          .select(`
+            *,
+            user:profiles!field_reviews_user_id_fkey(id, full_name, avatar_url)
+          `, { count: 'exact' })
+          .eq('field_id', input.field_id)
+          .order('created_at', { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return {
+          reviews: data || [],
+          total: count || 0,
+          hasMore: count ? input.offset + input.limit < count : false,
+        };
+      }),
+
+    // 23. Bildirimleri getir
+    getNotifications: protectedProcedure
+      .input(
+        z.object({
+          limit: z.number().min(1).max(100).default(20),
+          offset: z.number().min(0).default(0),
+          unread_only: z.boolean().default(false),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        let query = supabase
+          .from('football_notifications')
+          .select('*', { count: 'exact' })
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+
+        if (input.unread_only) {
+          query = query.eq('is_read', false);
+        }
+
+        const { data, error, count } = await query;
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return {
+          notifications: data || [],
+          total: count || 0,
+          hasMore: count ? input.offset + input.limit < count : false,
+        };
+      }),
+
+    // 24. Bildirimi okundu işaretle
+    markNotificationAsRead: protectedProcedure
+      .input(
+        z.object({
+          notification_id: z.string().uuid().optional(),
+          mark_all_read: z.boolean().default(false),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        if (input.mark_all_read) {
+          const { error } = await supabase
+            .from('football_notifications')
+            .update({ is_read: true, read_at: new Date().toISOString() })
+            .eq('user_id', user.id)
+            .eq('is_read', false);
+
+          if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+          return { success: true };
+        }
+
+        if (!input.notification_id) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'notification_id veya mark_all_read gerekli' });
+        }
+
+        const { error } = await supabase
+          .from('football_notifications')
+          .update({ is_read: true, read_at: new Date().toISOString() })
+          .eq('id', input.notification_id)
+          .eq('user_id', user.id);
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return { success: true };
       }),
   }),
 });
