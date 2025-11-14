@@ -114,11 +114,11 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
+      // Her zaman mobil deep link kullan
+      const redirectUrl = 'mytrabzon://auth/reset-password';
+      
       const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
-        redirectTo: Platform.select({
-          web: `${window.location.origin}/auth/reset-password`,
-          default: 'mytrabzon://auth/reset-password',
-        }),
+        redirectTo: redirectUrl,
       });
       
       if (error) throw error;

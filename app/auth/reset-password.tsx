@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Alert, Linking, Platform } from 'react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,7 +10,84 @@ export default function ResetPasswordScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(true);
   const router = useRouter();
+  const params = useLocalSearchParams();
+
+  // URL parametrelerini ve deep link'i kontrol et
+  useEffect(() => {
+    const initializeAuth = async () => {
+      try {
+        // Deep link'ten gelen parametreleri kontrol et
+        const initialUrl = await Linking.getInitialURL();
+        
+        if (initialUrl) {
+          const url = new URL(initialUrl);
+          const token = url.searchParams.get('token');
+          const type = url.searchParams.get('type');
+          
+          if (token && type === 'recovery') {
+            // Token'ı Supabase'e set et
+            const { error } = await supabase.auth.verifyOtp({
+              token_hash: token,
+              type: 'recovery',
+            });
+            
+            if (error) {
+              console.error('Token verification error:', error);
+              Alert.alert('Hata', 'Geçersiz veya süresi dolmuş link');
+              router.replace('/auth/login');
+              return;
+            }
+          }
+        }
+        
+        // Local search params'dan da kontrol et (web için)
+        if (params.token && params.type === 'recovery') {
+          const { error } = await supabase.auth.verifyOtp({
+            token_hash: params.token as string,
+            type: 'recovery',
+          });
+          
+          if (error) {
+            console.error('Token verification error:', error);
+            Alert.alert('Hata', 'Geçersiz veya süresi dolmuş link');
+            router.replace('/auth/login');
+            return;
+          }
+        }
+        
+        // Deep link listener (uygulama açıkken link'e tıklanırsa)
+        const subscription = Linking.addEventListener('url', async (event) => {
+          const url = new URL(event.url);
+          const token = url.searchParams.get('token');
+          const type = url.searchParams.get('type');
+          
+          if (token && type === 'recovery') {
+            const { error } = await supabase.auth.verifyOtp({
+              token_hash: token,
+              type: 'recovery',
+            });
+            
+            if (error) {
+              Alert.alert('Hata', 'Geçersiz veya süresi dolmuş link');
+            }
+          }
+        });
+        
+        setInitializing(false);
+        
+        return () => {
+          subscription.remove();
+        };
+      } catch (error: any) {
+        console.error('Initialization error:', error);
+        setInitializing(false);
+      }
+    };
+    
+    initializeAuth();
+  }, [params, router]);
 
   const handleResetPassword = async () => {
     if (!password || !confirmPassword) {
@@ -49,6 +126,17 @@ export default function ResetPasswordScreen() {
       setLoading(false);
     }
   };
+  
+  if (initializing) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.content}>
+          <ActivityIndicator size="large" color={COLORS.white} />
+          <Text style={styles.loadingText}>Yükleniyor...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>

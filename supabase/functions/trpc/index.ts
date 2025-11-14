@@ -126,7 +126,16 @@ const appRouter = createTRPCRouter({
           throw new Error(error.message);
         }
 
-        return data;
+        if (!data) {
+          throw new Error("Profile update failed: No data returned");
+        }
+
+        // Response'u serialize edilebilir hale getir
+        return {
+          ...data,
+          created_at: data.created_at ? new Date(data.created_at).toISOString() : null,
+          updated_at: data.updated_at ? new Date(data.updated_at).toISOString() : null,
+        };
       }),
 
     uploadAvatar: protectedProcedure
@@ -238,11 +247,17 @@ const appRouter = createTRPCRouter({
 
         if (error) {
           console.error('Error fetching users:', error);
-          throw new Error('Kullanıcılar yüklenirken bir hata oluştu');
+          throw new Error(`Kullanıcılar yüklenirken bir hata oluştu: ${error.message}`);
         }
 
+        // Response'u serialize edilebilir hale getir
+        const serializedUsers = (data || []).map((user: any) => ({
+          ...user,
+          created_at: user.created_at ? new Date(user.created_at).toISOString() : null,
+        }));
+
         return {
-          users: data || [],
+          users: serializedUsers,
           total: count || 0,
           page,
           limit,
