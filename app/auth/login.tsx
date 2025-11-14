@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Mail, Lock } from 'lucide-react-native';
+import { AppLogo } from '@/components/AppLogo';
 
 type AuthMode = 'login' | 'register' | 'magic' | 'forgot';
 
@@ -345,8 +346,7 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
-            <Text style={styles.logo}>🏔️</Text>
-            <Text style={styles.title}>MyTrabzon</Text>
+            <AppLogo size="large" style={styles.logoImage} />
             <Text style={styles.subtitle}>Trabzon&apos;un Dijital Sesi</Text>
           </View>
 
@@ -388,24 +388,22 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     marginBottom: SPACING.xxl,
   },
-  logo: {
-    fontSize: 60,
-    marginBottom: SPACING.sm,
-  },
-  title: {
-    fontSize: FONT_SIZES.xxl + 4,
-    fontWeight: '700' as const,
-    color: COLORS.white,
-    marginBottom: SPACING.xs,
+  logoImage: {
+    marginBottom: SPACING.md,
   },
   subtitle: {
     fontSize: FONT_SIZES.md,
     color: COLORS.white,
     opacity: 0.9,
+    marginTop: SPACING.sm,
+    textAlign: 'center' as const,
+    flexWrap: 'wrap',
+    paddingHorizontal: SPACING.md,
   },
   formContainer: {
     width: '100%',
     marginBottom: SPACING.xl,
+    paddingHorizontal: SPACING.xs,
   },
   formTitle: {
     fontSize: FONT_SIZES.xl,
@@ -413,6 +411,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     marginBottom: SPACING.xs,
     textAlign: 'center' as const,
+    flexWrap: 'wrap',
   },
   formSubtitle: {
     fontSize: FONT_SIZES.sm,
@@ -420,6 +419,7 @@ const styles = StyleSheet.create({
     opacity: 0.8,
     marginBottom: SPACING.lg,
     textAlign: 'center' as const,
+    flexWrap: 'wrap',
   },
   inputContainer: {
     flexDirection: 'row' as const,
@@ -458,6 +458,8 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontSize: FONT_SIZES.md,
     fontWeight: '600' as const,
+    flexWrap: 'wrap',
+    textAlign: 'center' as const,
   },
   secondaryButton: {
     backgroundColor: 'rgba(255,255,255,0.15)',
@@ -472,6 +474,8 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.md,
     fontWeight: '500' as const,
+    flexWrap: 'wrap',
+    textAlign: 'center' as const,
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -497,6 +501,8 @@ const styles = StyleSheet.create({
     textAlign: 'center' as const,
     marginTop: SPACING.md,
     opacity: 0.9,
+    flexWrap: 'wrap',
+    paddingHorizontal: SPACING.xs,
   },
   linkText: {
     color: COLORS.white,
@@ -538,6 +544,8 @@ const styles = StyleSheet.create({
     textAlign: 'center' as const,
     opacity: 0.7,
     lineHeight: 18,
+    flexWrap: 'wrap',
+    paddingHorizontal: SPACING.xs,
   },
   termsLink: {
     textDecorationLine: 'underline' as const,

@@ -1,0 +1,74 @@
+name: EAS Submit to Stores
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to submit (android, ios, all)'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - android
+          - ios
+          - all
+
+jobs:
+  submit-android:
+    name: Submit to Google Play
+    runs-on: ubuntu-latest
+    if: github.event.inputs.platform == 'android' || github.event.inputs.platform == 'all'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Display version info
+        run: |
+          echo "📱 Submitting to Google Play:"
+          echo "   Version: $(node -p "require('./app.json').expo.version")"
+          echo "   Android Version Code: $(node -p "require('./app.json').expo.android.versionCode")"
+
+      - name: Submit to Google Play
+        run: npx eas-cli@latest submit --platform android --profile production --non-interactive
+
+  submit-ios:
+    name: Submit to App Store
+    runs-on: ubuntu-latest
+    if: github.event.inputs.platform == 'ios' || github.event.inputs.platform == 'all'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Display version info
+        run: |
+          echo "📱 Submitting to App Store:"
+          echo "   Version: $(node -p "require('./app.json').expo.version")"
+          echo "   iOS Build Number: $(node -p "require('./app.json').expo.ios.buildNumber")"
+
+      - name: Submit to App Store
+        run: npx eas-cli@latest submit --platform ios --profile production --non-interactive
+

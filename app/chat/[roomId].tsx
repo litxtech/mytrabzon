@@ -114,7 +114,11 @@ export default function ChatRoomScreen() {
     return (
       <View style={[styles.messageContainer, isOwn && styles.ownMessageContainer]}>
         {showAvatar && (
-          <View style={styles.avatarContainer}>
+          <TouchableOpacity
+            style={styles.avatarContainer}
+            onPress={() => router.push(`/profile/${message.user_id}` as any)}
+            activeOpacity={0.7}
+          >
             {message.user?.avatar_url ? (
               <Image source={{ uri: message.user.avatar_url }} style={styles.avatar} />
             ) : (
@@ -122,7 +126,7 @@ export default function ChatRoomScreen() {
                 <Text style={styles.avatarText}>{message.user?.full_name?.[0] || 'U'}</Text>
               </View>
             )}
-          </View>
+          </TouchableOpacity>
         )}
 
         <View style={[styles.messageBubble, isOwn ? styles.ownMessage : styles.otherMessage]}>
@@ -136,7 +140,12 @@ export default function ChatRoomScreen() {
           )}
 
           {!isOwn && message.user && (
-            <Text style={styles.senderName}>{message.user.full_name}</Text>
+            <TouchableOpacity
+              onPress={() => router.push(`/profile/${message.user_id}` as any)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.senderName}>{message.user.full_name}</Text>
+            </TouchableOpacity>
           )}
 
           <Text style={[styles.messageText, isOwn && styles.ownMessageText]}>

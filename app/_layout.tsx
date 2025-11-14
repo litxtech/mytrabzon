@@ -38,13 +38,67 @@ function RootLayoutNav() {
       <Stack.Screen name="ktu/events" options={{ title: "Etkinlikler" }} />
       <Stack.Screen name="ktu/clubs" options={{ title: "Kulüpler" }} />
       <Stack.Screen name="ktu/notes" options={{ title: "Ders Notları" }} />
+      <Stack.Screen name="football/create-match" options={{ title: "Maç Oluştur" }} />
+      <Stack.Screen name="football/match/[id]" options={{ title: "Maç Detayı" }} />
+      <Stack.Screen name="football/missing-players" options={{ title: "Eksik Oyuncu" }} />
+      <Stack.Screen name="football/teams" options={{ title: "Takımlar" }} />
+      <Stack.Screen name="football/fields" options={{ title: "Saha Rehberi" }} />
+      <Stack.Screen name="football/field/[id]" options={{ title: "Saha Detayı" }} />
+      <Stack.Screen name="football/create-team" options={{ title: "Takım Oluştur" }} />
+      <Stack.Screen name="football/team/[id]" options={{ title: "Takım Detayı" }} />
+      <Stack.Screen name="university/giresun" options={{ title: "Giresun Üniversitesi" }} />
     </Stack>
   );
 }
 
 export default function RootLayout() {
+  const notificationListener = useRef<Notifications.Subscription>();
+  const responseListener = useRef<Notifications.Subscription>();
+  const router = useRouter();
+  const segments = useSegments();
+
   useEffect(() => {
     SplashScreen.hideAsync();
+
+    // Push notification kaydı
+    registerForPushNotifications().then(token => {
+      if (token) {
+        console.log('Push notification token:', token);
+      }
+    });
+
+    // Bildirim geldiğinde
+    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+      console.log('Notification received:', notification);
+    });
+
+    // Bildirime tıklandığında
+    responseListener.current = addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data;
+      console.log('Notification response:', data);
+      
+      // Bildirim tipine göre yönlendirme
+      if (data?.type === 'match') {
+        router.push(`/football/match/${data.matchId}` as any);
+      } else if (data?.type === 'missing_player') {
+        router.push('/football/missing-players' as any);
+      } else if (data?.type === 'team') {
+        router.push(`/football/team/${data.teamId}` as any);
+      } else if (data?.type === 'chat') {
+        router.push(`/chat/${data.roomId}` as any);
+      } else if (data?.type === 'post') {
+        router.push(`/post/${data.postId}` as any);
+      }
+    });
+
+    return () => {
+      if (notificationListener.current) {
+        Notifications.removeNotificationSubscription(notificationListener.current);
+      }
+      if (responseListener.current) {
+        Notifications.removeNotificationSubscription(responseListener.current);
+      }
+    };
   }, []);
 
   return (

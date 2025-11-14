@@ -299,7 +299,23 @@ export default function KTUScreen() {
         {/* Header */}
         <View style={styles.header}>
           <GraduationCap size={32} color={COLORS.primary} />
-          <Text style={styles.headerTitle}>KTÜ</Text>
+          <View style={styles.universitySelector}>
+            <TouchableOpacity
+              style={[styles.universityButton, styles.universityButtonActive]}
+            >
+              <Text style={[styles.universityButtonText, styles.universityButtonTextActive]}>
+                KTÜ
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.universityButton}
+              onPress={() => router.push('/university/giresun' as any)}
+            >
+              <Text style={styles.universityButtonText}>
+                Giresun Üniversitesi
+              </Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.headerSubtitle}>Karadeniz Teknik Üniversitesi</Text>
         </View>
 
@@ -338,11 +354,31 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  headerTitle: {
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: '700',
+  universitySelector: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xs,
+  },
+  universityButton: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: 8,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  universityButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  universityButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
     color: COLORS.text,
-    marginTop: SPACING.sm,
+  },
+  universityButtonTextActive: {
+    color: COLORS.white,
   },
   headerSubtitle: {
     fontSize: FONT_SIZES.sm,

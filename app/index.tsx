@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
-import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { COLORS } from '@/constants/theme';
+import { AppLogo } from '@/components/AppLogo';
 
 export default function Index() {
   const router = useRouter();
@@ -20,7 +21,7 @@ export default function Index() {
 
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" color={COLORS.primary} />
+      <AppLogo size="large" />
     </View>
   );
 }

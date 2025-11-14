@@ -125,28 +125,52 @@ export default function PostDetailScreen() {
       <ScrollView style={styles.content}>
         <View style={styles.postCard}>
           <View style={styles.postHeader}>
-            <Image
-              source={{
-                uri: post.author?.avatar_url || 'https://via.placeholder.com/40',
-              }}
-              style={styles.avatar}
-            />
-            <View style={styles.postHeaderInfo}>
-              <Text style={styles.postAuthor}>{post.author?.full_name}</Text>
-              <View style={styles.postMeta}>
-                <Text style={styles.postDistrict}>
-                  {DISTRICT_BADGES[post.district as keyof typeof DISTRICT_BADGES] || '📍'} {post.district}
-                </Text>
-                <Text style={styles.postTime}>
-                  {' • '}
-                  {new Date(post.created_at).toLocaleDateString('tr-TR', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  })}
+            <TouchableOpacity
+              onPress={() => post.author_id && router.push(`/profile/${post.author_id}` as any)}
+              activeOpacity={0.7}
+            >
+              <Image
+                source={{
+                  uri: post.author?.avatar_url || 'https://via.placeholder.com/40',
+                }}
+                style={styles.avatar}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.postHeaderInfo}
+              onPress={() => post.author_id && router.push(`/profile/${post.author_id}` as any)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.postAuthorContainer}>
+                <Text style={styles.postAuthor}>
+                  {post.author?.full_name}
                 </Text>
               </View>
-            </View>
+              {post.author?.username && (
+                <View style={styles.postUsernameContainer}>
+                  <Text style={styles.postUsername}>
+                    @{post.author.username}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.postMeta}>
+                <View style={styles.postDistrictContainer}>
+                  <Text style={styles.postDistrict}>
+                    {DISTRICT_BADGES[post.district as keyof typeof DISTRICT_BADGES] || '📍'} {post.district}
+                  </Text>
+                </View>
+                <View style={styles.postTimeContainer}>
+                  <Text style={styles.postTime}>
+                    {' • '}
+                    {new Date(post.created_at).toLocaleDateString('tr-TR', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                    })}
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
             {post.author_id === user?.id && (
               <TouchableOpacity>
                 <MoreVertical size={20} color={COLORS.textLight} />
@@ -154,7 +178,9 @@ export default function PostDetailScreen() {
             )}
           </View>
 
-          <Text style={styles.postContent}>{post.content}</Text>
+          <View style={styles.postContentContainer}>
+            <Text style={styles.postContent}>{post.content}</Text>
+          </View>
 
           {post.media && post.media.length > 0 && (
             <ScrollView horizontal pagingEnabled style={styles.mediaContainer}>
@@ -203,8 +229,23 @@ export default function PostDetailScreen() {
                 style={styles.commentAvatar}
               />
               <View style={styles.commentContent}>
-                <Text style={styles.commentAuthor}>{comment.user?.full_name}</Text>
-                <Text style={styles.commentText}>{comment.content}</Text>
+                <View style={styles.commentAuthorContainer}>
+                  <Text style={styles.commentAuthor}>
+                    {comment.user?.full_name}
+                  </Text>
+                </View>
+                {comment.user?.username && (
+                  <View style={styles.commentUsernameContainer}>
+                    <Text style={styles.commentUsername}>
+                      @{comment.user.username}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.commentTextContainer}>
+                  <Text style={styles.commentText}>
+                    {comment.content}
+                  </Text>
+                </View>
                 <Text style={styles.commentTime}>
                   {new Date(comment.created_at).toLocaleDateString('tr-TR', {
                     day: 'numeric',
@@ -282,28 +323,55 @@ const styles = StyleSheet.create({
   },
   postHeaderInfo: {
     flex: 1,
+    flexShrink: 1,
+  },
+  postAuthorContainer: {
+    flex: 1,
+    flexShrink: 1,
   },
   postAuthor: {
     fontSize: FONT_SIZES.md,
     fontWeight: '600' as const,
     color: COLORS.text,
   },
+  postUsernameContainer: {
+    flex: 1,
+    flexShrink: 1,
+    marginTop: 2,
+  },
+  postUsername: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+  },
   postMeta: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     marginTop: 4,
+    flex: 1,
+    flexShrink: 1,
+  },
+  postDistrictContainer: {
+    flex: 1,
+    flexShrink: 1,
   },
   postDistrict: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
   },
+  postTimeContainer: {
+    flexShrink: 0,
+  },
   postTime: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
   },
-  postContent: {
+  postContentContainer: {
+    flex: 1,
+    flexShrink: 1,
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.md,
+  },
+  postContent: {
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
     lineHeight: 22,
@@ -357,21 +425,39 @@ const styles = StyleSheet.create({
   },
   commentContent: {
     flex: 1,
+    flexShrink: 1,
     backgroundColor: COLORS.background,
     padding: SPACING.sm,
     borderRadius: 12,
+  },
+  commentAuthorContainer: {
+    flex: 1,
+    flexShrink: 1,
+    marginBottom: 2,
   },
   commentAuthor: {
     fontSize: FONT_SIZES.sm,
     fontWeight: '600' as const,
     color: COLORS.text,
+  },
+  commentUsernameContainer: {
+    flex: 1,
+    flexShrink: 1,
     marginBottom: 2,
+  },
+  commentUsername: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+  },
+  commentTextContainer: {
+    flex: 1,
+    flexShrink: 1,
+    marginBottom: 4,
   },
   commentText: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.text,
     lineHeight: 18,
-    marginBottom: 4,
   },
   commentTime: {
     fontSize: FONT_SIZES.xs,

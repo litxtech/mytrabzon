@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -67,6 +67,7 @@ export default function EditProfileScreen() {
 
   const [formData, setFormData] = useState({
     full_name: profile?.full_name || '',
+    username: profile?.username || '',
     bio: profile?.bio || '',
     city: profile?.city || null,
     district: profile?.district || 'Ortahisar',
@@ -78,6 +79,85 @@ export default function EditProfileScreen() {
     height: profile?.height?.toString() || '',
     weight: profile?.weight?.toString() || '',
   });
+
+  // Username validation
+  const [usernameStatus, setUsernameStatus] = useState<{
+    checking: boolean;
+    available: boolean | null;
+    message: string;
+  }>({ checking: false, available: null, message: '' });
+
+  const checkUsernameQuery = trpc.user.checkUsername.useQuery(
+    { username: formData.username },
+    { enabled: false } // Manuel tetikleme için
+  );
+
+  const suggestUsernameQuery = trpc.user.suggestUsername.useQuery(
+    { base: formData.full_name || 'user' },
+    { enabled: false }
+  );
+
+  // Debounce için timer
+  const [usernameDebounceTimer, setUsernameDebounceTimer] = useState<NodeJS.Timeout | null>(null);
+
+  // Component unmount olduğunda timer'ı temizle
+  useEffect(() => {
+    return () => {
+      if (usernameDebounceTimer) {
+        clearTimeout(usernameDebounceTimer);
+      }
+    };
+  }, [usernameDebounceTimer]);
+
+  const handleUsernameChange = async (text: string) => {
+    setFormData({ ...formData, username: text });
+    
+    // Önceki timer'ı temizle
+    if (usernameDebounceTimer) {
+      clearTimeout(usernameDebounceTimer);
+    }
+
+    if (text.length < 3) {
+      setUsernameStatus({ checking: false, available: null, message: '' });
+      return;
+    }
+
+    // Debounce: 500ms bekle
+    const timer = setTimeout(async () => {
+      setUsernameStatus({ checking: true, available: null, message: '' });
+      
+      try {
+        const result = await checkUsernameQuery.refetch();
+        if (result.data) {
+          setUsernameStatus({
+            checking: false,
+            available: result.data.available,
+            message: result.data.message,
+          });
+        }
+      } catch (error) {
+        setUsernameStatus({
+          checking: false,
+          available: false,
+          message: 'Kontrol sırasında bir hata oluştu',
+        });
+      }
+    }, 500);
+
+    setUsernameDebounceTimer(timer);
+  };
+
+  const handleSuggestUsername = async () => {
+    try {
+      const result = await suggestUsernameQuery.refetch();
+      if (result.data?.suggestions && result.data.suggestions.length > 0) {
+        setFormData({ ...formData, username: result.data.suggestions[0] });
+        await handleUsernameChange(result.data.suggestions[0]);
+      }
+    } catch (error) {
+      console.error('Username suggestion error:', error);
+    }
+  };
 
   const [showInDirectory, setShowInDirectory] = useState(
     profile?.show_in_directory !== undefined ? profile.show_in_directory : true
@@ -188,8 +268,15 @@ export default function EditProfileScreen() {
   };
 
   const handleSave = () => {
+    // Username validation kontrolü
+    if (formData.username && formData.username.length > 0 && !usernameStatus.available && usernameStatus.available !== null) {
+      Alert.alert('Hata', 'Lütfen müsait bir kullanıcı adı seçin.');
+      return;
+    }
+
     const updateData = {
       full_name: formData.full_name || undefined,
+      username: formData.username && formData.username.length > 0 ? formData.username : undefined,
       bio: formData.bio || undefined,
       city: formData.city || undefined,
       district: formData.district || 'Ortahisar',
@@ -304,6 +391,55 @@ export default function EditProfileScreen() {
               placeholder="Adınız ve soyadınız"
               placeholderTextColor={COLORS.textLight}
             />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>Kullanıcı Adı</Text>
+              {!profile?.username && (
+                <TouchableOpacity onPress={handleSuggestUsername}>
+                  <Text style={[styles.suggestButton, { color: COLORS.primary }]}>Öner</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.usernameContainer}>
+              <TextInput
+                style={[
+                  styles.input,
+                  usernameStatus.available === true && styles.inputSuccess,
+                  usernameStatus.available === false && styles.inputError,
+                ]}
+                value={formData.username}
+                onChangeText={handleUsernameChange}
+                placeholder="kullanici_adi"
+                placeholderTextColor={COLORS.textLight}
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={30}
+              />
+              {usernameStatus.checking && (
+                <ActivityIndicator size="small" color={COLORS.primary} style={styles.usernameIndicator} />
+              )}
+              {!usernameStatus.checking && usernameStatus.available === true && (
+                <Text style={[styles.usernameStatus, { color: COLORS.success }]}>✓</Text>
+              )}
+              {!usernameStatus.checking && usernameStatus.available === false && (
+                <Text style={[styles.usernameStatus, { color: COLORS.error }]}>✗</Text>
+              )}
+            </View>
+            {usernameStatus.message && (
+              <Text
+                style={[
+                  styles.usernameMessage,
+                  usernameStatus.available === true && { color: COLORS.success },
+                  usernameStatus.available === false && { color: COLORS.error },
+                ]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {usernameStatus.message}
+              </Text>
+            )}
           </View>
 
           <View style={styles.inputContainer}>
@@ -771,5 +907,35 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
     lineHeight: 18,
     marginTop: SPACING.xs,
+  },
+  usernameContainer: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  usernameIndicator: {
+    position: 'absolute',
+    right: SPACING.md,
+  },
+  usernameStatus: {
+    position: 'absolute',
+    right: SPACING.md,
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+  },
+  usernameMessage: {
+    fontSize: FONT_SIZES.xs,
+    marginTop: SPACING.xs,
+    marginLeft: SPACING.xs,
+  },
+  suggestButton: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+  },
+  inputSuccess: {
+    borderColor: COLORS.success || '#10b981',
+  },
+  inputError: {
+    borderColor: COLORS.error || '#ef4444',
   },
 });

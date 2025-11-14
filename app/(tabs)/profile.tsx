@@ -169,6 +169,9 @@ export default function ProfileScreen() {
             style={styles.avatar}
           />
           <Text style={styles.name}>{profile.full_name}</Text>
+          {profile.username && (
+            <Text style={styles.username}>@{profile.username}</Text>
+          )}
           <View style={styles.districtBadge}>
             <Text style={styles.districtEmoji}>{DISTRICT_BADGES[profile.district as keyof typeof DISTRICT_BADGES] || '📍'}</Text>
             <Text style={styles.districtText}>{profile.district}</Text>
@@ -350,6 +353,11 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xl,
     fontWeight: '700' as const,
     color: COLORS.text,
+    marginBottom: SPACING.xs,
+  },
+  username: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textLight,
     marginBottom: SPACING.sm,
   },
   districtBadge: {

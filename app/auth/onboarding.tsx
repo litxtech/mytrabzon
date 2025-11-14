@@ -147,11 +147,13 @@ const styles = StyleSheet.create({
     fontWeight: '700' as const,
     color: COLORS.primary,
     marginBottom: SPACING.sm,
+    flexWrap: 'wrap',
   },
   subtitle: {
     fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
     marginBottom: SPACING.xl,
+    flexWrap: 'wrap',
   },
   form: {
     marginBottom: SPACING.xl,

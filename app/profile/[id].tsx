@@ -25,6 +25,36 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CallButtons } from '@/components/CallButtons';
 
+// Mesaj butonu component'i
+function MessageButton({ targetUserId }: { targetUserId: string }) {
+  const router = useRouter();
+  const createRoomMutation = trpc.chat.createRoom.useMutation();
+
+  const handleMessage = async () => {
+    try {
+      const room = await createRoomMutation.mutateAsync({
+        type: 'direct',
+        memberIds: [targetUserId],
+      });
+      router.push(`/chat/${room.id}` as any);
+    } catch (error: any) {
+      console.error('Chat oluşturma hatası:', error);
+      Alert.alert('Hata', error?.message || 'Mesaj gönderilemedi');
+    }
+  };
+
+  return (
+    <TouchableOpacity
+      style={styles.messageButton}
+      onPress={handleMessage}
+      disabled={createRoomMutation.isPending}
+    >
+      <MessageCircle size={20} color={COLORS.white} />
+      <Text style={styles.messageButtonText}>Mesaj</Text>
+    </TouchableOpacity>
+  );
+}
+
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -134,6 +164,9 @@ export default function UserProfileScreen() {
           </View>
 
           <Text style={styles.name}>{profile.full_name || 'İsimsiz'}</Text>
+          {profile.username && (
+            <Text style={styles.username}>@{profile.username}</Text>
+          )}
           {profile.bio && <Text style={styles.bio}>{profile.bio}</Text>}
           
           {/* KTÜ Bilgileri */}
@@ -170,16 +203,7 @@ export default function UserProfileScreen() {
                 targetUserName={profile.full_name || 'Kullanıcı'}
                 targetUserAvatar={profile.avatar_url}
               />
-              <TouchableOpacity
-                style={styles.messageButton}
-                onPress={() => {
-                  // Chat'e yönlendir
-                  router.push(`/chat/${id}` as any);
-                }}
-              >
-                <MessageCircle size={20} color={COLORS.white} />
-                <Text style={styles.messageButtonText}>Mesaj</Text>
-              </TouchableOpacity>
+              <MessageButton targetUserId={id!} />
             </View>
           )}
 
@@ -219,9 +243,11 @@ export default function UserProfileScreen() {
                       />
                     ) : (
                       <View style={[styles.postImage, styles.postPlaceholder]}>
-                        <Text style={styles.postText} numberOfLines={3}>
-                          {item.content}
-                        </Text>
+                        <View style={styles.postTextContainer}>
+                          <Text style={styles.postText}>
+                            {item.content}
+                          </Text>
+                        </View>
                       </View>
                     )}
                     <View style={styles.postOverlay}>
@@ -332,6 +358,11 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     marginBottom: SPACING.xs,
   },
+  username: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textLight,
+    marginBottom: SPACING.sm,
+  },
   bio: {
     fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
@@ -424,6 +455,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: SPACING.sm,
+  },
+  postTextContainer: {
+    flex: 1,
+    flexShrink: 1,
   },
   postText: {
     fontSize: FONT_SIZES.sm,

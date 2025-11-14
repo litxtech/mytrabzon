@@ -319,16 +319,24 @@ export default function ChatScreen() {
               
               <View style={styles.chatInfo}>
                 <View style={styles.chatHeader}>
-                  <Text style={styles.chatName}>{getRoomName(room)}</Text>
-                  <Text style={styles.chatTime}>
-                    {formatTime(room.last_message_at)}
-                  </Text>
+                  <View style={styles.chatNameContainer}>
+                    <Text style={styles.chatName}>
+                      {getRoomName(room)}
+                    </Text>
+                  </View>
+                  <View style={styles.chatTimeContainer}>
+                    <Text style={styles.chatTime}>
+                      {formatTime(room.last_message_at)}
+                    </Text>
+                  </View>
                 </View>
                 
                 <View style={styles.messageRow}>
-                  <Text style={styles.chatMessage} numberOfLines={1}>
-                    {room.last_message?.content || 'Henüz mesaj yok'}
-                  </Text>
+                  <View style={styles.chatMessageContainer}>
+                    <Text style={styles.chatMessage}>
+                      {room.last_message?.content || 'Henüz mesaj yok'}
+                    </Text>
+                  </View>
                   {room.unread_count > 0 && (
                     <View style={styles.unreadBadge}>
                       <Text style={styles.unreadText}>{room.unread_count}</Text>
@@ -392,21 +400,35 @@ const styles = StyleSheet.create({
   },
   chatInfo: {
     flex: 1,
+    flexShrink: 1,
   },
   chatHeader: {
     flexDirection: 'row' as const,
     justifyContent: 'space-between' as const,
     alignItems: 'center' as const,
     marginBottom: 4,
+    flex: 1,
+    flexShrink: 1,
+  },
+  chatNameContainer: {
+    flex: 1,
+    flexShrink: 1,
   },
   chatName: {
     fontSize: FONT_SIZES.md,
     fontWeight: '600' as const,
     color: COLORS.text,
   },
+  chatTimeContainer: {
+    flexShrink: 0,
+  },
   chatTime: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
+  },
+  chatMessageContainer: {
+    flex: 1,
+    flexShrink: 1,
   },
   chatMessage: {
     fontSize: FONT_SIZES.sm,

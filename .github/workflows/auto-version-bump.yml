@@ -1,0 +1,80 @@
+name: Auto Version Bump
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'app.json'
+      - 'package.json'
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version bump type (patch, minor, major)'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  bump-version:
+    name: Bump Version
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Bump version
+        run: |
+          node scripts/bump-version.js ${{ github.event.inputs.version_type }}
+
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add app.json package.json
+          git commit -m "chore: bump version [skip ci]" || exit 0
+          git push
+
+  check-version:
+    name: Check Version Consistency
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check version consistency
+        run: |
+          APP_VERSION=$(node -p "require('./app.json').expo.version")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          
+          if [ "$APP_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "❌ Version mismatch!"
+            echo "   app.json: $APP_VERSION"
+            echo "   package.json: $PACKAGE_VERSION"
+            exit 1
+          fi
+          
+          echo "✅ Versions match: $APP_VERSION"
+          
+          # iOS build number kontrolü
+          IOS_BUILD=$(node -p "require('./app.json').expo.ios?.buildNumber || '1'")
+          echo "   iOS Build Number: $IOS_BUILD"
+          
+          # Android version code kontrolü
+          ANDROID_CODE=$(node -p "require('./app.json').expo.android?.versionCode || '1'")
+          echo "   Android Version Code: $ANDROID_CODE"
+

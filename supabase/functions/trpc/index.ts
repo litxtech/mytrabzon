@@ -315,38 +315,45 @@ const appRouter = createTRPCRouter({
     getAllUsers: publicProcedure
       .input(
         z.object({
-          page: z.number().min(1).default(1),
-          limit: z.number().min(1).max(50).default(20),
           search: z.string().optional(),
           gender: z.enum(['male', 'female', 'other', 'all']).optional(),
         })
       )
       .query(async ({ ctx, input }) => {
         const { supabase } = ctx;
-        const { page, limit, search, gender } = input;
-        const offset = (page - 1) * limit;
+        const { search, gender } = input;
+
+        console.log('getAllUsers called with:', { search, gender });
 
         let query = supabase
           .from('profiles')
           .select('id, full_name, avatar_url, bio, city, district, created_at, verified, gender, public_id, privacy_settings', { count: 'exact' })
           .eq('show_in_directory', true)
-          .order('created_at', { ascending: false })
-          .range(offset, offset + limit - 1);
+          .order('created_at', { ascending: false });
 
-        // Gizlilik ayarlarına göre filtreleme: profileVisible false olanları gösterme
-        // Ancak privacy_settings null ise göster (geriye dönük uyumluluk için)
-        query = query.or('privacy_settings->>profileVisible.is.null,privacy_settings->>profileVisible.eq.true');
+        // Gizlilik ayarlarına göre filtreleme: 
+        // privacy_settings null ise veya profileVisible true ise göster
+        // (profileVisibility kontrolü filter'da yapılacak)
+        query = query.or('privacy_settings.is.null,privacy_settings->>profileVisible.eq.true,privacy_settings->>profileVisible.is.null');
 
+        // Cinsiyet filtresi: sadece 'all' değilse filtrele
+        if (gender && gender !== 'all') {
+          query = query.eq('gender', gender);
+        }
+
+        // Arama filtresi
         if (search && search.trim()) {
           const searchTerm = `%${search.trim()}%`;
           query = query.or(`full_name.ilike.${searchTerm},email.ilike.${searchTerm}`);
         }
 
-        if (gender && gender !== 'all') {
-          query = query.eq('gender', gender);
-        }
-
         const { data, error, count } = await query;
+
+        console.log('getAllUsers query result:', { 
+          dataLength: data?.length || 0, 
+          count, 
+          error: error?.message 
+        });
 
         if (error) {
           console.error('Error fetching users:', error);
@@ -359,29 +366,46 @@ const appRouter = createTRPCRouter({
         // Response'u serialize edilebilir hale getir ve gizlilik ayarlarını filtrele
         const serializedUsers = (data || [])
           .filter((user: any) => {
-            // Gizlilik ayarları kontrolü
+            // Gizlilik ayarları kontrolü: profileVisibility !== "private"
             if (user.privacy_settings && typeof user.privacy_settings === 'object') {
               const profileVisible = user.privacy_settings.profileVisible;
-              // Eğer profileVisible false ise, kullanıcıyı gösterme
+              const profileVisibility = user.privacy_settings.profileVisibility;
+              
+              // profileVisibility === "private" ise gösterme
+              if (profileVisibility === 'private') {
+                console.log('Filtering out user (private):', user.id);
+                return false;
+              }
+              
+              // profileVisible false ise gösterme
               if (profileVisible === false) {
+                console.log('Filtering out user (profileVisible false):', user.id);
                 return false;
               }
             }
             return true;
           })
           .map((user: any) => ({
-            ...user,
+            id: user.id,
+            full_name: user.full_name,
+            avatar_url: user.avatar_url,
+            bio: user.bio,
+            city: user.city,
+            district: user.district,
             created_at: user.created_at ? new Date(user.created_at).toISOString() : null,
-            // privacy_settings'i response'dan kaldır (güvenlik için)
-            privacy_settings: undefined,
+            verified: user.verified || false,
+            gender: user.gender,
+            public_id: user.public_id,
           }));
+
+        console.log('getAllUsers filtered result:', { 
+          usersLength: serializedUsers.length,
+          total: count || 0
+        });
 
         return {
           users: serializedUsers,
-          total: count || 0,
-          page,
-          limit,
-          hasMore: count ? offset + limit < count : false,
+          total: serializedUsers.length,
         };
       }),
 

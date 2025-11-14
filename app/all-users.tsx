@@ -35,50 +35,39 @@ export default function AllUsersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
   const [allUsers, setAllUsers] = useState<UserListItem[]>([]);
   const [genderFilter, setGenderFilter] = useState<GenderFilter>('all');
 
   const debouncedSearch = useDebounce(search, 500);
 
   const { data, isLoading, isFetching, refetch } = trpc.user.getAllUsers.useQuery({
-    page,
-    limit: 20,
-    search: debouncedSearch,
-    gender: genderFilter,
+    search: debouncedSearch || undefined,
+    gender: genderFilter === 'all' ? undefined : genderFilter,
+  }, {
+    enabled: true,
+    staleTime: 30000, // 30 saniye
   });
 
   useEffect(() => {
-    if (data) {
-      if (page === 1) {
-        setAllUsers(data.users);
-      } else {
-        setAllUsers((prev) => [...prev, ...data.users]);
-      }
+    console.log('getAllUsers response:', data);
+    if (data && data.users) {
+      console.log('Setting users:', data.users.length);
+      setAllUsers(data.users);
+    } else {
+      console.log('No users in response');
+      setAllUsers([]);
     }
-  }, [data, page]);
-
-  const handleLoadMore = useCallback(() => {
-    if (data?.hasMore && !isFetching) {
-      setPage((prev) => prev + 1);
-    }
-  }, [data?.hasMore, isFetching]);
+  }, [data]);
 
   const handleSearchChange = useCallback((text: string) => {
     setSearch(text);
-    setPage(1);
-    setAllUsers([]);
   }, []);
 
   const handleGenderFilter = useCallback((gender: GenderFilter) => {
     setGenderFilter(gender);
-    setPage(1);
-    setAllUsers([]);
   }, []);
 
   const handleRefresh = useCallback(() => {
-    setPage(1);
-    setAllUsers([]);
     refetch();
   }, [refetch]);
 
@@ -134,10 +123,11 @@ export default function AllUsersScreen() {
   );
 
   const renderEmpty = useMemo(() => {
-    if (isLoading) {
+    if (isLoading || isFetching) {
       return (
         <View style={styles.emptyContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.emptyText}>Yükleniyor...</Text>
         </View>
       );
     }
@@ -151,17 +141,8 @@ export default function AllUsersScreen() {
         </Text>
       </View>
     );
-  }, [isLoading, search]);
+  }, [isLoading, isFetching, search]);
 
-  const renderFooter = useMemo(() => {
-    if (!isFetching || page === 1) return null;
-
-    return (
-      <View style={styles.footer}>
-        <ActivityIndicator size="small" color={COLORS.primary} />
-      </View>
-    );
-  }, [isFetching, page]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -261,10 +242,7 @@ export default function AllUsersScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={renderEmpty}
-        ListFooterComponent={renderFooter}
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.5}
-        refreshing={isLoading && page === 1}
+        refreshing={isLoading}
         onRefresh={handleRefresh}
         showsVerticalScrollIndicator={false}
       />
@@ -430,9 +408,5 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
     textAlign: 'center',
-  },
-  footer: {
-    paddingVertical: SPACING.md,
-    alignItems: 'center',
   },
 });

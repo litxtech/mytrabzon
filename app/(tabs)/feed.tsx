@@ -18,6 +18,7 @@ import { Post, District } from '@/types/database';
 import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
+import { AppLogo } from '@/components/AppLogo';
 
 type SortType = 'new' | 'hot' | 'trending';
 
@@ -37,13 +38,18 @@ export default function FeedScreen() {
   };
 
   // Kişiselleştirilmiş feed kullan (eğer kullanıcı giriş yaptıysa)
-  const { data: personalizedFeedData, isLoading: isLoadingPersonalized } = trpc.post.getPersonalizedFeed.useQuery(
-    { limit: 20, offset: 0 },
+  const { data: personalizedFeedData, isLoading: isLoadingPersonalized, refetch: refetchPersonalized } = trpc.post.getPersonalizedFeed.useQuery(
+    { 
+      district: selectedDistrict === 'all' ? undefined : selectedDistrict,
+      sort: sortType,
+      limit: 20, 
+      offset: 0 
+    },
     { enabled: !!user?.id }
   );
 
   // Fallback: Normal feed (giriş yapmamış kullanıcılar için)
-  const { data: postsData, isLoading: isLoadingNormal, refetch } = trpc.post.getPosts.useQuery({
+  const { data: postsData, isLoading: isLoadingNormal, refetch: refetchNormal } = trpc.post.getPosts.useQuery({
     district: selectedDistrict === 'all' ? undefined : selectedDistrict,
     sort: sortType,
     limit: 20,
@@ -55,14 +61,11 @@ export default function FeedScreen() {
   // Hangi feed'i kullanacağız?
   const feedData = user?.id ? personalizedFeedData : postsData;
   const isLoading = user?.id ? isLoadingPersonalized : isLoadingNormal;
+  const refetch = user?.id ? refetchPersonalized : refetchNormal;
 
   const likePostMutation = trpc.post.likePost.useMutation({
     onSuccess: () => {
-      if (user?.id) {
-        // Personalized feed için refetch yok, query otomatik güncellenir
-      } else {
-        refetch();
-      }
+      refetch();
     },
   });
 
@@ -118,14 +121,16 @@ export default function FeedScreen() {
             onPress={() => setSelectedDistrict(item.id as District | 'all')}
           >
             <Text style={styles.filterEmoji}>{item.badge}</Text>
-            <Text
-              style={[
-                styles.filterText,
-                selectedDistrict === item.id && styles.filterTextActive,
-              ]}
-            >
-              {item.name}
-            </Text>
+            <View style={styles.filterTextContainer}>
+              <Text
+                style={[
+                  styles.filterText,
+                  selectedDistrict === item.id && styles.filterTextActive,
+                ]}
+              >
+                {item.name}
+              </Text>
+            </View>
           </TouchableOpacity>
         )}
       />
@@ -141,32 +146,58 @@ export default function FeedScreen() {
         onPress={() => router.push(`/post/${item.id}` as any)}
       >
         <View style={styles.postHeader}>
-          <Image
-            source={{
-              uri: item.author?.avatar_url || 'https://via.placeholder.com/40',
-            }}
-            style={styles.avatar}
-          />
-          <View style={styles.postHeaderInfo}>
-            <Text style={styles.postAuthor}>{item.author?.full_name}</Text>
-            <View style={styles.postMeta}>
-              <Text style={styles.postDistrict}>
-                {DISTRICT_BADGES[item.district]} {item.district}
-              </Text>
-              <Text style={styles.postTime}>
-                {' • '}
-                {new Date(item.created_at).toLocaleDateString('tr-TR', {
-                  day: 'numeric',
-                  month: 'short',
-                })}
+          <TouchableOpacity
+            onPress={() => item.author_id && router.push(`/profile/${item.author_id}` as any)}
+            activeOpacity={0.7}
+          >
+            <Image
+              source={{
+                uri: item.author?.avatar_url || 'https://via.placeholder.com/40',
+              }}
+              style={styles.avatar}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.postHeaderInfo}
+            onPress={() => item.author_id && router.push(`/profile/${item.author_id}` as any)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.postAuthorContainer}>
+              <Text style={styles.postAuthor}>
+                {item.author?.full_name}
               </Text>
             </View>
-          </View>
+            {item.author?.username && (
+              <View style={styles.postUsernameContainer}>
+                <Text style={styles.postUsername}>
+                  @{item.author.username}
+                </Text>
+              </View>
+            )}
+            <View style={styles.postMeta}>
+              <View style={styles.postDistrictContainer}>
+                <Text style={styles.postDistrict}>
+                  {DISTRICT_BADGES[item.district]} {item.district}
+                </Text>
+              </View>
+              <View style={styles.postTimeContainer}>
+                <Text style={styles.postTime}>
+                  {' • '}
+                  {new Date(item.created_at).toLocaleDateString('tr-TR', {
+                    day: 'numeric',
+                    month: 'short',
+                  })}
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
         </View>
 
-        <Text style={styles.postContent} numberOfLines={10}>
-          {item.content}
-        </Text>
+        <View style={styles.postContentContainer}>
+          <Text style={styles.postContent}>
+            {item.content}
+          </Text>
+        </View>
 
         {firstMedia && (
           <Image
@@ -213,7 +244,7 @@ export default function FeedScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: Math.max(insets.top, SPACING.md) }]}>
-        <Text style={styles.headerTitle}>MyTrabzon</Text>
+        <AppLogo size="medium" style={styles.headerLogo} />
         <TouchableOpacity
           style={styles.usersButton}
           onPress={() => router.push('/all-users')}
@@ -278,10 +309,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between' as const,
     minHeight: 60,
   },
-  headerTitle: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: '700' as const,
-    color: COLORS.primary,
+  headerLogo: {
+    marginLeft: -SPACING.xs, // Logo için hafif margin ayarı
   },
   usersButton: {
     width: 44,
@@ -334,12 +363,20 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginHorizontal: SPACING.xs,
     gap: SPACING.xs,
+    minWidth: 60,
+    flex: 1,
+    flexShrink: 1,
   },
   filterChipActive: {
     backgroundColor: COLORS.primary,
   },
   filterEmoji: {
     fontSize: FONT_SIZES.sm,
+    flexShrink: 0,
+  },
+  filterTextContainer: {
+    flex: 1,
+    flexShrink: 1,
   },
   filterText: {
     fontSize: FONT_SIZES.sm,
@@ -357,7 +394,6 @@ const styles = StyleSheet.create({
     marginHorizontal: SPACING.md,
     marginVertical: SPACING.sm,
     borderRadius: 12,
-    overflow: 'hidden' as const,
   },
   postHeader: {
     flexDirection: 'row' as const,
@@ -372,28 +408,55 @@ const styles = StyleSheet.create({
   },
   postHeaderInfo: {
     flex: 1,
+    flexShrink: 1,
+  },
+  postAuthorContainer: {
+    flex: 1,
+    flexShrink: 1,
   },
   postAuthor: {
     fontSize: FONT_SIZES.md,
     fontWeight: '600' as const,
     color: COLORS.text,
   },
+  postUsernameContainer: {
+    flex: 1,
+    flexShrink: 1,
+    marginTop: 2,
+  },
+  postUsername: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+  },
   postMeta: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     marginTop: 2,
+    flex: 1,
+    flexShrink: 1,
+  },
+  postDistrictContainer: {
+    flex: 1,
+    flexShrink: 1,
   },
   postDistrict: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
   },
+  postTimeContainer: {
+    flexShrink: 0,
+  },
   postTime: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
   },
-  postContent: {
+  postContentContainer: {
+    flex: 1,
+    flexShrink: 1,
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.md,
+  },
+  postContent: {
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
     lineHeight: 20,

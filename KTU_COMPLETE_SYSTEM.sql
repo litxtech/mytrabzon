@@ -378,7 +378,7 @@ ON CONFLICT (code) DO NOTHING;
 
 -- Mühendislik Fakültesi Bölümleri
 INSERT INTO ktu_departments (faculty_id, name, code, description)
-SELECT f.id, d.name, d.code, d.description
+SELECT f.id, d.name, d.code, NULL AS description
 FROM (VALUES
   ('Bilgisayar Mühendisliği', 'BIL'),
   ('Elektrik-Elektronik Mühendisliği', 'ELE'),
@@ -395,9 +395,8 @@ ON CONFLICT (faculty_id, code) DO NOTHING;
 
 -- Fen Fakültesi Bölümleri
 INSERT INTO ktu_departments (faculty_id, name, code, description)
-SELECT f.id, d.name, d.code, d.description
-FROM ktu_faculties f,
-(VALUES
+SELECT f.id, d.name, d.code, NULL AS description
+FROM (VALUES
   ('Matematik', 'MAT'),
   ('Fizik', 'FIZ'),
   ('Kimya', 'KIM'),
@@ -409,9 +408,8 @@ ON CONFLICT (faculty_id, code) DO NOTHING;
 
 -- İİBF Bölümleri
 INSERT INTO ktu_departments (faculty_id, name, code, description)
-SELECT f.id, d.name, d.code, d.description
-FROM ktu_faculties f,
-(VALUES
+SELECT f.id, d.name, d.code, NULL AS description
+FROM (VALUES
   ('İşletme', 'ISL'),
   ('İktisat', 'IKT'),
   ('Maliye', 'MAL'),

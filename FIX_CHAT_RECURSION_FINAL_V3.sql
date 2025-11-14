@@ -1,12 +1,12 @@
 -- ============================================
--- TÜM SORUNLARI DÜZELTEN KAPSAMLI SQL SCRIPT
+-- CHAT RECURSION HATASI DÜZELTME - FINAL V3
 -- ============================================
 -- Bu script'i Supabase SQL Editor'de çalıştırın
--- Tüm RLS policy'leri, helper function'ları ve index'leri düzeltir
+-- Tüm recursion hatalarını düzeltir
 -- ============================================
 
 -- ============================================
--- 1. ÖNCE TÜM POLICY'LERİ KALDIR (Function'a bağımlı oldukları için)
+-- 1. TÜM ESKİ POLICY'LERİ KALDIR
 -- ============================================
 
 -- Chat Members Policies
@@ -20,6 +20,12 @@ DROP POLICY IF EXISTS "Members can leave chat rooms" ON chat_members;
 DROP POLICY IF EXISTS "Users can insert chat members" ON chat_members;
 DROP POLICY IF EXISTS "Users can update chat members" ON chat_members;
 DROP POLICY IF EXISTS "Users can delete chat members" ON chat_members;
+DROP POLICY IF EXISTS "chat_members_select" ON chat_members;
+DROP POLICY IF EXISTS "chat_members_insert" ON chat_members;
+DROP POLICY IF EXISTS "chat_members_delete" ON chat_members;
+DROP POLICY IF EXISTS "chat_members_select_policy" ON chat_members;
+DROP POLICY IF EXISTS "chat_members_insert_policy" ON chat_members;
+DROP POLICY IF EXISTS "chat_members_delete_policy" ON chat_members;
 
 -- Chat Rooms Policies
 DROP POLICY IF EXISTS "Users can view chat rooms" ON chat_rooms;
@@ -27,6 +33,14 @@ DROP POLICY IF EXISTS "Chat rooms viewable by members" ON chat_rooms;
 DROP POLICY IF EXISTS "Users can create chat rooms" ON chat_rooms;
 DROP POLICY IF EXISTS "Users can update chat rooms" ON chat_rooms;
 DROP POLICY IF EXISTS "Members can update chat rooms" ON chat_rooms;
+DROP POLICY IF EXISTS "chat_rooms_select" ON chat_rooms;
+DROP POLICY IF EXISTS "chat_rooms_insert" ON chat_rooms;
+DROP POLICY IF EXISTS "chat_rooms_update" ON chat_rooms;
+DROP POLICY IF EXISTS "chat_rooms_delete" ON chat_rooms;
+DROP POLICY IF EXISTS "chat_rooms_select_policy" ON chat_rooms;
+DROP POLICY IF EXISTS "chat_rooms_insert_policy" ON chat_rooms;
+DROP POLICY IF EXISTS "chat_rooms_update_policy" ON chat_rooms;
+DROP POLICY IF EXISTS "chat_rooms_delete_policy" ON chat_rooms;
 
 -- Messages Policies
 DROP POLICY IF EXISTS "Users can view messages" ON messages;
@@ -35,17 +49,23 @@ DROP POLICY IF EXISTS "Users can insert messages" ON messages;
 DROP POLICY IF EXISTS "Users can send messages" ON messages;
 DROP POLICY IF EXISTS "Users can update messages" ON messages;
 DROP POLICY IF EXISTS "Users can delete messages" ON messages;
+DROP POLICY IF EXISTS "messages_select" ON messages;
+DROP POLICY IF EXISTS "messages_insert" ON messages;
+DROP POLICY IF EXISTS "messages_update" ON messages;
+DROP POLICY IF EXISTS "messages_delete" ON messages;
+DROP POLICY IF EXISTS "messages_select_policy" ON messages;
+DROP POLICY IF EXISTS "messages_insert_policy" ON messages;
+DROP POLICY IF EXISTS "messages_update_policy" ON messages;
+DROP POLICY IF EXISTS "messages_delete_policy" ON messages;
 
 -- ============================================
--- 2. HELPER FUNCTIONS (Recursion önlemek için)
+-- 2. HELPER FUNCTION (RECURSION ÖNLEMEK İÇİN)
 -- ============================================
 
--- Chat room membership kontrolü (SECURITY DEFINER + RLS bypass ile recursion önlenir)
--- Önce CASCADE ile drop et (bağımlı policy'ler zaten kaldırıldı)
+-- Önce eski fonksiyonu kaldır
 DROP FUNCTION IF EXISTS is_room_member(UUID, UUID) CASCADE;
 
--- ÖNEMLİ: SECURITY DEFINER fonksiyonlar RLS'yi bypass eder
--- Bu sayede recursion önlenir
+-- YENİ: SECURITY DEFINER ile RLS bypass
 CREATE OR REPLACE FUNCTION is_room_member(p_room_id UUID, p_user_id UUID)
 RETURNS BOOLEAN
 LANGUAGE sql
@@ -62,14 +82,15 @@ AS $$
   );
 $$;
 
+-- İzinleri ver
 GRANT EXECUTE ON FUNCTION is_room_member(UUID, UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION is_room_member(UUID, UUID) TO anon;
+GRANT EXECUTE ON FUNCTION is_room_member(UUID, UUID) TO service_role;
 
 -- ============================================
--- 3. CHAT MEMBERS POLICIES (Recursion olmadan)
+-- 3. CHAT MEMBERS POLICIES (RECURSION OLMADAN)
 -- ============================================
 
--- YENİ: Recursion olmayan policy'ler (Helper function kullanarak)
 CREATE POLICY "Users can view chat members" ON chat_members
   FOR SELECT 
   USING (
@@ -111,21 +132,18 @@ CREATE POLICY "Users can delete chat members" ON chat_members
   );
 
 -- ============================================
--- 3. CHAT ROOMS POLICIES (Helper function ile)
+-- 4. CHAT ROOMS POLICIES
 -- ============================================
 
-DROP POLICY IF EXISTS "Users can view chat rooms" ON chat_rooms;
 CREATE POLICY "Users can view chat rooms" ON chat_rooms
   FOR SELECT USING (
     created_by = auth.uid()
     OR is_room_member(id, auth.uid())
   );
 
-DROP POLICY IF EXISTS "Users can create chat rooms" ON chat_rooms;
 CREATE POLICY "Users can create chat rooms" ON chat_rooms
   FOR INSERT WITH CHECK (created_by = auth.uid());
 
-DROP POLICY IF EXISTS "Users can update chat rooms" ON chat_rooms;
 CREATE POLICY "Users can update chat rooms" ON chat_rooms
   FOR UPDATE USING (
     created_by = auth.uid()
@@ -133,86 +151,43 @@ CREATE POLICY "Users can update chat rooms" ON chat_rooms
   );
 
 -- ============================================
--- 4. MESSAGES POLICIES (Helper function ile)
+-- 5. MESSAGES POLICIES
 -- ============================================
 
-DROP POLICY IF EXISTS "Users can view messages" ON messages;
 CREATE POLICY "Users can view messages" ON messages
   FOR SELECT USING (
     is_room_member(room_id, auth.uid())
   );
 
-DROP POLICY IF EXISTS "Users can insert messages" ON messages;
 CREATE POLICY "Users can insert messages" ON messages
   FOR INSERT WITH CHECK (
     user_id = auth.uid()
     AND is_room_member(room_id, auth.uid())
   );
 
-DROP POLICY IF EXISTS "Users can update messages" ON messages;
 CREATE POLICY "Users can update messages" ON messages
   FOR UPDATE USING (user_id = auth.uid())
   WITH CHECK (user_id = auth.uid());
 
-DROP POLICY IF EXISTS "Users can delete messages" ON messages;
 CREATE POLICY "Users can delete messages" ON messages
   FOR DELETE USING (user_id = auth.uid());
 
 -- ============================================
--- 5. PROFILES POLICIES (Kullanıcılar listesi için)
+-- 6. VERIFICATION
 -- ============================================
 
--- Profiles SELECT policy - Herkes kendi profilini görebilir, directory'de olanları görebilir
-DROP POLICY IF EXISTS "Users can view profiles" ON profiles;
-CREATE POLICY "Users can view profiles" ON profiles
-  FOR SELECT USING (
-    id = auth.uid()
-    OR (
-      show_in_directory = true
-      AND (privacy_settings->>'profileVisible')::boolean IS NOT FALSE
-    )
-  );
-
--- Profiles UPDATE policy - Sadece kendi profilini güncelleyebilir
-DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
-CREATE POLICY "Users can update own profile" ON profiles
-  FOR UPDATE USING (id = auth.uid())
-  WITH CHECK (id = auth.uid());
-
--- Profiles INSERT policy - Otomatik oluşturulur, auth trigger ile
-DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
-CREATE POLICY "Users can insert own profile" ON profiles
-  FOR INSERT WITH CHECK (id = auth.uid());
-
--- ============================================
--- 6. PERFORMANCE INDEXES
--- ============================================
-
--- Chat members için composite index
-CREATE INDEX IF NOT EXISTS idx_chat_members_room_user 
-  ON chat_members(room_id, user_id);
-
--- Profiles için directory ve visibility index
-CREATE INDEX IF NOT EXISTS idx_profiles_directory 
-  ON profiles(show_in_directory) 
-  WHERE show_in_directory = true;
-
--- ============================================
--- 7. VERIFICATION
--- ============================================
-
--- Policy'lerin doğru oluşturulduğunu kontrol et
 DO $$
 BEGIN
-  RAISE NOTICE '✅ Chat members policies created';
-  RAISE NOTICE '✅ Helper function is_room_member created';
-  RAISE NOTICE '✅ All RLS policies updated';
+  RAISE NOTICE '✅ Chat recursion düzeltmesi tamamlandı';
+  RAISE NOTICE '✅ is_room_member fonksiyonu oluşturuldu';
+  RAISE NOTICE '✅ Tüm policy''ler güncellendi';
 END $$;
 
 -- ============================================
 -- SONUÇ
 -- ============================================
--- Tüm policy'ler güncellendi
--- Recursion sorunu çözüldü (helper function kullanılıyor)
--- Performance index'leri eklendi
+-- Tüm recursion hataları düzeltildi
+-- SECURITY DEFINER fonksiyon ile RLS bypass edildi
+-- Policy'ler artık recursion oluşturmuyor
 -- ============================================
+

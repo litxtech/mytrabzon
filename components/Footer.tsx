@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Linking, Modal, ScrollView } 
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import { X } from 'lucide-react-native';
+import { AppLogo } from './AppLogo';
 
 export function Footer() {
   const [selectedPolicy, setSelectedPolicy] = useState<any>(null);
@@ -55,6 +56,7 @@ export function Footer() {
   return (
     <>
       <View style={styles.container}>
+        <AppLogo size="small" style={styles.logo} />
         <Text style={styles.versionText}>MyTrabzon v1.0</Text>
         <Text style={styles.tagline}>Trabzon&apos;un Dijital Sesi</Text>
         
@@ -179,6 +181,9 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     padding: SPACING.xl,
     paddingBottom: SPACING.xxl,
+  },
+  logo: {
+    marginBottom: SPACING.md,
   },
   versionText: {
     fontSize: FONT_SIZES.sm,

@@ -4,6 +4,9 @@
   "version": "1.0.0",
   "scripts": {
     "start": "bunx rork start -p r41wi4vumk2g4wcqmseqt --tunnel",
+    "start:android": "npx expo start --android --clear",
+    "start:ios": "npx expo start --ios --clear",
+    "start:lan": "npx expo start --lan --clear",
     "start-web": "bunx rork start -p r41wi4vumk2g4wcqmseqt --web --tunnel",
     "start-web-dev": "DEBUG=expo* bunx rork start -p r41wi4vumk2g4wcqmseqt --web --tunnel",
     "lint": "expo lint"

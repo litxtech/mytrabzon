@@ -61,6 +61,7 @@ export interface UserProfile {
   id: string;
   email: string;
   full_name: string;
+  username: string | null;
   avatar_url: string | null;
   bio: string | null;
   district: District;
