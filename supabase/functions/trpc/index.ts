@@ -229,10 +229,14 @@ const appRouter = createTRPCRouter({
 
         let query = supabase
           .from('profiles')
-          .select('id, full_name, avatar_url, bio, city, district, created_at, verified, gender, public_id', { count: 'exact' })
+          .select('id, full_name, avatar_url, bio, city, district, created_at, verified, gender, public_id, privacy_settings', { count: 'exact' })
           .eq('show_in_directory', true)
           .order('created_at', { ascending: false })
           .range(offset, offset + limit - 1);
+
+        // Gizlilik ayarlarına göre filtreleme: profileVisible false olanları gösterme
+        // Ancak privacy_settings null ise göster (geriye dönük uyumluluk için)
+        query = query.or('privacy_settings->>profileVisible.is.null,privacy_settings->>profileVisible.eq.true');
 
         if (search && search.trim()) {
           const searchTerm = `%${search.trim()}%`;
@@ -247,14 +251,31 @@ const appRouter = createTRPCRouter({
 
         if (error) {
           console.error('Error fetching users:', error);
-          throw new Error(`Kullanıcılar yüklenirken bir hata oluştu: ${error.message}`);
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `Kullanıcılar yüklenirken bir hata oluştu: ${error.message}`,
+          });
         }
 
-        // Response'u serialize edilebilir hale getir
-        const serializedUsers = (data || []).map((user: any) => ({
-          ...user,
-          created_at: user.created_at ? new Date(user.created_at).toISOString() : null,
-        }));
+        // Response'u serialize edilebilir hale getir ve gizlilik ayarlarını filtrele
+        const serializedUsers = (data || [])
+          .filter((user: any) => {
+            // Gizlilik ayarları kontrolü
+            if (user.privacy_settings && typeof user.privacy_settings === 'object') {
+              const profileVisible = user.privacy_settings.profileVisible;
+              // Eğer profileVisible false ise, kullanıcıyı gösterme
+              if (profileVisible === false) {
+                return false;
+              }
+            }
+            return true;
+          })
+          .map((user: any) => ({
+            ...user,
+            created_at: user.created_at ? new Date(user.created_at).toISOString() : null,
+            // privacy_settings'i response'dan kaldır (güvenlik için)
+            privacy_settings: undefined,
+          }));
 
         return {
           users: serializedUsers,
@@ -1088,24 +1109,58 @@ const appRouter = createTRPCRouter({
         const { supabase, user } = ctx;
         if (!user) throw new Error("Unauthorized");
 
+        // Reel'in var olup olmadığını kontrol et
         const { data: reel, error: reelError } = await supabase
           .from('posts')
-          .select('id, is_deleted')
+          .select('id, is_deleted, type')
           .eq('id', input.reel_id)
           .eq('type', 'reel')
           .single();
 
         if (reelError || !reel || reel.is_deleted) {
-          throw new Error("Paylaşılacak reel bulunamadı veya silinmiş.");
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: "Paylaşılacak reel bulunamadı veya silinmiş.",
+          });
         }
 
+        // Daha önce paylaşılmış mı kontrol et
+        const { data: existingShare } = await supabase
+          .from('reel_shares')
+          .select('id')
+          .eq('reel_id', input.reel_id)
+          .eq('user_id', user.id)
+          .single();
+
+        if (existingShare) {
+          // Zaten paylaşılmış, mevcut kaydı döndür
+          return existingShare;
+        }
+
+        // Yeni paylaşım oluştur
         const { data, error } = await supabase
           .from('reel_shares')
           .insert({ reel_id: input.reel_id, user_id: user.id, platform: input.platform })
           .select()
           .single();
 
-        if (error) throw new Error(error.message);
+        if (error) {
+          // Unique constraint hatası ise, mevcut kaydı getir
+          if (error.code === '23505') {
+            const { data: existing } = await supabase
+              .from('reel_shares')
+              .select('*')
+              .eq('reel_id', input.reel_id)
+              .eq('user_id', user.id)
+              .single();
+            if (existing) return existing;
+          }
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: error.message || "Reel paylaşılırken bir hata oluştu.",
+          });
+        }
+        
         return data;
       }),
   }),
@@ -1656,6 +1711,329 @@ const appRouter = createTRPCRouter({
 
       return kycRequest || null;
     }),
+  }),
+
+  ktu: createTRPCRouter({
+    // Fakülteleri getir
+    getFaculties: publicProcedure.query(async ({ ctx }) => {
+      const { supabase } = ctx;
+      const { data, error } = await supabase
+        .from('ktu_faculties')
+        .select('*')
+        .order('name');
+
+      if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+      return data || [];
+    }),
+
+    // Bölümleri getir
+    getDepartments: publicProcedure
+      .input(z.object({ faculty_id: z.string().uuid().optional() }))
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+        let query = supabase
+          .from('ktu_departments')
+          .select('*')
+          .order('name');
+
+        if (input.faculty_id) {
+          query = query.eq('faculty_id', input.faculty_id);
+        }
+
+        const { data, error } = await query;
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        return data || [];
+      }),
+
+    // Öğrenci bilgilerini getir
+    getStudentInfo: protectedProcedure.query(async ({ ctx }) => {
+      const { supabase, user } = ctx;
+      if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+      const { data, error } = await supabase
+        .from('ktu_students')
+        .select(`
+          *,
+          faculty:ktu_faculties(*),
+          department:ktu_departments(*)
+        `)
+        .eq('id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+      }
+      return data || null;
+    }),
+
+    // Öğrenci doğrulama başvurusu
+    verifyStudent: protectedProcedure
+      .input(
+        z.object({
+          student_number: z.string().min(1),
+          faculty_id: z.string().uuid(),
+          department_id: z.string().uuid(),
+          class_year: z.number().min(1).max(8),
+          ktu_email: z.string().email().optional(),
+          verification_document_url: z.string().url(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Öğrenci numarası kontrolü
+        const { data: existing } = await supabase
+          .from('ktu_students')
+          .select('id')
+          .eq('student_number', input.student_number)
+          .single();
+
+        if (existing && existing.id !== user.id) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'Bu öğrenci numarası zaten kullanılıyor.',
+          });
+        }
+
+        const { data, error } = await supabase
+          .from('ktu_students')
+          .upsert({
+            id: user.id,
+            student_number: input.student_number,
+            faculty_id: input.faculty_id,
+            department_id: input.department_id,
+            class_year: input.class_year,
+            ktu_email: input.ktu_email,
+            verification_document_url: input.verification_document_url,
+            verification_status: 'pending',
+          })
+          .select()
+          .single();
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        return data;
+      }),
+
+    // Duyuruları getir
+    getAnnouncements: publicProcedure
+      .input(
+        z.object({
+          category: z.enum(['general', 'faculty', 'department', 'club', 'event', 'exam', 'academic']).optional(),
+          faculty_id: z.string().uuid().optional(),
+          department_id: z.string().uuid().optional(),
+          limit: z.number().min(1).max(100).default(20),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+        let query = supabase
+          .from('ktu_announcements')
+          .select(
+            `
+            *,
+            author:profiles!ktu_announcements_author_id_fkey(id, full_name, avatar_url),
+            faculty:ktu_faculties(*),
+            department:ktu_departments(*)
+          `,
+            { count: 'exact' }
+          )
+          .order('is_pinned', { ascending: false })
+          .order('created_at', { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+
+        if (input.category) {
+          query = query.eq('category', input.category);
+        }
+        if (input.faculty_id) {
+          query = query.eq('faculty_id', input.faculty_id);
+        }
+        if (input.department_id) {
+          query = query.eq('department_id', input.department_id);
+        }
+
+        const { data, error, count } = await query;
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return {
+          announcements: data || [],
+          total: count || 0,
+          hasMore: count ? input.offset + input.limit < count : false,
+        };
+      }),
+
+    // Duyuru oluştur
+    createAnnouncement: protectedProcedure
+      .input(
+        z.object({
+          title: z.string().min(1).max(200),
+          content: z.string().min(1),
+          category: z.enum(['general', 'faculty', 'department', 'club', 'event', 'exam', 'academic']).default('general'),
+          faculty_id: z.string().uuid().optional(),
+          department_id: z.string().uuid().optional(),
+          is_pinned: z.boolean().default(false),
+          is_important: z.boolean().default(false),
+          attachment_url: z.string().url().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Doğrulanmış öğrenci veya admin kontrolü
+        const { data: student } = await supabase
+          .from('ktu_students')
+          .select('verification_status')
+          .eq('id', user.id)
+          .single();
+
+        const { data: admin } = await supabase
+          .from('admin_users')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .single();
+
+        if (!student || (student.verification_status !== 'verified' && !admin)) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Duyuru oluşturmak için öğrenci doğrulaması gereklidir.',
+          });
+        }
+
+        const { data, error } = await supabase
+          .from('ktu_announcements')
+          .insert({
+            ...input,
+            author_id: user.id,
+          })
+          .select()
+          .single();
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        return data;
+      }),
+
+    // Etkinlikleri getir
+    getEvents: publicProcedure
+      .input(
+        z.object({
+          event_type: z.enum(['seminar', 'concert', 'sports', 'academic', 'social', 'club', 'general']).optional(),
+          faculty_id: z.string().uuid().optional(),
+          department_id: z.string().uuid().optional(),
+          limit: z.number().min(1).max(100).default(20),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        let query = supabase
+          .from('ktu_events')
+          .select(
+            `
+            *,
+            organizer:profiles!ktu_events_organizer_id_fkey(id, full_name, avatar_url),
+            faculty:ktu_faculties(*),
+            department:ktu_departments(*)
+          `,
+            { count: 'exact' }
+          )
+          .gte('start_date', new Date().toISOString())
+          .order('start_date', { ascending: true })
+          .range(input.offset, input.offset + input.limit - 1);
+
+        if (input.event_type) {
+          query = query.eq('event_type', input.event_type);
+        }
+        if (input.faculty_id) {
+          query = query.eq('faculty_id', input.faculty_id);
+        }
+        if (input.department_id) {
+          query = query.eq('department_id', input.department_id);
+        }
+
+        const { data, error, count } = await query;
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        // Kullanıcı katılım durumunu kontrol et
+        const events = data || [];
+        if (user) {
+          const eventIds = events.map((e: any) => e.id);
+          const { data: attendees } = await supabase
+            .from('ktu_event_attendees')
+            .select('event_id')
+            .eq('user_id', user.id)
+            .in('event_id', eventIds);
+
+          const attendingEventIds = new Set(attendees?.map((a) => a.event_id) || []);
+          events.forEach((event: any) => {
+            event.is_attending = attendingEventIds.has(event.id);
+          });
+        }
+
+        return {
+          events: events,
+          total: count || 0,
+          hasMore: count ? input.offset + input.limit < count : false,
+        };
+      }),
+
+    // Kulüpleri getir
+    getClubs: publicProcedure
+      .input(
+        z.object({
+          faculty_id: z.string().uuid().optional(),
+          limit: z.number().min(1).max(100).default(20),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        let query = supabase
+          .from('ktu_clubs')
+          .select(
+            `
+            *,
+            president:profiles!ktu_clubs_president_id_fkey(id, full_name, avatar_url),
+            faculty:ktu_faculties(*)
+          `,
+            { count: 'exact' }
+          )
+          .eq('is_active', true)
+          .order('name')
+          .range(input.offset, input.offset + input.limit - 1);
+
+        if (input.faculty_id) {
+          query = query.eq('faculty_id', input.faculty_id);
+        }
+
+        const { data, error, count } = await query;
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        // Kullanıcı üyelik durumunu kontrol et
+        const clubs = data || [];
+        if (user) {
+          const clubIds = clubs.map((c: any) => c.id);
+          const { data: members } = await supabase
+            .from('ktu_club_members')
+            .select('club_id, role')
+            .eq('user_id', user.id)
+            .in('club_id', clubIds);
+
+          const membershipMap = new Map(members?.map((m) => [m.club_id, m.role]) || []);
+          clubs.forEach((club: any) => {
+            club.is_member = membershipMap.has(club.id);
+            club.user_role = membershipMap.get(club.id);
+          });
+        }
+
+        return {
+          clubs: clubs,
+          total: count || 0,
+          hasMore: count ? input.offset + input.limit < count : false,
+        };
+      }),
   }),
 });
 

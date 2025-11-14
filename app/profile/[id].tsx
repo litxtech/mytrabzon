@@ -37,6 +37,11 @@ export default function UserProfileScreen() {
     { enabled: !!id }
   );
 
+  // KTÜ öğrenci bilgilerini getir
+  const { data: ktuStudent } = trpc.ktu.getStudentInfo.useQuery(undefined, {
+    enabled: !!id && id === currentUser?.id, // Sadece kendi bilgilerini göster
+  });
+
   // Kullanıcının gönderilerini getir
   const { data: postsData, isLoading: postsLoading } = trpc.post.getPosts.useQuery(
     {
@@ -130,6 +135,20 @@ export default function UserProfileScreen() {
 
           <Text style={styles.name}>{profile.full_name || 'İsimsiz'}</Text>
           {profile.bio && <Text style={styles.bio}>{profile.bio}</Text>}
+          
+          {/* KTÜ Bilgileri */}
+          {ktuStudent && ktuStudent.verification_status === 'verified' && (
+            <View style={styles.ktuInfo}>
+              <Text style={styles.ktuText}>
+                🎓 {ktuStudent.faculty?.name} - {ktuStudent.department?.name}
+              </Text>
+              {ktuStudent.class_year && (
+                <Text style={styles.ktuText}>
+                  {ktuStudent.class_year}. Sınıf
+                </Text>
+              )}
+            </View>
+          )}
 
           {/* İstatistikler */}
           <View style={styles.statsContainer}>
@@ -438,6 +457,16 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
+  },
+  ktuInfo: {
+    marginTop: SPACING.sm,
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  ktuText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    fontWeight: '600',
   },
 });
 

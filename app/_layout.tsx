@@ -33,6 +33,11 @@ function RootLayoutNav() {
       <Stack.Screen name="profile/settings" options={{ title: "Ayarlar" }} />
       <Stack.Screen name="kyc/verify" options={{ headerShown: false }} />
       <Stack.Screen name="admin/kyc" options={{ title: "KYC Başvuruları" }} />
+      <Stack.Screen name="ktu/verify" options={{ title: "Öğrenci Doğrulama" }} />
+      <Stack.Screen name="ktu/announcements" options={{ title: "Duyurular" }} />
+      <Stack.Screen name="ktu/events" options={{ title: "Etkinlikler" }} />
+      <Stack.Screen name="ktu/clubs" options={{ title: "Kulüpler" }} />
+      <Stack.Screen name="ktu/notes" options={{ title: "Ders Notları" }} />
     </Stack>
   );
 }

@@ -27,48 +27,23 @@ jobs:
         with:
           version: latest
 
-      - name: Link to Supabase Project
-        run: |
-          PROJECT_REF="${{ secrets.SUPABASE_PROJECT_REF }}"
-          if [ -z "$PROJECT_REF" ]; then
-            PROJECT_REF="xcvcplwimicylaxghiak"
-          fi
-          
-          echo "Linking to project: $PROJECT_REF"
-          supabase link --project-ref "$PROJECT_REF"
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
       - name: Deploy All Edge Functions
         run: |
           echo "🚀 Deploying all Supabase Edge Functions..."
+          echo "🔍 Auto-detecting functions in supabase/functions/..."
           
-          # Deploy edilecek fonksiyonların listesi
-          FUNCTIONS=(
-            "admin-worker"
-            "trpc"
-            "chat-get-rooms"
-            "chat-get-messages"
-            "chat-send-message"
-            "chat-create-room"
-            "chat-mark-as-read"
-            "chat-delete-message"
-            "chat-add-reaction"
-            "chat-block-user"
-            "chat-unblock-user"
-            "kyc-create"
-            "kyc-get"
-            "signup-init"
-          )
-          
+          # Otomatik olarak supabase/functions/ klasöründeki TÜM fonksiyonları bul
           FAILED_FUNCTIONS=()
           SUCCESSFUL_FUNCTIONS=()
           
-          # Her fonksiyonu deploy et
-          for fn_name in "${FUNCTIONS[@]}"; do
-            # Fonksiyon dizini var mı kontrol et
-            if [ ! -d "supabase/functions/$fn_name" ]; then
-              echo "⚠️  Skipping $fn_name (directory not found)"
+          # supabase/functions/ klasöründeki tüm dizinleri bul
+          for fn_dir in supabase/functions/*/; do
+            # Dizin adını al (örn: "supabase/functions/chat-get-rooms/" -> "chat-get-rooms")
+            fn_name=$(basename "$fn_dir")
+            
+            # index.ts veya deno.json dosyası var mı kontrol et (geçerli bir Edge Function mı?)
+            if [ ! -f "$fn_dir/index.ts" ] && [ ! -f "$fn_dir/index.js" ]; then
+              echo "⚠️  Skipping $fn_name (no index.ts/js found)"
               continue
             fi
             
@@ -77,7 +52,12 @@ jobs:
             echo "----------------------------------------"
             
             # Her function'ı deploy et (başarısız olsa bile devam et)
-            if supabase functions deploy "$fn_name" --no-verify-jwt; then
+            PROJECT_REF="${{ secrets.SUPABASE_PROJECT_REF }}"
+            if [ -z "$PROJECT_REF" ]; then
+              PROJECT_REF="xcvcplwimicylaxghiak"
+            fi
+            
+            if supabase functions deploy "$fn_name" --project-ref "$PROJECT_REF" --no-verify-jwt; then
               echo "✅ Successfully deployed $fn_name"
               SUCCESSFUL_FUNCTIONS+=("$fn_name")
             else
@@ -85,6 +65,12 @@ jobs:
               FAILED_FUNCTIONS+=("$fn_name")
             fi
           done
+          
+          # Eğer hiç fonksiyon bulunamadıysa uyarı ver
+          if [ ${#SUCCESSFUL_FUNCTIONS[@]} -eq 0 ] && [ ${#FAILED_FUNCTIONS[@]} -eq 0 ]; then
+            echo "⚠️  No Edge Functions found in supabase/functions/"
+            exit 0
+          fi
           
           echo ""
           echo "=========================================="
@@ -114,6 +100,10 @@ jobs:
       - name: List Deployed Functions
         run: |
           echo "📋 Listing all deployed functions:"
-          supabase functions list
+          PROJECT_REF="${{ secrets.SUPABASE_PROJECT_REF }}"
+          if [ -z "$PROJECT_REF" ]; then
+            PROJECT_REF="xcvcplwimicylaxghiak"
+          fi
+          supabase functions list --project-ref "$PROJECT_REF"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
