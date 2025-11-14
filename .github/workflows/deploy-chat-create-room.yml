@@ -1,0 +1,48 @@
+name: Deploy chat-create-room
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'supabase/functions/chat-create-room/**'
+      - '.github/workflows/deploy-chat-create-room.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy chat-create-room
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link to Supabase Project
+        run: |
+          PROJECT_REF="${{ secrets.SUPABASE_PROJECT_REF }}"
+          if [ -z "$PROJECT_REF" ]; then
+            PROJECT_REF="xcvcplwimicylaxghiak"
+          fi
+          echo "Linking to project: $PROJECT_REF"
+          supabase link --project-ref "$PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy chat-create-room
+        run: |
+          echo "🚀 Deploying chat-create-room..."
+          supabase functions deploy chat-create-room --no-verify-jwt
+          echo "✅ Successfully deployed chat-create-room"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+

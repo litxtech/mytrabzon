@@ -1,0 +1,48 @@
+name: Deploy chat-send-message
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'supabase/functions/chat-send-message/**'
+      - '.github/workflows/deploy-chat-send-message.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy chat-send-message
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link to Supabase Project
+        run: |
+          PROJECT_REF="${{ secrets.SUPABASE_PROJECT_REF }}"
+          if [ -z "$PROJECT_REF" ]; then
+            PROJECT_REF="xcvcplwimicylaxghiak"
+          fi
+          echo "Linking to project: $PROJECT_REF"
+          supabase link --project-ref "$PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy chat-send-message
+        run: |
+          echo "🚀 Deploying chat-send-message..."
+          supabase functions deploy chat-send-message --no-verify-jwt
+          echo "✅ Successfully deployed chat-send-message"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
