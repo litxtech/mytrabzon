@@ -584,6 +584,37 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontWeight: '600',
   },
+  statusContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.xl,
+  },
+  statusTitle: {
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: SPACING.md,
+    textAlign: 'center',
+  },
+  statusText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textLight,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
+  },
+  retryButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: 12,
+    marginTop: SPACING.md,
+  },
+  retryButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+  },
   uploadButtons: {
     flexDirection: 'row',
     gap: SPACING.md,
