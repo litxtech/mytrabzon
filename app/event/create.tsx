@@ -217,7 +217,13 @@ export default function CreateEventScreen() {
                   styles.districtChip,
                   formData.district === district.value && styles.districtChipSelected,
                 ]}
-                onPress={() => setFormData({ ...formData, district: district.value })}
+                onPress={() => {
+                  // Toggle: Eğer zaten seçiliyse iptal et, değilse seç
+                  setFormData({ 
+                    ...formData, 
+                    district: formData.district === district.value ? '' : district.value 
+                  });
+                }}
               >
                 <Text style={[
                   styles.districtText,
@@ -362,7 +368,7 @@ const styles = StyleSheet.create({
   districtChip: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    borderRadius: 20,
+    borderRadius: 8,
     backgroundColor: COLORS.white,
     borderWidth: 1,
     borderColor: COLORS.border,
