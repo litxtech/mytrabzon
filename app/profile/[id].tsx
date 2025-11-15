@@ -198,12 +198,12 @@ export default function UserProfileScreen() {
           {/* Action Buttons */}
           {!isOwnProfile && (
             <View style={styles.actionButtons}>
+              <MessageButton targetUserId={id!} />
               <CallButtons
                 targetUserId={id!}
                 targetUserName={profile.full_name || 'Kullanıcı'}
                 targetUserAvatar={profile.avatar_url}
               />
-              <MessageButton targetUserId={id!} />
             </View>
           )}
 

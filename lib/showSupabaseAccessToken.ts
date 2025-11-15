@@ -16,6 +16,9 @@ export async function getSupabaseAccessToken(): Promise<string | null> {
     return null;
   }
 
-  console.log('Supabase access token:', accessToken);
+  // Production'da token'ı loglama (güvenlik)
+  if (__DEV__) {
+    console.log('Supabase access token:', accessToken ? `${accessToken.substring(0, 20)}...` : 'null');
+  }
   return accessToken;
 }

@@ -1,0 +1,38 @@
+name: Auto Version Bump on Successful Deploy
+
+on:
+  workflow_run:
+    workflows: ["Deploy Supabase Edge Functions"]
+    types:
+      - completed
+    branches: [main, master]
+
+jobs:
+  bump-version-on-success:
+    name: Bump Version After Successful Deploy
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Bump version (patch)
+        run: |
+          node scripts/bump-version.js patch
+
+      - name: Commit version bump
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add app.json package.json
+          git commit -m "chore: auto-bump version after successful deploy [skip ci]" || exit 0
+          git push
+

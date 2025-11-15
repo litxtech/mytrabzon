@@ -36,7 +36,19 @@ export default function FootballScreen() {
   };
 
   const formatTime = (time: string) => {
-    return new Date(time).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    return new Date(time).toLocaleTimeString('tr-TR', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      timeZone: 'Europe/Istanbul',
+    });
+  };
+
+  const formatDate = (date: string) => {
+    return new Date(date).toLocaleDateString('tr-TR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
   };
 
   const renderMatch = ({ item }: { item: any }) => (

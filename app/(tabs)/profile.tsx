@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert, FlatList } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, FlatList } from 'react-native';
+import { Image } from 'expo-image';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
-import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, MessageCircle, Share2, MoreVertical, Shield, CheckCircle2, Clock, XCircle } from 'lucide-react-native';
+import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, MessageCircle, Share2, MoreVertical, Shield, CheckCircle2, Clock, XCircle, Sparkles } from 'lucide-react-native';
 import { DISTRICT_BADGES } from '../../constants/districts';
 import { useRouter } from 'expo-router';
 import { Footer } from '../../components/Footer';
@@ -193,9 +194,17 @@ export default function ProfileScreen() {
           {profile.username && (
             <Text style={styles.username}>@{profile.username}</Text>
           )}
-          <View style={styles.districtBadge}>
-            <Text style={styles.districtEmoji}>{DISTRICT_BADGES[profile.district as keyof typeof DISTRICT_BADGES] || '📍'}</Text>
-            <Text style={styles.districtText}>{profile.district}</Text>
+          <View style={styles.badgesRow}>
+            <View style={styles.districtBadge}>
+              <Text style={styles.districtEmoji}>{DISTRICT_BADGES[profile.district as keyof typeof DISTRICT_BADGES] || '📍'}</Text>
+              <Text style={styles.districtText}>{profile.district}</Text>
+            </View>
+            {profile.supporter_badge && profile.supporter_badge_visible && (
+              <View style={styles.supporterBadge}>
+                <Heart size={14} color={COLORS.primary} fill={COLORS.primary} />
+                <Text style={styles.supporterBadgeText}>Destekçi</Text>
+              </View>
+            )}
           </View>
           {profile.bio && <Text style={styles.bio}>{profile.bio}</Text>}
 
@@ -224,6 +233,19 @@ export default function ProfileScreen() {
           <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/profile/settings')}>
             <Settings size={20} color={COLORS.text} />
             <Text style={styles.menuText}>Ayarlar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/lazgpt/chat')}>
+            <Sparkles size={20} color={COLORS.primary} />
+            <Text style={[styles.menuText, { color: COLORS.primary, fontWeight: '600' }]}>LazGPT ile Sohbet</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.menuItem, { backgroundColor: COLORS.primary + '20', borderLeftWidth: 3, borderLeftColor: COLORS.primary }]} 
+            onPress={() => router.push('/support/donate')}
+          >
+            <Heart size={20} color={COLORS.primary} />
+            <Text style={[styles.menuText, { color: COLORS.primary, fontWeight: '700' }]}>❤️ MyTrabzon'u Destekle</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.menuItem} onPress={() => setSupportVisible(true)}>
@@ -381,6 +403,14 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
     marginBottom: SPACING.sm,
   },
+  badgesRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    flexWrap: 'wrap' as const,
+    gap: SPACING.xs,
+    marginBottom: SPACING.md,
+  },
   districtBadge: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -389,7 +419,20 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     borderRadius: 20,
     gap: SPACING.xs,
-    marginBottom: SPACING.md,
+  },
+  supporterBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: COLORS.primary + '20',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: 20,
+    gap: SPACING.xs,
+  },
+  supporterBadgeText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    fontWeight: '700' as const,
   },
   districtEmoji: {
     fontSize: FONT_SIZES.md,

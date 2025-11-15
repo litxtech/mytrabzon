@@ -78,13 +78,21 @@ export default function MatchDetailScreen() {
           <View style={styles.infoRow}>
             <Calendar size={20} color={COLORS.primary} />
             <Text style={styles.infoText}>
-              {new Date(match.match_date).toLocaleDateString('tr-TR')}
+              {new Date(match.match_date).toLocaleDateString('tr-TR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+              })}
             </Text>
           </View>
           <View style={styles.infoRow}>
             <Clock size={20} color={COLORS.primary} />
             <Text style={styles.infoText}>
-              {new Date(match.match_date).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+              {new Date(match.match_date).toLocaleTimeString('tr-TR', { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                timeZone: 'Europe/Istanbul',
+              })}
             </Text>
           </View>
           <View style={styles.infoRow}>

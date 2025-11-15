@@ -57,16 +57,32 @@ export default function CreateMatchScreen() {
 
     setLoading(true);
     try {
-      // Tarih ve saat formatını düzelt - ISO formatına çevir
+      // Tarih ve saat formatını düzelt - Türkiye formatından ISO formatına çevir
       const dateStr = formData.match_date.trim();
       const timeStr = formData.match_time.trim();
       
-      // Tarih formatını kontrol et (YYYY-MM-DD)
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-        Alert.alert('Hata', 'Tarih formatı yanlış. Örnek: 2025-01-15');
+      // Tarih formatını kontrol et (DD.MM.YYYY)
+      const dateMatch = dateStr.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+      if (!dateMatch) {
+        Alert.alert('Hata', 'Tarih formatı yanlış. Örnek: 15.01.2025');
         setLoading(false);
         return;
       }
+      
+      const [, day, month, year] = dateMatch;
+      const dayNum = parseInt(day, 10);
+      const monthNum = parseInt(month, 10);
+      const yearNum = parseInt(year, 10);
+      
+      // Tarih geçerliliğini kontrol et
+      if (dayNum < 1 || dayNum > 31 || monthNum < 1 || monthNum > 12 || yearNum < 2024) {
+        Alert.alert('Hata', 'Geçersiz tarih değerleri');
+        setLoading(false);
+        return;
+      }
+      
+      // ISO formatına çevir (YYYY-MM-DD)
+      const isoDate = `${yearNum}-${monthNum.toString().padStart(2, '0')}-${dayNum.toString().padStart(2, '0')}`;
       
       // Saat formatını kontrol et (HH:MM)
       if (!/^\d{2}:\d{2}$/.test(timeStr)) {
@@ -75,8 +91,18 @@ export default function CreateMatchScreen() {
         return;
       }
       
-      // ISO formatına çevir (UTC)
-      const matchDateTime = new Date(`${dateStr}T${timeStr}:00.000Z`);
+      // Türkiye saat dilimine göre ISO formatına çevir
+      // Türkiye UTC+3, bu yüzden UTC'ye çevirirken 3 saat çıkarıyoruz
+      const [hours, minutes] = timeStr.split(':').map(Number);
+      if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+        Alert.alert('Hata', 'Geçersiz saat değerleri');
+        setLoading(false);
+        return;
+      }
+      
+      // ISO formatına çevir (Türkiye saati için)
+      // Türkiye UTC+3, bu yüzden local time olarak oluşturup UTC'ye çeviriyoruz
+      const matchDateTime = new Date(`${isoDate}T${timeStr}:00+03:00`);
       
       // Geçerli bir tarih mi kontrol et
       if (isNaN(matchDateTime.getTime())) {
@@ -234,11 +260,17 @@ export default function CreateMatchScreen() {
           <Text style={styles.label}>Tarih *</Text>
           <TextInput
             style={styles.input}
-            placeholder="Örnek: 2025-01-15"
+            placeholder="Örnek: 15.01.2025"
             value={formData.match_date}
-            onChangeText={(text) => setFormData({ ...formData, match_date: text })}
-            keyboardType="default"
+            onChangeText={(text) => {
+              // Sadece rakam ve nokta kabul et
+              const cleaned = text.replace(/[^0-9.]/g, '');
+              setFormData({ ...formData, match_date: cleaned });
+            }}
+            keyboardType="numeric"
+            maxLength={10}
           />
+          <Text style={styles.hintText}>Format: GG.AA.YYYY (Örnek: 15.01.2025)</Text>
         </View>
 
         <View style={styles.formGroup}>
@@ -247,9 +279,26 @@ export default function CreateMatchScreen() {
             style={styles.input}
             placeholder="Örnek: 18:00"
             value={formData.match_time}
-            onChangeText={(text) => setFormData({ ...formData, match_time: text })}
-            keyboardType="default"
+            onChangeText={(text) => {
+              // Sadece rakam ve tek nokta üst üste (:) kabul et
+              let cleaned = text.replace(/[^0-9:]/g, '');
+              // Çift nokta üst üste (::) yerine tek nokta üst üste (:) kullan
+              cleaned = cleaned.replace(/::/g, ':');
+              // Birden fazla iki nokta üst üste varsa sadece bir tane bırak
+              const parts = cleaned.split(':');
+              if (parts.length > 2) {
+                cleaned = parts[0] + ':' + parts.slice(1).join('');
+              }
+              // Maksimum 5 karakter (HH:MM)
+              if (cleaned.length > 5) {
+                cleaned = cleaned.substring(0, 5);
+              }
+              setFormData({ ...formData, match_time: cleaned });
+            }}
+            keyboardType="numeric"
+            maxLength={5}
           />
+          <Text style={styles.hintText}>Format: SS:DD (Örnek: 18:00)</Text>
         </View>
 
         <View style={styles.formGroup}>
@@ -441,5 +490,11 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     flexWrap: 'wrap',
     textAlign: 'center',
+  },
+  hintText: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+    marginTop: SPACING.xs,
+    fontStyle: 'italic',
   },
 });

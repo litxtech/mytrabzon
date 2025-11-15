@@ -36,6 +36,23 @@ yarn-error.*
 .env*.local
 .env.*
 
+# Sensitive files
+google-play-service-account.json
+*.p12
+*.key
+*.pem
+user-token.txt
+*.jks
+*.mobileprovision
+
 # typescript
 *.tsbuildinfo
 .vercel
+
+# Gereksiz dosyalar
+-1
+2200
+generated-icon.png
+check-token.ps1
+utils/supabaseTest.ts
+SECURITY_AUDIT_REPORT.md

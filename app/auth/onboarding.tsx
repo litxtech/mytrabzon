@@ -17,7 +17,8 @@ export default function OnboardingScreen() {
   const [selectedDistrict, setSelectedDistrict] = useState<District | null>(null);
 
   const handleComplete = async () => {
-    if (!fullName || !selectedDistrict || !user) {
+    const trimmedFullName = fullName.trim();
+    if (!trimmedFullName || !selectedDistrict || !user) {
       alert('Lütfen tüm alanları doldurun');
       return;
     }
@@ -33,7 +34,7 @@ export default function OnboardingScreen() {
           {
             id: user.id,
             email: user.email ?? '',
-            full_name: fullName,
+            full_name: trimmedFullName,
             bio: bio || null,
             district: selectedDistrict,
             avatar_url: avatarUrl,
@@ -116,9 +117,12 @@ export default function OnboardingScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
+          style={[
+            styles.button, 
+            (loading || !fullName.trim() || !selectedDistrict) && styles.buttonDisabled
+          ]}
           onPress={handleComplete}
-          disabled={loading}
+          disabled={loading || !fullName.trim() || !selectedDistrict}
         >
           {loading ? (
             <ActivityIndicator color={COLORS.white} />

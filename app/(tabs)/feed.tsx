@@ -1,24 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { Image } from 'expo-image';
 
 import { useRouter } from 'expo-router';
 import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { DISTRICTS, DISTRICT_BADGES } from '@/constants/districts';
 import { Post, District } from '@/types/database';
-import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, Sparkles } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLogo } from '@/components/AppLogo';
+import { useQueryClient } from '@tanstack/react-query';
 
 type SortType = 'new' | 'hot' | 'trending';
 
@@ -26,16 +27,17 @@ export default function FeedScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [selectedDistrict, setSelectedDistrict] = useState<District | 'all'>('all');
   const [sortType, setSortType] = useState<SortType>('new');
 
-  const formatCount = (count: number | null | undefined): string => {
+  const formatCount = useCallback((count: number | null | undefined): string => {
     if (!count) return '0';
     if (count >= 1000) {
       return `${(count / 1000).toFixed(1)}K`;
     }
     return count.toString();
-  };
+  }, []);
 
   // Kişiselleştirilmiş feed kullan (eğer kullanıcı giriş yaptıysa)
   const { data: personalizedFeedData, isLoading: isLoadingPersonalized, refetch: refetchPersonalized } = trpc.post.getPersonalizedFeed.useQuery(
@@ -44,19 +46,28 @@ export default function FeedScreen() {
       sort: sortType,
       limit: 20, 
       offset: 0 
-    },
-    { enabled: !!user?.id }
+    } as any, // Type assertion - backend'de district parametresi var
+    { 
+      enabled: !!user?.id,
+      staleTime: 30000, // 30 saniye cache
+      gcTime: 300000, // 5 dakika garbage collection
+    }
   );
 
   // Fallback: Normal feed (giriş yapmamış kullanıcılar için)
-  const { data: postsData, isLoading: isLoadingNormal, refetch: refetchNormal } = trpc.post.getPosts.useQuery({
-    district: selectedDistrict === 'all' ? undefined : selectedDistrict,
-    sort: sortType,
-    limit: 20,
-    offset: 0,
-  }, {
-    enabled: !user?.id, // Sadece giriş yapmamış kullanıcılar için
-  });
+  const { data: postsData, isLoading: isLoadingNormal, refetch: refetchNormal } = trpc.post.getPosts.useQuery(
+    {
+      district: selectedDistrict === 'all' ? undefined : selectedDistrict,
+      sort: sortType,
+      limit: 20,
+      offset: 0,
+    } as any, // Type assertion - backend'de district parametresi var
+    {
+      enabled: !user?.id, // Sadece giriş yapmamış kullanıcılar için
+      staleTime: 30000,
+      gcTime: 300000,
+    }
+  );
 
   // Hangi feed'i kullanacağız?
   const feedData = user?.id ? personalizedFeedData : postsData;
@@ -64,20 +75,63 @@ export default function FeedScreen() {
   const refetch = user?.id ? refetchPersonalized : refetchNormal;
 
   const likePostMutation = trpc.post.likePost.useMutation({
-    onSuccess: () => {
+    onMutate: async ({ postId }) => {
+      // Optimistic update - hemen UI'ı güncelle
+      const queryKey = user?.id 
+        ? [['post', 'getPersonalizedFeed'], { district: selectedDistrict === 'all' ? undefined : selectedDistrict, sort: sortType, limit: 20, offset: 0 }]
+        : [['post', 'getPosts'], { district: selectedDistrict === 'all' ? undefined : selectedDistrict, sort: sortType, limit: 20, offset: 0 }];
+      
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey });
+
+      // Snapshot previous value
+      const previousData = queryClient.getQueryData(queryKey);
+
+      // Optimistically update
+      queryClient.setQueryData(queryKey, (old: any) => {
+        if (!old?.posts) return old;
+        return {
+          ...old,
+          posts: old.posts.map((post: Post) => {
+            if (post.id === postId) {
+              const isCurrentlyLiked = post.is_liked;
+              return {
+                ...post,
+                is_liked: !isCurrentlyLiked,
+                like_count: (post.like_count || 0) + (isCurrentlyLiked ? -1 : 1),
+              };
+            }
+            return post;
+          }),
+        };
+      });
+
+      return { previousData };
+    },
+    onError: (err, variables, context) => {
+      // Rollback on error
+      if (context?.previousData) {
+        const queryKey = user?.id 
+          ? [['post', 'getPersonalizedFeed'], { district: selectedDistrict === 'all' ? undefined : selectedDistrict, sort: sortType, limit: 20, offset: 0 }]
+          : [['post', 'getPosts'], { district: selectedDistrict === 'all' ? undefined : selectedDistrict, sort: sortType, limit: 20, offset: 0 }];
+        queryClient.setQueryData(queryKey, context.previousData);
+      }
+    },
+    onSettled: () => {
+      // Refetch to ensure consistency
       refetch();
     },
   });
 
-  const handleLike = async (postId: string) => {
+  const handleLike = useCallback(async (postId: string) => {
     try {
       await likePostMutation.mutateAsync({ postId });
     } catch (error) {
       console.error('Like error:', error);
     }
-  };
+  }, [likePostMutation]);
 
-  const renderSortTabs = () => (
+  const renderSortTabs = useMemo(() => (
     <View style={styles.sortContainer}>
       <TouchableOpacity
         style={[styles.sortTab, sortType === 'new' && styles.sortTabActive]}
@@ -100,9 +154,9 @@ export default function FeedScreen() {
         </Text>
       </TouchableOpacity>
     </View>
-  );
+  ), [sortType]);
 
-  const renderDistrictFilter = () => (
+  const renderDistrictFilter = useMemo(() => (
     <View style={styles.filterContainer}>
       <FlatList
         horizontal
@@ -135,9 +189,9 @@ export default function FeedScreen() {
         )}
       />
     </View>
-  );
+  ), [selectedDistrict]);
 
-  const renderPost = ({ item }: { item: Post }) => {
+  const renderPost = useCallback(({ item }: { item: Post }) => {
     const firstMedia = item.media && item.media.length > 0 ? item.media[0] : null;
 
     return (
@@ -155,6 +209,9 @@ export default function FeedScreen() {
                 uri: item.author?.avatar_url || 'https://via.placeholder.com/40',
               }}
               style={styles.avatar}
+              contentFit="cover"
+              transition={200}
+              cachePolicy="memory-disk"
             />
           </TouchableOpacity>
           <TouchableOpacity
@@ -203,7 +260,9 @@ export default function FeedScreen() {
           <Image
             source={{ uri: firstMedia.path }}
             style={styles.postImage}
-            resizeMode="cover"
+            contentFit="cover"
+            transition={200}
+            cachePolicy="memory-disk"
           />
         )}
 
@@ -239,7 +298,7 @@ export default function FeedScreen() {
         </View>
       </TouchableOpacity>
     );
-  };
+  }, [handleLike, router, formatCount]);
 
   return (
     <View style={styles.container}>
@@ -254,8 +313,8 @@ export default function FeedScreen() {
         </TouchableOpacity>
       </View>
 
-      {renderSortTabs()}
-      {renderDistrictFilter()}
+      {renderSortTabs}
+      {renderDistrictFilter}
 
       {isLoading ? (
         <View style={styles.loadingContainer}>
@@ -270,6 +329,16 @@ export default function FeedScreen() {
           refreshControl={
             <RefreshControl refreshing={false} onRefresh={refetch} />
           }
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          updateCellsBatchingPeriod={50}
+          initialNumToRender={10}
+          windowSize={10}
+          getItemLayout={(data, index) => ({
+            length: 400, // Approximate post height
+            offset: 400 * index,
+            index,
+          })}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>Henüz gönderi yok</Text>
@@ -287,7 +356,15 @@ export default function FeedScreen() {
         style={styles.fab}
         onPress={() => router.push('/create-post')}
       >
-        <Plus size={28} color={COLORS.white} />
+        <Plus size={24} color={COLORS.white} />
+      </TouchableOpacity>
+
+      {/* LazGPT Floating Button */}
+      <TouchableOpacity
+        style={styles.lazgptFab}
+        onPress={() => router.push('/lazgpt/chat')}
+      >
+        <Sparkles size={20} color={COLORS.white} />
       </TouchableOpacity>
     </View>
   );
@@ -519,11 +596,27 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute' as const,
     right: SPACING.lg,
-    bottom: SPACING.lg,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    bottom: SPACING.lg + 60, // LazGPT butonunun üstünde
+    width: 48, // Küçültüldü: 56 -> 48
+    height: 48, // Küçültüldü: 56 -> 48
+    borderRadius: 24, // Küçültüldü: 28 -> 24
     backgroundColor: COLORS.secondary,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  lazgptFab: {
+    position: 'absolute' as const,
+    right: SPACING.lg,
+    bottom: SPACING.lg,
+    width: 48, // Küçük floating button
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.primary,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
     elevation: 4,

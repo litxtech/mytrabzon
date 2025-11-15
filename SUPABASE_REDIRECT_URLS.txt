@@ -38,6 +38,11 @@ NOTLAR:
   * Mobil: mytrabzon://auth/callback
   * Web: https://www.litxtech.com/auth/callback
 
+- X (Twitter) OAuth için:
+  * Mobil: mytrabzon://auth/callback
+  * Web: https://www.litxtech.com/auth/callback
+  * Supabase Callback: https://xcvcplwimicylaxghiak.supabase.co/auth/v1/callback
+
 - Onboarding için:
   * Mobil: mytrabzon://auth/onboarding
   * Web: https://www.litxtech.com/auth/onboarding

@@ -97,8 +97,23 @@ jobs:
             echo ""
             echo "🎉 All functions deployed successfully!"
           fi
+          
+          # Başarılı deploy sonrası sürüm artırma tetikle
+          echo "🚀 Triggering version bump workflow..."
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      
+      - name: Trigger Version Bump
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'auto-version-on-deploy.yml',
+              ref: 'main'
+            });
 
       - name: List Deployed Functions
         run: |

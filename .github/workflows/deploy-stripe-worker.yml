@@ -1,0 +1,52 @@
+name: Deploy Stripe Worker
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'supabase/functions/stripe-worker/**'
+      - '.github/workflows/deploy-stripe-worker.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy Stripe Worker
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy Stripe Worker
+        run: |
+          echo "🚀 Deploying Stripe Worker..."
+          PROJECT_REF="${{ secrets.SUPABASE_PROJECT_REF }}"
+          if [ -z "$PROJECT_REF" ]; then
+            PROJECT_REF="xcvcplwimicylaxghiak"
+          fi
+          
+          supabase functions deploy stripe-worker --project-ref "$PROJECT_REF" --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Verify Deployment
+        run: |
+          echo "✅ Stripe Worker deployed successfully!"
+          PROJECT_REF="${{ secrets.SUPABASE_PROJECT_REF }}"
+          if [ -z "$PROJECT_REF" ]; then
+            PROJECT_REF="xcvcplwimicylaxghiak"
+          fi
+          supabase functions list --project-ref "$PROJECT_REF" | grep stripe-worker || echo "⚠️  Function list check failed (non-critical)"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+

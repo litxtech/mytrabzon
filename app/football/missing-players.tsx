@@ -87,7 +87,16 @@ export default function MissingPlayersScreen() {
           <View style={styles.postMeta}>
             <Clock size={14} color={COLORS.textLight} />
             <Text style={styles.postTime}>
-              {new Date(item.match_time).toLocaleString('tr-TR')}
+              {new Date(item.match_time).toLocaleDateString('tr-TR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+              })}{' '}
+              {new Date(item.match_time).toLocaleTimeString('tr-TR', {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'Europe/Istanbul',
+              })}
             </Text>
           </View>
         </View>

@@ -41,17 +41,71 @@ export default function LoginScreen() {
           password,
           options: {
             emailRedirectTo: Platform.select({
-              web: typeof window !== 'undefined' ? `${window.location.origin}/auth/onboarding` : 'https://www.litxtech.com/auth/onboarding',
-              default: 'mytrabzon://auth/onboarding',
+              web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
+              default: 'mytrabzon://auth/callback',
             }),
           }
         });
       }
 
-      if (result.error) throw result.error;
+      if (result.error) {
+        // Email confirmation hatası - kayıt modunda kullanıcıyı onboarding'e yönlendir
+        if (mode === 'register' && result.data?.user && 
+            (result.error.message?.includes('Email not confirmed') || result.error.message?.includes('email_not_confirmed'))) {
+          // Kullanıcı oluşturuldu, email confirmation beklenmeden onboarding'e yönlendir
+          Alert.alert(
+            'Kayıt Başarılı',
+            'Email adresinize doğrulama linki gönderildi. Şimdi profilini oluşturabilirsin.',
+            [{ text: 'Tamam', onPress: () => router.replace('/auth/onboarding') }]
+          );
+          setLoading(false);
+          return;
+        }
+        
+        // Giriş modunda email confirmation hatası
+        if (result.error.message?.includes('Email not confirmed') || result.error.message?.includes('email_not_confirmed')) {
+          Alert.alert(
+            'Email Doğrulama Gerekli',
+            'Email adresinizi doğrulamanız gerekiyor. Email kutunuzu kontrol edin ve doğrulama linkine tıklayın.',
+            [
+              {
+                text: 'Email Gönder',
+                onPress: async () => {
+                  try {
+                    const { error: resendError } = await supabase.auth.resend({
+                      type: 'signup',
+                      email: trimmedEmail,
+                      options: {
+                        emailRedirectTo: Platform.select({
+                          web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
+                          default: 'mytrabzon://auth/callback',
+                        }),
+                      },
+                    });
+                    if (resendError) throw resendError;
+                    Alert.alert('Başarılı', 'Doğrulama emaili tekrar gönderildi!');
+                  } catch (resendErr: any) {
+                    Alert.alert('Hata', resendErr.message || 'Email gönderilemedi');
+                  }
+                },
+              },
+              { text: 'Tamam' },
+            ]
+          );
+          setLoading(false);
+          return;
+        }
+        throw result.error;
+      }
 
       if (mode === 'register') {
-        Alert.alert('Başarılı', 'Kayıt başarılı! Email adresinizi kontrol edin.');
+        // Kayıt başarılı - kullanıcıyı onboarding'e yönlendir
+        if (result.data.user) {
+          // Email confirmation beklemeden onboarding'e yönlendir
+          router.replace('/auth/onboarding');
+        } else {
+          Alert.alert('Başarılı', 'Kayıt başarılı! Email adresinizi kontrol edin.');
+        }
       } else {
         checkProfileAndNavigate(result.data.user?.id || '');
       }
@@ -167,6 +221,37 @@ export default function LoginScreen() {
     }
   };
 
+  const handleTwitterLogin = async () => {
+    setLoading(true);
+    try {
+      const redirectUrl = Platform.select({
+        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
+        default: 'mytrabzon://auth/callback',
+      });
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'twitter',
+        options: {
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: Platform.OS !== 'web',
+        },
+      });
+
+      if (error) throw error;
+
+      // Web'de OAuth browser'da açılır, mobilde otomatik yönlendirme olur
+      if (Platform.OS === 'web' && data.url) {
+        // Web'de browser'da aç
+        window.location.href = data.url;
+      }
+      // Mobilde OAuth tamamlandıktan sonra callback'te session kontrol edilecek
+    } catch (error: any) {
+      console.error('Error during Twitter/X login:', error);
+      Alert.alert('Hata', error.message || 'X ile giriş yapılırken bir hata oluştu');
+      setLoading(false);
+    }
+  };
+
   const checkProfileAndNavigate = async (userId: string) => {
     const { data: profile } = await supabase
       .from('profiles')
@@ -185,8 +270,8 @@ export default function LoginScreen() {
     if (mode === 'magic') {
       return (
         <View style={styles.formContainer}>
-          <Text style={styles.formTitle}>Magic Link ile Giriş</Text>
-          <Text style={styles.formSubtitle}>Size özel link göndereceğiz</Text>
+          <Text style={styles.formTitle}>Link ile Giriş</Text>
+          <Text style={styles.formSubtitle}>Email adresinize giriş linki göndereceğiz</Text>
           
           <View style={styles.inputContainer}>
             <Mail size={20} color={COLORS.white} style={styles.inputIcon} />
@@ -209,7 +294,7 @@ export default function LoginScreen() {
             {loading ? (
               <ActivityIndicator color={COLORS.white} />
             ) : (
-              <Text style={styles.primaryButtonText}>Magic Link Gönder</Text>
+              <Text style={styles.primaryButtonText}>Link Gönder</Text>
             )}
           </TouchableOpacity>
 
@@ -316,19 +401,27 @@ export default function LoginScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.secondaryButton, loading && styles.buttonDisabled]}
-          onPress={handleGoogleLogin}
+          style={[styles.twitterButton, loading && styles.buttonDisabled]}
+          onPress={handleTwitterLogin}
           disabled={loading}
         >
-          <Text style={styles.secondaryButtonText}>🔐 Google ile Devam Et</Text>
+          <Text style={styles.twitterButtonText}>𝕏 X ile Giriş Yap</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.secondaryButton, loading && styles.buttonDisabled]}
+          style={[styles.googleButton, loading && styles.buttonDisabled]}
+          onPress={handleGoogleLogin}
+          disabled={loading}
+        >
+          <Text style={styles.googleButtonText}>🔐 Google ile Giriş Yap</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.magicLinkButton, loading && styles.buttonDisabled]}
           onPress={() => setMode('magic')}
           disabled={loading}
         >
-          <Text style={styles.secondaryButtonText}>✉️ Magic Link ile Giriş</Text>
+          <Text style={styles.magicLinkButtonText}>✉️ Link ile Giriş</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => setMode(mode === 'login' ? 'register' : 'login')}>
@@ -479,6 +572,54 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.md,
     fontWeight: '500' as const,
+    flexWrap: 'wrap',
+    textAlign: 'center' as const,
+  },
+  twitterButton: {
+    backgroundColor: '#000000',
+    paddingVertical: SPACING.md,
+    borderRadius: 12,
+    alignItems: 'center' as const,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  twitterButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600' as const,
+    flexWrap: 'wrap',
+    textAlign: 'center' as const,
+  },
+  googleButton: {
+    backgroundColor: '#4285F4',
+    paddingVertical: SPACING.md,
+    borderRadius: 12,
+    alignItems: 'center' as const,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: '#357AE8',
+  },
+  googleButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600' as const,
+    flexWrap: 'wrap',
+    textAlign: 'center' as const,
+  },
+  magicLinkButton: {
+    backgroundColor: '#9B59B6',
+    paddingVertical: SPACING.md,
+    borderRadius: 12,
+    alignItems: 'center' as const,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: '#8E44AD',
+  },
+  magicLinkButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600' as const,
     flexWrap: 'wrap',
     textAlign: 'center' as const,
   },

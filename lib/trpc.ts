@@ -24,7 +24,9 @@ const getBaseUrl = () => {
   // https://[project-ref].supabase.co/functions/v1/[function-name]
   // tRPC endpoint path'i boş string olduğu için, base URL'e /api/trpc eklememiz gerekiyor
   const baseUrl = `${stripTrailingSlash(supabaseUrl)}/functions/v1/trpc/api/trpc`;
-  console.log("tRPC base URL (Supabase Edge Functions)", baseUrl);
+  if (__DEV__) {
+    console.log("tRPC base URL (Supabase Edge Functions)", baseUrl);
+  }
   return baseUrl;
 };
 
@@ -38,7 +40,9 @@ const getAdminBaseUrl = () => {
   }
   
   const baseUrl = `${stripTrailingSlash(supabaseUrl)}/functions/v1/admin-worker/api/trpc`;
-  console.log("Admin Worker base URL", baseUrl);
+  if (__DEV__) {
+    console.log("Admin Worker base URL", baseUrl);
+  }
   return baseUrl;
 };
 
@@ -58,13 +62,17 @@ const getAuthHeaders = async () => {
     const token = data?.session?.access_token;
 
     if (token) {
-      console.log("✅ Adding auth token to tRPC request");
+      if (__DEV__) {
+        console.log("✅ Adding auth token to tRPC request");
+      }
       return {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       };
     } else {
-      console.warn("⚠️ No auth token available - request will be unauthenticated");
+      if (__DEV__) {
+        console.warn("⚠️ No auth token available - request will be unauthenticated");
+      }
     }
   } catch (error) {
     console.error("Failed to attach Supabase auth header", error);

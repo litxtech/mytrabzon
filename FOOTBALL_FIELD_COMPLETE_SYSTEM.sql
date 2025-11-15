@@ -605,36 +605,43 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS football_fields_updated_at ON football_fields;
 CREATE TRIGGER football_fields_updated_at
   BEFORE UPDATE ON football_fields
   FOR EACH ROW
   EXECUTE FUNCTION update_football_updated_at();
 
+DROP TRIGGER IF EXISTS field_reservations_updated_at ON field_reservations;
 CREATE TRIGGER field_reservations_updated_at
   BEFORE UPDATE ON field_reservations
   FOR EACH ROW
   EXECUTE FUNCTION update_football_updated_at();
 
+DROP TRIGGER IF EXISTS teams_updated_at ON teams;
 CREATE TRIGGER teams_updated_at
   BEFORE UPDATE ON teams
   FOR EACH ROW
   EXECUTE FUNCTION update_football_updated_at();
 
+DROP TRIGGER IF EXISTS matches_updated_at ON matches;
 CREATE TRIGGER matches_updated_at
   BEFORE UPDATE ON matches
   FOR EACH ROW
   EXECUTE FUNCTION update_football_updated_at();
 
+DROP TRIGGER IF EXISTS missing_player_posts_updated_at ON missing_player_posts;
 CREATE TRIGGER missing_player_posts_updated_at
   BEFORE UPDATE ON missing_player_posts
   FOR EACH ROW
   EXECUTE FUNCTION update_football_updated_at();
 
+DROP TRIGGER IF EXISTS opponent_requests_updated_at ON opponent_requests;
 CREATE TRIGGER opponent_requests_updated_at
   BEFORE UPDATE ON opponent_requests
   FOR EACH ROW
   EXECUTE FUNCTION update_football_updated_at();
 
+DROP TRIGGER IF EXISTS field_reviews_updated_at ON field_reviews;
 CREATE TRIGGER field_reviews_updated_at
   BEFORE UPDATE ON field_reviews
   FOR EACH ROW
@@ -653,11 +660,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS team_members_count_insert ON team_members;
 CREATE TRIGGER team_members_count_insert
   AFTER INSERT ON team_members
   FOR EACH ROW
   EXECUTE FUNCTION update_team_member_count();
 
+DROP TRIGGER IF EXISTS team_members_count_delete ON team_members;
 CREATE TRIGGER team_members_count_delete
   AFTER DELETE ON team_members
   FOR EACH ROW
@@ -676,11 +685,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS match_participants_count_insert ON match_participants;
 CREATE TRIGGER match_participants_count_insert
   AFTER INSERT ON match_participants
   FOR EACH ROW
   EXECUTE FUNCTION update_match_participant_count();
 
+DROP TRIGGER IF EXISTS match_participants_count_delete ON match_participants;
 CREATE TRIGGER match_participants_count_delete
   AFTER DELETE ON match_participants
   FOR EACH ROW
@@ -707,6 +718,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS field_reviews_rating_update ON field_reviews;
 CREATE TRIGGER field_reviews_rating_update
   AFTER INSERT OR UPDATE OR DELETE ON field_reviews
   FOR EACH ROW
@@ -725,11 +737,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS missing_player_applications_count_insert ON missing_player_applications;
 CREATE TRIGGER missing_player_applications_count_insert
   AFTER INSERT ON missing_player_applications
   FOR EACH ROW
   EXECUTE FUNCTION update_missing_player_application_count();
 
+DROP TRIGGER IF EXISTS missing_player_applications_count_delete ON missing_player_applications;
 CREATE TRIGGER missing_player_applications_count_delete
   AFTER DELETE ON missing_player_applications
   FOR EACH ROW
@@ -748,11 +762,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+nDROP TRIGGER IF EXISTS opponent_applications_count_insert ON opponent_applications;
 CREATE TRIGGER opponent_applications_count_insert
   AFTER INSERT ON opponent_applications
   FOR EACH ROW
   EXECUTE FUNCTION update_opponent_application_count();
 
+DROP TRIGGER IF EXISTS opponent_applications_count_delete ON opponent_applications;
 CREATE TRIGGER opponent_applications_count_delete
   AFTER DELETE ON opponent_applications
   FOR EACH ROW

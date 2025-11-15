@@ -18,6 +18,7 @@ import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { DISTRICT_BADGES } from '@/constants/districts';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Heart,
   MessageCircle,
@@ -30,7 +31,8 @@ import {
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const queryClient = useQueryClient();
   const [commentText, setCommentText] = useState('');
 
   const formatCount = (count: number | null | undefined): string => {
@@ -52,14 +54,88 @@ export default function PostDetailScreen() {
   });
 
   const likePostMutation = trpc.post.likePost.useMutation({
-    onSuccess: () => {
+    onMutate: async ({ postId }) => {
+      // Optimistic update
+      await queryClient.cancelQueries({ queryKey: [['post', 'getPostDetail'], { postId: id! }] });
+      const previousData = queryClient.getQueryData([['post', 'getPostDetail'], { postId: id! }]);
+      
+      queryClient.setQueryData([['post', 'getPostDetail'], { postId: id! }], (old: any) => {
+        if (!old) return old;
+        const isCurrentlyLiked = old.is_liked;
+        return {
+          ...old,
+          is_liked: !isCurrentlyLiked,
+          like_count: (old.like_count || 0) + (isCurrentlyLiked ? -1 : 1),
+        };
+      });
+
+      return { previousData };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData([['post', 'getPostDetail'], { postId: id! }], context.previousData);
+      }
+    },
+    onSettled: () => {
       refetch();
     },
   });
 
   const addCommentMutation = trpc.post.addComment.useMutation({
+    onMutate: async ({ content }) => {
+      // Optimistic update
+      await queryClient.cancelQueries({ queryKey: [['post', 'getComments'], { post_id: id!, limit: 50, offset: 0 }] });
+      await queryClient.cancelQueries({ queryKey: [['post', 'getPostDetail'], { postId: id! }] });
+      
+      const previousComments = queryClient.getQueryData([['post', 'getComments'], { post_id: id!, limit: 50, offset: 0 }]);
+      const previousPost = queryClient.getQueryData([['post', 'getPostDetail'], { postId: id! }]);
+
+      // Optimistically add comment
+      if (user) {
+        queryClient.setQueryData([['post', 'getComments'], { post_id: id!, limit: 50, offset: 0 }], (old: any) => {
+          const newComment = {
+            id: `temp-${Date.now()}`,
+            post_id: id!,
+            user_id: user.id,
+            content,
+            like_count: 0,
+            created_at: new Date().toISOString(),
+            user: {
+              id: user.id,
+              full_name: profile?.full_name || user.user_metadata?.full_name || 'Kullanıcı',
+              avatar_url: profile?.avatar_url || user.user_metadata?.avatar_url || null,
+            },
+          };
+          return {
+            ...old,
+            comments: [newComment, ...(old?.comments || [])],
+          };
+        });
+
+        // Update comment count
+        queryClient.setQueryData([['post', 'getPostDetail'], { postId: id! }], (old: any) => {
+          if (!old) return old;
+          return {
+            ...old,
+            comment_count: (old.comment_count || 0) + 1,
+          };
+        });
+      }
+
+      return { previousComments, previousPost };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousComments) {
+        queryClient.setQueryData([['post', 'getComments'], { post_id: id!, limit: 50, offset: 0 }], context.previousComments);
+      }
+      if (context?.previousPost) {
+        queryClient.setQueryData([['post', 'getPostDetail'], { postId: id! }], context.previousPost);
+      }
+    },
     onSuccess: () => {
       setCommentText('');
+    },
+    onSettled: () => {
       refetchComments();
       refetch();
     },
@@ -261,7 +337,7 @@ export default function PostDetailScreen() {
       <View style={styles.commentInputContainer}>
         <Image
           source={{
-            uri: user?.avatar_url || 'https://via.placeholder.com/32',
+            uri: profile?.avatar_url || user?.user_metadata?.avatar_url || 'https://via.placeholder.com/32',
           }}
           style={styles.commentInputAvatar}
         />
