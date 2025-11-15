@@ -183,7 +183,12 @@ async function createNotificationsForEvent(
                 sound: 'default',
                 title: event.title,
                 body: event.description || `${event.category} - ${district}`,
-                data: { event_id: event.id, severity, category: event.category },
+                data: { 
+                  type: 'EVENT',
+                  event_id: event.id, 
+                  severity, 
+                  category: event.category 
+                },
                 badge: 1,
               };
             })

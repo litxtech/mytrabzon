@@ -240,6 +240,9 @@ export default function RootLayout() {
           router.push(`/chat/${data.roomId}` as any);
         } else if (data?.type === 'post') {
           router.push(`/post/${data.postId}` as any);
+        } else if (data?.type === 'EVENT' || data?.event_id) {
+          // Event bildirimi - feed'e yönlendir veya event detay sayfasına
+          router.push('/(tabs)/feed' as any);
         }
       });
     } catch (err: any) {
