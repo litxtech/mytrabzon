@@ -162,11 +162,10 @@ export default function AdminSendNotificationScreen() {
                 {usersLoading ? (
                   <ActivityIndicator size="small" color={COLORS.primary} />
                 ) : users.length > 0 ? (
-                  <FlatList
-                    data={users.slice(0, 10)}
-                    keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => (
+                  <View>
+                    {users.slice(0, 10).map((item: any) => (
                       <TouchableOpacity
+                        key={item.id}
                         style={styles.userItem}
                         onPress={() => {
                           setSelectedUser(item);
@@ -185,10 +184,8 @@ export default function AdminSendNotificationScreen() {
                           )}
                         </View>
                       </TouchableOpacity>
-                    )}
-                    nestedScrollEnabled
-                    style={styles.usersList}
-                  />
+                    ))}
+                  </View>
                 ) : (
                   <Text style={styles.noUsersText}>Kullanıcı bulunamadı</Text>
                 )}

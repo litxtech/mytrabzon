@@ -169,6 +169,7 @@ export default function FootballScreen() {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
+          ListFooterComponent={<Footer />}
         />
       ) : (
         <View style={styles.emptyContainer}>
@@ -187,7 +188,7 @@ export default function FootballScreen() {
         </View>
       )}
 
-      <Footer />
+      {visibleMatches.length === 0 && <Footer />}
     </View>
   );
 }
