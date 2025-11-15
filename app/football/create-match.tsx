@@ -37,8 +37,12 @@ export default function CreateMatchScreen() {
     needed_players: '',
   });
 
+  const utils = trpc.useUtils();
+  
   const createMatch = trpc.football.createMatch.useMutation({
     onSuccess: () => {
+      // Query cache'i invalidate et ki yeni maç görünsün
+      utils.football.getTodayMatches.invalidate();
       Alert.alert('Başarılı', 'Maç başarıyla oluşturuldu!');
       router.replace('/(tabs)/football');
     },

@@ -2380,7 +2380,11 @@ const appRouter = createTRPCRouter({
       )
       .query(async ({ ctx, input }) => {
         const { supabase } = ctx;
-        const today = new Date().toISOString().split('T')[0];
+        
+        // Türkiye saatine göre bugünün tarihini al (UTC+3)
+        const now = new Date();
+        const turkeyTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+        const today = turkeyTime.toISOString().split('T')[0]; // YYYY-MM-DD formatında
 
         let query = supabase
           .from('matches')
