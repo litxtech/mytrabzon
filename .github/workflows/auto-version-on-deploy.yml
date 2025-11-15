@@ -12,6 +12,9 @@ jobs:
     name: Bump Version After Successful Deploy
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: write
+      actions: read
     
     steps:
       - name: Checkout code
@@ -29,10 +32,12 @@ jobs:
           node scripts/bump-version.js patch
 
       - name: Commit version bump
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add app.json package.json
           git commit -m "chore: auto-bump version after successful deploy [skip ci]" || exit 0
-          git push
+          git push https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
 

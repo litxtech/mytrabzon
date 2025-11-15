@@ -111,6 +111,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
       
       - name: Setup Node.js for Version Bump
         if: success()
@@ -125,12 +126,14 @@ jobs:
       
       - name: Commit version bump
         if: success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add app.json package.json
           git commit -m "chore: auto-bump version after successful deploy [skip ci]" || exit 0
-          git push
+          git push https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
 
       - name: List Deployed Functions
         run: |
