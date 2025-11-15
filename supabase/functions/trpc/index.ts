@@ -4552,10 +4552,24 @@ const appRouter = createTRPCRouter({
         }
         
         // Bugünkü kayıtlar
-        const { data: todayRegistrations } = await supabase.rpc('get_today_registrations').catch(() => ({ data: 0 }));
+        let todayRegistrations = 0;
+        try {
+          const { data } = await supabase.rpc('get_today_registrations');
+          todayRegistrations = data || 0;
+        } catch (error) {
+          console.error('get_today_registrations error:', error);
+          todayRegistrations = 0;
+        }
         
         // Bugünkü şikayetler
-        const { data: todayReports } = await supabase.rpc('get_today_reports').catch(() => ({ data: 0 }));
+        let todayReports = 0;
+        try {
+          const { data } = await supabase.rpc('get_today_reports');
+          todayReports = data || 0;
+        } catch (error) {
+          console.error('get_today_reports error:', error);
+          todayReports = 0;
+        }
         
         // Toplam kullanıcı
         const { count: totalUsers } = await supabase
@@ -4991,7 +5005,7 @@ serve(async (req) => {
     endpoint: "/api/trpc",
     router: appRouter,
     req: normalizedReq,
-    createContext: () => createContext(normalizedReq),
+    createContext: async () => await createContext(normalizedReq),
     onError: ({ error, path, type }) => {
       console.error(`tRPC error on '${path}':`, {
         code: error.code,

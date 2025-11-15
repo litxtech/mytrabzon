@@ -55,7 +55,6 @@ function RootLayoutNav() {
       <Stack.Screen name="football/team/[id]" options={{ title: "Takım Detayı" }} />
       <Stack.Screen name="university/giresun" options={{ title: "Giresun Üniversitesi" }} />
       <Stack.Screen name="match/video/[sessionId]" options={{ headerShown: false }} />
-      <Stack.Screen name="lazgpt/chat" options={{ title: "LazGPT" }} />
     </Stack>
   );
 }
@@ -241,9 +240,6 @@ export default function RootLayout() {
           router.push(`/chat/${data.roomId}` as any);
         } else if (data?.type === 'post') {
           router.push(`/post/${data.postId}` as any);
-        } else if (data?.type === 'lazgpt') {
-          router.push('/lazgpt/chat' as any);
-        }
       });
     } catch (err: any) {
       console.log('Notification response listener setup failed (normal in Expo Go):', err.message);

@@ -148,17 +148,7 @@ WebRTC tabanlı video görüşme
 
 Güvenlik kontrolleri ve ihlal tespiti
 
-3.7. LazGPT – Yapay Zekâ Asistanı
-
-Trabzon ve Karadeniz bölgesine özgü içerikler
-
-Yerel ağız ve mizah içeren sohbet
-
-Öneriler, bilgi, yönlendirme ve sosyal etkileşim desteği
-
-DeepSeek AI altyapısı ile çalışan "LazGPT" asistanı
-
-3.8. Bildirim ve Etkileşim
+3.7. Bildirim ve Etkileşim
 
 Push bildirimleri
 
@@ -246,8 +236,6 @@ Stripe (ödeme sistemleri)
 
 Agora (sesli ve görüntülü arama)
 
-DeepSeek AI (LazGPT yapay zekâ asistanı)
-
 Expo Notifications (push bildirimleri)
 
 5. Platform ve Erişim
@@ -293,8 +281,6 @@ Yerel işletmelerle entegrasyonlar
 Etkinlik ve biletleme sistemleri
 
 Gelişmiş topluluk araçları
-
-Yeni LazGPT yetenekleri
 
 Yeni ödeme ve abonelik modelleri
 

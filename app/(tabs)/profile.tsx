@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Sha
 import { Image } from 'expo-image';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
-import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, Sparkles, MoreVertical, Share2, Users, MessageCircle } from 'lucide-react-native';
+import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, MoreVertical, Share2, Users, MessageCircle } from 'lucide-react-native';
 import { DISTRICT_BADGES } from '../../constants/districts';
 import { useRouter } from 'expo-router';
 import { Footer } from '../../components/Footer';
@@ -393,7 +393,6 @@ export default function ProfileScreen() {
   const menuActions: QuickAction[] = [
     { id: 'share', label: 'Profili Paylaş', icon: Share2, onPress: handleShareProfile },
     { id: 'settings', label: 'Ayarlar', icon: Settings, onPress: () => handleNavigate('/profile/settings') },
-    { id: 'lazgpt', label: 'LazGPT', icon: Sparkles, onPress: () => handleNavigate('/lazgpt/chat') },
     { id: 'support', label: 'Destek', icon: HelpCircle, onPress: () => { setMenuVisible(false); setSupportVisible(true); } },
     kycAction as QuickAction,
     { id: 'logout', label: 'Çıkış Yap', icon: LogOut, onPress: () => { setMenuVisible(false); handleLogout(); }, tone: 'danger' },

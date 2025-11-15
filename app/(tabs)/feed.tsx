@@ -17,7 +17,7 @@ import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { DISTRICTS, DISTRICT_BADGES } from '@/constants/districts';
 import { Post, District } from '@/types/database';
-import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, Sparkles, MoreVertical, AlertCircle } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, MoreVertical, AlertCircle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLogo } from '@/components/AppLogo';
@@ -382,13 +382,6 @@ export default function FeedScreen() {
         <Plus size={24} color={COLORS.white} />
       </TouchableOpacity>
 
-      {/* LazGPT Floating Button */}
-      <TouchableOpacity
-        style={[styles.lazgptFab, { bottom: Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.lg) : SPACING.lg }]}
-        onPress={() => router.push('/lazgpt/chat')}
-      >
-        <Sparkles size={20} color={COLORS.white} />
-      </TouchableOpacity>
     </View>
   );
 }
@@ -628,22 +621,6 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 24,
     backgroundColor: COLORS.secondary,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    elevation: 20,
-    zIndex: 999,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-  },
-  lazgptFab: {
-    position: 'absolute' as const,
-    right: SPACING.lg,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.primary,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
     elevation: 20,
