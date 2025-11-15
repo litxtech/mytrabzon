@@ -19,6 +19,7 @@ import { PhoneOff, Video, VideoOff, Mic, MicOff, Phone } from 'lucide-react-nati
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { AgoraCallManager, generateChannelName } from '@/lib/agora';
+import { trpc } from '@/lib/trpc';
 
 export default function CallScreen() {
   const { userId, userName, userAvatar, callType } = useLocalSearchParams<{
@@ -50,9 +51,26 @@ export default function CallScreen() {
         await manager.initialize();
         
         const channelName = generateChannelName(user.id, userId);
+        const uid = Math.floor(Math.random() * 100000);
+        
+        // Agora token al (opsiyonel - test mode için gerekli değil)
+        let token = '';
+        try {
+          const tokenResult = await (trpc as any).match.generateAgoraToken.mutate({
+            channel_name: channelName,
+            uid: uid,
+          });
+          token = tokenResult.token || '';
+        } catch (error) {
+          console.error('Token generation error:', error);
+          // Token olmadan devam et (test mode)
+          token = '';
+        }
+        
         await manager.joinChannel({
           channelName,
-          uid: Math.floor(Math.random() * 100000),
+          uid: uid,
+          token: token,
           enableVideo: callType === 'video',
           enableAudio: true,
         });

@@ -7,13 +7,14 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowLeft, Calendar, Clock, MapPin, Users, Trophy } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Clock, MapPin, Users, Trophy, MessageCircle, AlertCircle } from 'lucide-react-native';
 
 export default function MatchDetailScreen() {
   const router = useRouter();
@@ -26,6 +27,76 @@ export default function MatchDetailScreen() {
     { match_id: id! },
     { enabled: !!id && !!user }
   );
+
+  const createReservationMutation = trpc.football.createReservation.useMutation({
+    onSuccess: async () => {
+      Alert.alert(
+        'Başarılı', 
+        'Rezervasyon yapıldı! Organizatöre bildirim gönderildi. Mesaj göndermek ister misiniz?',
+        [
+          { text: 'Hayır', style: 'cancel', onPress: () => refetch() },
+          {
+            text: 'Mesaj Gönder',
+            onPress: async () => {
+              try {
+                const createRoomMutation = trpc.chat.createRoom.useMutation();
+                const room = await createRoomMutation.mutateAsync({
+                  type: 'direct',
+                  memberIds: [match!.organizer_id],
+                });
+                router.push(`/chat/${room.id}` as any);
+              } catch (error: any) {
+                console.error('Chat oluşturma hatası:', error);
+                Alert.alert('Hata', 'Chat oluşturulamadı');
+              }
+              refetch();
+            },
+          },
+        ]
+      );
+    },
+    onError: (error: any) => {
+      Alert.alert('Hata', error.message || 'Rezervasyon yapılamadı');
+    },
+  });
+
+  const handleReservation = () => {
+    if (!match || !user) return;
+    
+    Alert.alert(
+      'Rezervasyon Yap',
+      'Bu maç için rezervasyon yapmak istediğinizden emin misiniz?',
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Rezervasyon Yap',
+          onPress: async () => {
+            try {
+              // Rezervasyon için tarih ve saat formatını hazırla
+              const reservationDate = match.match_date; // YYYY-MM-DD formatında
+              const startTime = match.start_time; // HH:MM:SS formatında
+              
+              // End time hesapla (varsayılan 1 saat)
+              const [hours, minutes] = startTime.split(':').map(Number);
+              const endHours = (hours + 1) % 24;
+              const endTime = `${String(endHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+              
+              await createReservationMutation.mutateAsync({
+                field_id: match.field_id,
+                reservation_date: reservationDate,
+                start_time: startTime,
+                end_time: endTime,
+                match_id: match.id,
+                notes: `Maç rezervasyonu - ${match.field?.name}`,
+              });
+            } catch (error) {
+              console.error('Reservation error:', error);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -130,6 +201,44 @@ export default function MatchDetailScreen() {
             >
               <Text style={styles.joinButtonText}>Eksik Oyuncu İlanlarına Bak</Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Rezervasyon Butonu - Sadece organizatör değilse göster */}
+        {match.organizer_id !== user?.id && match.status !== 'completed' && match.status !== 'cancelled' && (
+          <View style={styles.reservationCard}>
+            <View style={styles.reservationHeader}>
+              <AlertCircle size={20} color={COLORS.primary} />
+              <Text style={styles.reservationTitle}>Rezervasyon Yap</Text>
+            </View>
+            <Text style={styles.reservationText}>
+              Bu maç için rezervasyon yaparak organizatöre mesaj gönderebilirsiniz.
+            </Text>
+            <TouchableOpacity
+              style={[styles.reservationButton, createReservationMutation.isPending && styles.reservationButtonDisabled]}
+              onPress={handleReservation}
+              disabled={createReservationMutation.isPending}
+            >
+              {createReservationMutation.isPending ? (
+                <ActivityIndicator color={COLORS.white} />
+              ) : (
+                <>
+                  <MessageCircle size={18} color={COLORS.white} />
+                  <Text style={styles.reservationButtonText}>Rezervasyon Yap</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Rakip Aranıyor Durumu */}
+        {match.status === 'looking_for_opponent' && (
+          <View style={styles.opponentSearchCard}>
+            <AlertCircle size={24} color={COLORS.warning} />
+            <Text style={styles.opponentSearchTitle}>Halısaha Rakibi Aranıyor</Text>
+            <Text style={styles.opponentSearchText}>
+              {match.organizer?.full_name || 'Organizatör'} rakip takım arıyor. Rezervasyon yaparak iletişime geçebilirsiniz.
+            </Text>
           </View>
         )}
       </ScrollView>
@@ -243,6 +352,65 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.primary,
     fontWeight: '600',
+  },
+  reservationCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    padding: SPACING.lg,
+    marginBottom: SPACING.lg,
+    gap: SPACING.md,
+  },
+  reservationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  reservationTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  reservationText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+    lineHeight: 20,
+  },
+  reservationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: 12,
+    gap: SPACING.sm,
+  },
+  reservationButtonDisabled: {
+    opacity: 0.6,
+  },
+  reservationButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+  },
+  opponentSearchCard: {
+    backgroundColor: COLORS.warning + '20',
+    borderRadius: 12,
+    padding: SPACING.lg,
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  opponentSearchTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.warning,
+  },
+  opponentSearchText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
 

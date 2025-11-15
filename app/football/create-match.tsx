@@ -495,6 +495,7 @@ const styles = StyleSheet.create({
   districtOptionText: {
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
+    flexShrink: 0, // Android'de metinlerin tam görünmesi için
   },
   districtOptionTextActive: {
     color: COLORS.primary,
@@ -517,8 +518,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
-    flexShrink: 1,
-    flexWrap: 'wrap',
+    flexShrink: 0, // Android'de metinlerin tam görünmesi için
     textAlign: 'center',
   },
   hintText: {

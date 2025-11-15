@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
-    flexShrink: 1,
+    flexShrink: 0, // Android'de metinlerin tam görünmesi için
   },
 });
 

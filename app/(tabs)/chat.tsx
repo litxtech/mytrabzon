@@ -6,6 +6,7 @@ import { useChat } from '@/contexts/ChatContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MessageCircle, Users, MapPin, AlertCircle, Inbox, UsersRound, Plus } from 'lucide-react-native';
+import { Footer } from '@/components/Footer';
 
 type TabType = 'inbox' | 'groups';
 type GroupCategory = 'genel' | 'yardim' | 'etkinlik' | 'is' | 'egitim';
@@ -389,6 +390,7 @@ export default function ChatScreen() {
             </Text>
           </View>
         }
+        ListFooterComponent={<Footer />}
       />
     </SafeAreaView>
   );

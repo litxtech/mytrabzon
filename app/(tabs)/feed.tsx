@@ -17,11 +17,13 @@ import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { DISTRICTS, DISTRICT_BADGES } from '@/constants/districts';
 import { Post, District } from '@/types/database';
-import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, Sparkles, MoreVertical } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, Sparkles, MoreVertical, AlertCircle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLogo } from '@/components/AppLogo';
 import { SupporterBadge } from '@/components/SupporterBadge';
+import { formatTimeAgo } from '@/lib/time-utils';
+import { Footer } from '@/components/Footer';
 
 type SortType = 'new' | 'hot' | 'trending';
 
@@ -149,16 +151,14 @@ export default function FeedScreen() {
             onPress={() => setSelectedDistrict(item.id as District | 'all')}
           >
             <Text style={styles.filterEmoji}>{item.badge}</Text>
-            <View style={styles.filterTextContainer}>
-              <Text
-                style={[
-                  styles.filterText,
-                  selectedDistrict === item.id && styles.filterTextActive,
-                ]}
-              >
-                {item.name}
-              </Text>
-            </View>
+            <Text
+              style={[
+                styles.filterText,
+                selectedDistrict === item.id && styles.filterTextActive,
+              ]}
+            >
+              {item.name}
+            </Text>
           </TouchableOpacity>
         )}
       />
@@ -244,10 +244,7 @@ export default function FeedScreen() {
               <View style={styles.postTimeContainer}>
                 <Text style={styles.postTime}>
                   {' • '}
-                  {new Date(item.created_at).toLocaleDateString('tr-TR', {
-                    day: 'numeric',
-                    month: 'short',
-                  })}
+                  {formatTimeAgo(item.created_at)}
                 </Text>
               </View>
             </View>
@@ -366,8 +363,17 @@ export default function FeedScreen() {
               </Text>
             </View>
           }
+          ListFooterComponent={<Footer />}
         />
       )}
+
+      {/* Olay Var Button */}
+      <TouchableOpacity
+        style={[styles.eventFab, { bottom: (Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.lg) : SPACING.lg) + 120 }]}
+        onPress={() => router.push('/event/create')}
+      >
+        <AlertCircle size={20} color={COLORS.white} />
+      </TouchableOpacity>
 
       <TouchableOpacity
         style={[styles.fab, { bottom: (Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.lg) : SPACING.lg) + 60 }]}
@@ -457,9 +463,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginHorizontal: SPACING.xs,
     gap: SPACING.xs,
-    minWidth: 60,
-    flex: 1,
-    flexShrink: 1,
+    flexShrink: 0, // Android'de metinlerin kesilmemesi için
+    flexGrow: 0, // Horizontal scroll için genişlememeli
   },
   filterChipActive: {
     backgroundColor: COLORS.primary,
@@ -468,13 +473,10 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     flexShrink: 0,
   },
-  filterTextContainer: {
-    flex: 1,
-    flexShrink: 1,
-  },
   filterText: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.text,
+    flexShrink: 0, // Android'de metinlerin tam görünmesi için
   },
   filterTextActive: {
     color: COLORS.white,

@@ -27,13 +27,12 @@ import {
   MicOff,
   X,
   MessageCircle,
-  AlertCircle,
   ChevronRight,
 } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { trpc } from '@/lib/trpc';
-import { AgoraCallManager, generateChannelName, AGORA_APP_ID } from '@/lib/agora';
+import { AgoraCallManager } from '@/lib/agora';
 
 export default function MatchVideoScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
@@ -53,13 +52,16 @@ export default function MatchVideoScreen() {
   const sessionRef = useRef<any>(null);
 
   // Session bilgisini al
-  const { data: sessionData, refetch: refetchSession } = trpc.match.checkMatch.useQuery(undefined, {
-    enabled: !!sessionId,
-    refetchInterval: 5000,
-  });
+  const { data: sessionData } = (trpc as any).match.checkMatch.useQuery(
+    sessionId ? { session_id: sessionId } : undefined,
+    {
+      enabled: !!sessionId,
+      refetchInterval: 5000,
+    }
+  );
 
-  const updateSessionMutation = trpc.match.updateSession.useMutation({
-    onSuccess: (data) => {
+  const updateSessionMutation = (trpc as any).match.updateSession.useMutation({
+    onSuccess: (data: any) => {
       if (data.session.ended_at) {
         // Görüşme bitti
         handleEndCall();
@@ -68,13 +70,13 @@ export default function MatchVideoScreen() {
     },
   });
 
-  const reportUserMutation = trpc.match.reportUser.useMutation({
+  const reportUserMutation = (trpc as any).match.reportUser.useMutation({
     onSuccess: () => {
       Alert.alert('Başarılı', 'Şikayet kaydedildi');
       setShowReportModal(false);
       handleEndCall();
     },
-    onError: (error) => {
+    onError: (error: any) => {
       Alert.alert('Hata', error.message);
     },
   });
@@ -99,14 +101,24 @@ export default function MatchVideoScreen() {
       const channelName = sessionRef.current.channel_name;
       const uid = Math.floor(Math.random() * 100000);
 
-      // Agora token al (mutation hook'u doğrudan kullanılamaz, manuel çağrı yapılmalı)
-      // Şimdilik token olmadan devam ediyoruz (test için)
-      // Production'da Agora token server kullanılmalı
+      // Agora token al
+      let token = '';
+      try {
+        const tokenResult = await (trpc as any).match.generateAgoraToken.mutate({
+          channel_name: channelName,
+          uid: uid,
+        });
+        token = tokenResult.token || '';
+      } catch (error) {
+        console.error('Token generation error:', error);
+        // Token olmadan devam et (test mode)
+        token = '';
+      }
       
       await manager.joinChannel({
         channelName: channelName,
         uid: uid,
-        token: '', // Token generation için backend endpoint gerekli
+        token: token,
         enableVideo: isVideoEnabled,
         enableAudio: isAudioEnabled,
       });

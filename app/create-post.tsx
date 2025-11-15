@@ -412,10 +412,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: SPACING.xs,
+    flexShrink: 0, // Android'de metinlerin kesilmemesi için
   },
   toolButtonText: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.text,
+    flexShrink: 0, // Android'de metinlerin tam görünmesi için
   },
   toolButtonTextDisabled: {
     color: COLORS.textLight,
@@ -428,6 +430,7 @@ const styles = StyleSheet.create({
     minWidth: 100,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
+    flexShrink: 0, // Android'de butonun küçülmemesi için
     shadowColor: COLORS.secondary,
     shadowOffset: {
       width: 0,
@@ -446,5 +449,6 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.md,
     fontWeight: '700' as const,
+    flexShrink: 0, // Android'de metinlerin tam görünmesi için
   },
 });

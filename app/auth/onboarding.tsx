@@ -249,6 +249,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     gap: SPACING.xs,
+    flexShrink: 0, // Android'de metinlerin kesilmemesi için
   },
   districtChipSelected: {
     backgroundColor: COLORS.primary,
@@ -260,6 +261,7 @@ const styles = StyleSheet.create({
   districtText: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.text,
+    flexShrink: 0, // Android'de metinlerin tam görünmesi için
   },
   districtTextSelected: {
     color: COLORS.white,

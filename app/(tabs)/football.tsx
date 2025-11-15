@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLogo } from '@/components/AppLogo';
 import { Calendar, MapPin, Clock, AlertCircle, ChevronRight, Plus } from 'lucide-react-native';
+import { Footer } from '@/components/Footer';
 
 export default function FootballScreen() {
   const router = useRouter();
@@ -78,50 +79,65 @@ export default function FootballScreen() {
     });
   };
 
-  const renderMatch = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      style={styles.matchCard}
-      onPress={() => router.push(`/football/match/${item.id}` as any)}
-    >
-      <View style={styles.matchHeader}>
-        <View style={styles.matchTimeContainer}>
-          <Clock size={16} color={COLORS.primary} />
-          <Text style={styles.matchTime}>{formatTime(item)}</Text>
+  const renderMatch = ({ item }: { item: any }) => {
+    const isLookingForOpponent = item.status === 'looking_for_opponent';
+    const isLookingForPlayers = item.status === 'looking_for_players';
+    
+    return (
+      <TouchableOpacity
+        style={styles.matchCard}
+        onPress={() => router.push(`/football/match/${item.id}` as any)}
+      >
+        <View style={styles.matchHeader}>
+          <View style={styles.matchTimeContainer}>
+            <Clock size={16} color={COLORS.primary} />
+            <Text style={styles.matchTime}>{formatTime(item)}</Text>
+          </View>
+          <View style={styles.matchFieldContainer}>
+            <MapPin size={14} color={COLORS.textLight} />
+            <Text style={styles.matchField}>{item.field?.name}</Text>
+          </View>
         </View>
-        <View style={styles.matchFieldContainer}>
-          <MapPin size={14} color={COLORS.textLight} />
-          <Text style={styles.matchField}>{item.field?.name}</Text>
-        </View>
-      </View>
 
-      <View style={styles.matchTeams}>
-        <View style={styles.teamContainer}>
-          <Text style={styles.teamName}>{item.team1?.name || 'Takım 1'}</Text>
-          {item.team1?.logo_url && (
-            <Image source={{ uri: item.team1.logo_url }} style={styles.teamLogo} />
-          )}
-        </View>
-        <Text style={styles.vsText}>VS</Text>
-        <View style={styles.teamContainer}>
-          <Text style={styles.teamName}>{item.team2?.name || 'Takım 2'}</Text>
-          {item.team2?.logo_url && (
-            <Image source={{ uri: item.team2.logo_url }} style={styles.teamLogo} />
-          )}
-        </View>
-      </View>
+        {isLookingForOpponent ? (
+          <View style={styles.opponentSearchCard}>
+            <AlertCircle size={20} color={COLORS.warning} />
+            <Text style={styles.opponentSearchText}>Halısaha Rakibi Aranıyor</Text>
+            <Text style={styles.opponentSearchSubtext}>
+              {item.organizer?.full_name || 'Organizatör'} rakip takım arıyor
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.matchTeams}>
+            <View style={styles.teamContainer}>
+              <Text style={styles.teamName}>{item.team1?.name || 'Takım 1'}</Text>
+              {item.team1?.logo_url && (
+                <Image source={{ uri: item.team1.logo_url }} style={styles.teamLogo} />
+              )}
+            </View>
+            <Text style={styles.vsText}>VS</Text>
+            <View style={styles.teamContainer}>
+              <Text style={styles.teamName}>{item.team2?.name || 'Takım 2'}</Text>
+              {item.team2?.logo_url && (
+                <Image source={{ uri: item.team2.logo_url }} style={styles.teamLogo} />
+              )}
+            </View>
+          </View>
+        )}
 
-      {item.missing_players_count > 0 && (
-        <View style={styles.missingPlayersBadge}>
-          <AlertCircle size={14} color={COLORS.error} />
-          <Text style={styles.missingPlayersText}>
-            {item.missing_players_count} oyuncu eksik
-          </Text>
-        </View>
-      )}
+        {isLookingForPlayers && item.missing_players_count > 0 && (
+          <View style={styles.missingPlayersBadge}>
+            <AlertCircle size={14} color={COLORS.error} />
+            <Text style={styles.missingPlayersText}>
+              {item.missing_players_count} oyuncu eksik
+            </Text>
+          </View>
+        )}
 
-      <ChevronRight size={20} color={COLORS.textLight} style={styles.chevron} />
-    </TouchableOpacity>
-  );
+        <ChevronRight size={20} color={COLORS.textLight} style={styles.chevron} />
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={[styles.container, { paddingTop: Math.max(insets.top, SPACING.md) }]}>
@@ -170,6 +186,8 @@ export default function FootballScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      <Footer />
     </View>
   );
 }
@@ -288,6 +306,26 @@ const styles = StyleSheet.create({
     color: COLORS.error,
     fontWeight: '600',
   },
+  opponentSearchCard: {
+    flex: 2,
+    backgroundColor: COLORS.warning + '20',
+    borderRadius: 8,
+    padding: SPACING.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+  },
+  opponentSearchText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
+    color: COLORS.warning,
+    textAlign: 'center',
+  },
+  opponentSearchSubtext: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+    textAlign: 'center',
+  },
   chevron: {
     marginLeft: SPACING.sm,
   },
@@ -315,6 +353,7 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: COLORS.white,
+    flexShrink: 0, // Android'de metinlerin tam görünmesi için
   },
 });
 

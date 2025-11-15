@@ -9,7 +9,9 @@
     "start:lan": "npx expo start --lan --clear",
     "start-web": "bunx rork start -p r41wi4vumk2g4wcqmseqt --web --tunnel",
     "start-web-dev": "DEBUG=expo* bunx rork start -p r41wi4vumk2g4wcqmseqt --web --tunnel",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@expo/cli": "^54.0.16",
@@ -56,6 +58,7 @@
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
     "react-native-web": "^0.21.0",
+    "react-native-agora": "^4.2.2",
     "superjson": "^2.2.5",
     "zod": "^4.1.12",
     "zustand": "^5.0.2"

@@ -258,6 +258,8 @@ export default function UserProfileScreen() {
                   }
                 }}
                 disabled={followMutation.isPending || unfollowMutation.isPending}
+                activeOpacity={0.7}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <Text style={[
                   styles.followButtonText,

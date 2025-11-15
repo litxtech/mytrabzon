@@ -74,6 +74,15 @@ import {
   approveKycProcedure,
   rejectKycProcedure,
 } from "./routes/admin/kyc-requests/route";
+import { createEventProcedure } from "./routes/event/create-event/route";
+import { getEventsProcedure } from "./routes/event/get-events/route";
+import { getNotificationsProcedure, getUnreadCountProcedure } from "./routes/notification/get-notifications/route";
+import {
+  markAsReadProcedure,
+  deleteNotificationProcedure,
+  markAllAsReadProcedure,
+  deleteAllNotificationsProcedure,
+} from "./routes/notification/update-notification/route";
 
 export const appRouter = createTRPCRouter({
   example: createTRPCRouter({
@@ -155,6 +164,18 @@ export const appRouter = createTRPCRouter({
   kyc: createTRPCRouter({
     create: createKycProcedure,
     get: getKycProcedure,
+  }),
+  event: createTRPCRouter({
+    createEvent: createEventProcedure,
+    getEvents: getEventsProcedure,
+  }),
+  notification: createTRPCRouter({
+    getNotifications: getNotificationsProcedure,
+    getUnreadCount: getUnreadCountProcedure,
+    markAsRead: markAsReadProcedure,
+    deleteNotification: deleteNotificationProcedure,
+    markAllAsRead: markAllAsReadProcedure,
+    deleteAllNotifications: deleteAllNotificationsProcedure,
   }),
 });
 

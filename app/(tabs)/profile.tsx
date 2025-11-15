@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Sha
 import { Image } from 'expo-image';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
-import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, Sparkles, MoreVertical, Share2, Users } from 'lucide-react-native';
+import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, Sparkles, MoreVertical, Share2, Users, MessageCircle } from 'lucide-react-native';
 import { DISTRICT_BADGES } from '../../constants/districts';
 import { useRouter } from 'expo-router';
 import { Footer } from '../../components/Footer';
@@ -20,6 +20,49 @@ type QuickAction = {
   disabled?: boolean;
   tone?: 'danger' | 'success';
 };
+
+// Post Grid Item Component (Instagram benzeri overlay ile)
+function PostGridItem({ post, firstMedia, router }: { post: any; firstMedia: any; router: any }) {
+  const [isPressed, setIsPressed] = useState(false);
+
+  return (
+    <TouchableOpacity
+      style={styles.postGridItem}
+      onPress={() => router.push(`/post/${post.id}` as any)}
+      onPressIn={() => setIsPressed(true)}
+      onPressOut={() => setIsPressed(false)}
+      activeOpacity={1}
+    >
+      {firstMedia ? (
+        <Image
+          source={{ uri: firstMedia.path }}
+          style={styles.postGridImage}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={[styles.postGridImage, styles.postGridPlaceholder]}>
+          <Text style={styles.postGridText} numberOfLines={3}>
+            {post.content}
+          </Text>
+        </View>
+      )}
+      {/* Instagram benzeri overlay */}
+      <View style={[styles.postGridOverlay, isPressed && styles.postGridOverlayVisible]}>
+        <View style={styles.postGridStats}>
+          <Heart size={16} color={COLORS.white} fill={COLORS.white} />
+          <Text style={styles.postGridStatText}>{post.like_count || 0}</Text>
+          <MessageCircle size={16} color={COLORS.white} style={{ marginLeft: SPACING.sm }} />
+          <Text style={styles.postGridStatText}>{post.comment_count || 0}</Text>
+        </View>
+      </View>
+      {post.media && post.media.length > 1 && (
+        <View style={styles.postGridBadge}>
+          <Text style={styles.postGridBadgeText}>+{post.media.length - 1}</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
 
 // Takipçiler Listesi Component
 function FollowersList({ userId }: { userId: string }) {
@@ -200,7 +243,7 @@ export default function ProfileScreen() {
   });
 
   // Kullanıcının geçmiş maçlarını getir
-  const { data: userMatchesData, isLoading: matchesLoading } = trpc.football.getUserMatches.useQuery(
+  const { data: userMatchesData } = trpc.football.getUserMatches.useQuery(
     {
       user_id: user?.id || '',
       limit: 20,
@@ -377,8 +420,12 @@ export default function ProfileScreen() {
       >
         {/* Header - Resimdeki gibi */}
         <View style={[styles.profileHeader, { paddingTop: Math.max(insets.top, SPACING.md) }]}>
-          <TouchableOpacity style={styles.menuButton} onPress={() => setMenuVisible(true)}>
-            <MoreVertical size={20} color={COLORS.text} />
+          <TouchableOpacity 
+            style={styles.menuButton} 
+            onPress={() => setMenuVisible(true)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <MoreVertical size={18} color={COLORS.text} />
           </TouchableOpacity>
           <View style={styles.profileTopRow}>
             <View style={styles.profileLeft}>
@@ -504,30 +551,12 @@ export default function ProfileScreen() {
             {postsData.posts.map((post) => {
               const firstMedia = post.media && post.media.length > 0 ? post.media[0] : null;
               return (
-                <TouchableOpacity
+                <PostGridItem
                   key={post.id}
-                  style={styles.postGridItem}
-                  onPress={() => router.push(`/post/${post.id}` as any)}
-                >
-                  {firstMedia ? (
-                    <Image
-                      source={{ uri: firstMedia.path }}
-                      style={styles.postGridImage}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View style={[styles.postGridImage, styles.postGridPlaceholder]}>
-                      <Text style={styles.postGridText} numberOfLines={3}>
-                        {post.content}
-                      </Text>
-                    </View>
-                  )}
-                  {post.media && post.media.length > 1 && (
-                    <View style={styles.postGridBadge}>
-                      <Text style={styles.postGridBadgeText}>+{post.media.length - 1}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
+                  post={post}
+                  firstMedia={firstMedia}
+                  router={router}
+                />
               );
             })}
           </View>
@@ -750,6 +779,7 @@ const styles = StyleSheet.create({
   profileRight: {
     flex: 1,
     justifyContent: 'center',
+    marginTop: SPACING.md, // 3 nokta menü butonundan aşağı al
   },
   statsRow: {
     flexDirection: 'row',
@@ -843,9 +873,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: SPACING.md + SPACING.sm,
     right: SPACING.md,
-    padding: SPACING.md,
-    minWidth: 44,
-    minHeight: 44,
+    padding: SPACING.sm, // Küçültüldü
+    minWidth: 36, // Küçültüldü
+    minHeight: 36, // Küçültüldü
     borderRadius: 12,
     backgroundColor: COLORS.background,
     justifyContent: 'center' as const,
@@ -921,6 +951,31 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.xs,
     fontWeight: '600',
+  },
+  postGridOverlay: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    opacity: 0,
+  },
+  postGridOverlayVisible: {
+    opacity: 1,
+  },
+  postGridStats: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.xs,
+  },
+  postGridStatText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '700' as const,
+    marginLeft: 2,
   },
   emptyPostsContainer: {
     backgroundColor: COLORS.white,
