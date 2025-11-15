@@ -40,39 +40,53 @@ export default function FeedScreen() {
   }, []);
 
   // Kişiselleştirilmiş feed kullan (eğer kullanıcı giriş yaptıysa)
-  const { data: personalizedFeedData, isLoading: isLoadingPersonalized, refetch: refetchPersonalized } = trpc.post.getPersonalizedFeed.useQuery(
+  const hasUser = !!user?.id;
+
+  const { 
+    data: personalizedFeedData, 
+    isLoading: isLoadingPersonalized, 
+    refetch: refetchPersonalized,
+    error: personalizedFeedError,
+  } = trpc.post.getPersonalizedFeed.useQuery(
     { 
       district: selectedDistrict === 'all' ? undefined : selectedDistrict,
       sort: sortType,
       limit: 20, 
       offset: 0 
-    } as any, // Type assertion - backend'de district parametresi var
+    } as any,
     { 
-      enabled: !!user?.id,
+      enabled: hasUser,
       staleTime: 30000, // 30 saniye cache
       gcTime: 300000, // 5 dakika garbage collection
     }
   );
 
-  // Fallback: Normal feed (giriş yapmamış kullanıcılar için)
-  const { data: postsData, isLoading: isLoadingNormal, refetch: refetchNormal } = trpc.post.getPosts.useQuery(
+  const shouldUseGeneralFeed = !hasUser || personalizedFeedError || (personalizedFeedData?.posts?.length ?? 0) === 0;
+
+  // Fallback: Normal feed
+  const { 
+    data: postsData, 
+    isLoading: isLoadingGeneral, 
+    refetch: refetchGeneral 
+  } = trpc.post.getPosts.useQuery(
     {
       district: selectedDistrict === 'all' ? undefined : selectedDistrict,
       sort: sortType,
       limit: 20,
       offset: 0,
-    } as any, // Type assertion - backend'de district parametresi var
+    } as any,
     {
-      enabled: !user?.id, // Sadece giriş yapmamış kullanıcılar için
+      enabled: shouldUseGeneralFeed,
       staleTime: 30000,
       gcTime: 300000,
     }
   );
 
-  // Hangi feed'i kullanacağız?
-  const feedData = user?.id ? personalizedFeedData : postsData;
-  const isLoading = user?.id ? isLoadingPersonalized : isLoadingNormal;
-  const refetch = user?.id ? refetchPersonalized : refetchNormal;
+  const usePersonalizedFeed = hasUser && !personalizedFeedError && (personalizedFeedData?.posts?.length ?? 0) > 0;
+
+  const feedData = usePersonalizedFeed ? personalizedFeedData : postsData;
+  const isLoading = usePersonalizedFeed ? isLoadingPersonalized : isLoadingGeneral;
+  const refetch = usePersonalizedFeed ? refetchPersonalized : refetchGeneral;
 
   const likePostMutation = trpc.post.likePost.useMutation({
     onMutate: async ({ postId }) => {

@@ -12,6 +12,7 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { PhoneOff, Video, VideoOff, Mic, MicOff, Phone } from 'lucide-react-native';

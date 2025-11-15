@@ -9,12 +9,15 @@ import { useRouter } from 'expo-router';
 import { Footer } from '../../components/Footer';
 import { SupportPanel } from '../../components/SupportPanel';
 import { trpc } from '../../lib/trpc';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 export default function ProfileScreen() {
   const { profile, user, signOut } = useAuth();
   const router = useRouter();
   const [supportVisible, setSupportVisible] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const deleteAccountMutation = trpc.user.requestAccountDeletion.useMutation();
+  const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
   
   // Admin kontrolü - admin_users tablosundan direkt kontrol et
   const [isAdmin, setIsAdmin] = useState(false);
@@ -27,6 +30,11 @@ export default function ProfileScreen() {
     
     // Supabase'den direkt kontrol et
     const checkAdmin = async () => {
+      if (user.id === SPECIAL_ADMIN_ID) {
+        setIsAdmin(true);
+        return;
+      }
+
       const { supabase } = await import('../../lib/supabase');
       const { data, error } = await supabase
         .from('admin_users')
@@ -105,7 +113,7 @@ export default function ProfileScreen() {
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header - Resimdeki gibi */}
-        <View style={styles.profileHeader}>
+        <View style={[styles.profileHeader, { paddingTop: Math.max(insets.top, SPACING.md) }]}>
           <View style={styles.profileTopRow}>
             <View style={styles.profileLeft}>
               <View style={styles.avatarContainer}>

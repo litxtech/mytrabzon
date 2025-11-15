@@ -122,6 +122,7 @@ export default function AllUsersScreen() {
         </View>
         <View style={styles.userActions}>
           <CallButtons
+            variant="compact"
             targetUserId={item.id}
             targetUserName={item.full_name}
             targetUserAvatar={item.avatar_url || undefined}
@@ -417,7 +418,7 @@ const styles = StyleSheet.create({
   userActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: SPACING.xs,
   },
   emptyContainer: {
     flex: 1,

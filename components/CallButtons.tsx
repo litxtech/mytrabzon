@@ -12,7 +12,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { Phone, Video, PhoneOff } from 'lucide-react-native';
+import { Phone, Video } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,12 +21,20 @@ interface CallButtonsProps {
   targetUserId: string;
   targetUserName: string;
   targetUserAvatar?: string;
+  variant?: 'default' | 'compact';
 }
 
-export function CallButtons({ targetUserId, targetUserName, targetUserAvatar }: CallButtonsProps) {
+export function CallButtons({
+  targetUserId,
+  targetUserName,
+  targetUserAvatar,
+  variant = 'default',
+}: CallButtonsProps) {
   const router = useRouter();
   const { user } = useAuth();
   const [isCalling, setIsCalling] = useState(false);
+  const isCompact = variant === 'compact';
+  const iconSize = isCompact ? 18 : 20;
 
   const handleAudioCall = async () => {
     if (!user) {
@@ -95,9 +103,13 @@ export function CallButtons({ targetUserId, targetUserName, targetUserAvatar }: 
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isCompact && styles.containerCompact]}>
       <TouchableOpacity
-        style={[styles.callButton, styles.audioButton]}
+        style={[
+          styles.callButton,
+          styles.audioButton,
+          isCompact && styles.compactButton,
+        ]}
         onPress={handleAudioCall}
         disabled={isCalling}
       >
@@ -105,14 +117,18 @@ export function CallButtons({ targetUserId, targetUserName, targetUserAvatar }: 
           <ActivityIndicator size="small" color={COLORS.white} />
         ) : (
           <>
-            <Phone size={20} color={COLORS.white} />
-            <Text style={styles.buttonText}>Sesli</Text>
+            <Phone size={iconSize} color={COLORS.white} />
+            {!isCompact && <Text style={styles.buttonText}>Sesli</Text>}
           </>
         )}
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.callButton, styles.videoButton]}
+        style={[
+          styles.callButton,
+          styles.videoButton,
+          isCompact && styles.compactButton,
+        ]}
         onPress={handleVideoCall}
         disabled={isCalling}
       >
@@ -120,8 +136,8 @@ export function CallButtons({ targetUserId, targetUserName, targetUserAvatar }: 
           <ActivityIndicator size="small" color={COLORS.white} />
         ) : (
           <>
-            <Video size={20} color={COLORS.white} />
-            <Text style={styles.buttonText}>Görüntülü</Text>
+            <Video size={iconSize} color={COLORS.white} />
+            {!isCompact && <Text style={styles.buttonText}>Görüntülü</Text>}
           </>
         )}
       </TouchableOpacity>
@@ -136,6 +152,10 @@ const styles = StyleSheet.create({
     marginVertical: SPACING.sm,
     width: '100%',
   },
+  containerCompact: {
+    width: 'auto',
+    marginVertical: 0,
+  },
   callButton: {
     flex: 1,
     flexDirection: 'row',
@@ -146,6 +166,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: SPACING.xs,
     minHeight: 44, // iOS minimum touch target
+  },
+  compactButton: {
+    flex: undefined,
+    width: 44,
+    height: 44,
+    paddingHorizontal: 0,
+    borderRadius: 22,
   },
   audioButton: {
     backgroundColor: COLORS.primary,

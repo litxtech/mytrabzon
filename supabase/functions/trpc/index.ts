@@ -3806,17 +3806,20 @@ const appRouter = createTRPCRouter({
           });
         }
 
-        // Günlük limit kontrolü
-        const { data: limitCheck } = await supabase.rpc('check_user_match_limit', {
-          p_user_id: user.id,
-          p_daily_limit: 50,
-        });
+        const ENFORCE_MATCH_LIMIT = false;
 
-        if (!limitCheck) {
-          throw new TRPCError({
-            code: 'FORBIDDEN',
-            message: 'Günlük eşleşme limitiniz doldu veya hesabınız kısıtlandı',
+        if (ENFORCE_MATCH_LIMIT) {
+          const { data: limitCheck } = await supabase.rpc('check_user_match_limit', {
+            p_user_id: user.id,
+            p_daily_limit: 50,
           });
+
+          if (!limitCheck) {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message: 'Günlük eşleşme limitiniz doldu veya hesabınız kısıtlandı',
+            });
+          }
         }
 
         // Eşleşme ara
@@ -3835,8 +3838,9 @@ const appRouter = createTRPCRouter({
             .eq('id', matchId)
             .single();
 
-          // Günlük limiti artır
-          await supabase.rpc('increment_daily_match_limit', { p_user_id: user.id });
+          if (ENFORCE_MATCH_LIMIT) {
+            await supabase.rpc('increment_daily_match_limit', { p_user_id: user.id });
+          }
 
           return {
             matched: true,

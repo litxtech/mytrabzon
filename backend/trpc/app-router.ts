@@ -12,6 +12,10 @@ import { markAsReadProcedure } from "./routes/chat/mark-as-read/route";
 import { deleteMessageProcedure } from "./routes/chat/delete-message/route";
 import { addReactionProcedure } from "./routes/chat/add-reaction/route";
 import { blockUserProcedure, unblockUserProcedure } from "./routes/chat/block-user/route";
+import { addMembersProcedure } from "./routes/chat/add-members/route";
+import { removeMemberProcedure } from "./routes/chat/remove-member/route";
+import { leaveRoomProcedure } from "./routes/chat/leave-room/route";
+import { deleteRoomProcedure } from "./routes/chat/delete-room/route";
 import { createPostProcedure } from "./routes/post/create-post/route";
 import { getPostsProcedure } from "./routes/post/get-posts/route";
 import { likePostProcedure } from "./routes/post/like-post/route";
@@ -87,6 +91,10 @@ export const appRouter = createTRPCRouter({
     addReaction: addReactionProcedure,
     blockUser: blockUserProcedure,
     unblockUser: unblockUserProcedure,
+    addMembers: addMembersProcedure,
+    removeMember: removeMemberProcedure,
+    leaveRoom: leaveRoomProcedure,
+    deleteRoom: deleteRoomProcedure,
   }),
   post: createTRPCRouter({
     createPost: createPostProcedure,

@@ -18,11 +18,14 @@ import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
 import { trpc } from '@/lib/trpc';
-import { Send, Paperclip, Smile, MoreVertical, ImageIcon, Plus, Heart, MessageCircle, Share2, Phone, Video, Users, Search, Check, X } from 'lucide-react-native';
+import { Send, Paperclip, Smile, MoreVertical, ImageIcon, Plus, Heart, MessageCircle, Share2, Phone, Video, Users, Search, Check, X, UserMinus, Trash2, LogOut } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Message, Post } from '@/types/database';
 import { DISTRICT_BADGES } from '@/constants/districts';
+
+const CHAT_MEDIA_BUCKET =
+  (typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_CHAT_MEDIA_BUCKET : undefined) || 'post_media';
 
 export default function ChatRoomScreen() {
   const { roomId } = useLocalSearchParams<{ roomId: string }>();
@@ -36,11 +39,17 @@ export default function ChatRoomScreen() {
   const [showAddMembersModal, setShowAddMembersModal] = useState(false);
   const [addMembersSearch, setAddMembersSearch] = useState('');
   const [selectedMembersToAdd, setSelectedMembersToAdd] = useState<string[]>([]);
+  const [showGroupOptionsModal, setShowGroupOptionsModal] = useState(false);
+  const [showManageMembersModal, setShowManageMembersModal] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const utils = trpc.useUtils();
 
   // Room bilgisini al - getRooms'dan filtrele
-  const { data: roomsData } = trpc.chat.getRooms.useQuery({ limit: 100, offset: 0 }, { enabled: !!roomId });
+  const { data: roomsData, refetch: refetchRooms } = trpc.chat.getRooms.useQuery(
+    { limit: 100, offset: 0 },
+    { enabled: !!roomId }
+  );
   const room = Array.isArray(roomsData) ? roomsData.find((r: any) => r.id === roomId) : null;
 
   // Direct chat için diğer kullanıcıyı bul
@@ -50,6 +59,9 @@ export default function ChatRoomScreen() {
 
   // Grup post'larını al (sadece grup ise)
   const isGroup = room?.type === 'group';
+  const currentUserId = user?.id;
+  const groupMembers = room?.members || [];
+  const isGroupOwner = isGroup && room?.created_by === currentUserId;
   const { data: groupPostsData, refetch: refetchGroupPosts } = trpc.post.getPosts.useQuery(
     { author_id: undefined, limit: 50, offset: 0 },
     { enabled: !!roomId && isGroup }
@@ -78,20 +90,51 @@ export default function ChatRoomScreen() {
     search: addMembersSearch || undefined,
   });
 
-  const addMembersMutation = (trpc.chat as any).addMembers?.useMutation({
-    onSuccess: (data: any) => {
+  const addMembersMutation = trpc.chat.addMembers.useMutation({
+    onSuccess: (data) => {
       Alert.alert('Başarılı', `${data.addedCount} kullanıcı gruba eklendi`);
       setShowAddMembersModal(false);
       setSelectedMembersToAdd([]);
       setAddMembersSearch('');
+      refetchRooms();
+      utils.chat.getRooms.invalidate();
     },
-    onError: (error: any) => {
+    onError: (error) => {
       Alert.alert('Hata', error.message || 'Üyeler eklenirken hata oluştu');
     },
-  }) || {
-    mutate: () => {},
-    isPending: false,
-  };
+  });
+
+  const removeMemberMutation = trpc.chat.removeMember.useMutation({
+    onSuccess: () => {
+      Alert.alert('Başarılı', 'Üye gruptan çıkarıldı');
+      refetchRooms();
+      utils.chat.getRooms.invalidate();
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Üye çıkarılamadı');
+    },
+  });
+
+  const leaveRoomMutation = trpc.chat.leaveRoom.useMutation({
+    onSuccess: () => {
+      utils.chat.getRooms.invalidate();
+      refetchRooms();
+      router.back();
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Gruptan ayrılamadınız');
+    },
+  });
+
+  const deleteRoomMutation = trpc.chat.deleteRoom.useMutation({
+    onSuccess: () => {
+      utils.chat.getRooms.invalidate();
+      router.back();
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Grup silinemedi');
+    },
+  });
 
   const handleAddMembers = () => {
     if (selectedMembersToAdd.length === 0) {
@@ -99,17 +142,76 @@ export default function ChatRoomScreen() {
       return;
     }
 
+    if (!isGroupOwner) {
+      Alert.alert('Yetki Hatası', 'Sadece grup kurucusu üye ekleyebilir');
+      return;
+    }
+
+    if (!roomId) return;
+
     addMembersMutation.mutate({
-      roomId: roomId!,
+      roomId,
       memberIds: selectedMembersToAdd,
     });
   };
 
+  const handleRemoveMember = (memberId: string, memberName: string) => {
+    if (!roomId) return;
+
+    Alert.alert(
+      'Üyeyi Çıkar',
+      `${memberName} gruptan çıkarılsın mı?`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Çıkar',
+          style: 'destructive',
+          onPress: () => removeMemberMutation.mutate({ roomId, memberId }),
+        },
+      ]
+    );
+  };
+
+  const handleLeaveGroup = () => {
+    if (!roomId) return;
+
+    Alert.alert(
+      'Gruptan Ayrıl',
+      'Bu gruptan ayrılmak istediğine emin misin?',
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Ayrıl',
+          style: 'destructive',
+          onPress: () => leaveRoomMutation.mutate({ roomId }),
+        },
+      ]
+    );
+  };
+
+  const handleDeleteGroup = () => {
+    if (!roomId) return;
+
+    Alert.alert(
+      'Grubu Sil',
+      'Grup ve tüm mesajlar kalıcı olarak silinecek. Devam etmek istiyor musun?',
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Grubu Sil',
+          style: 'destructive',
+          onPress: () => deleteRoomMutation.mutate({ roomId }),
+        },
+      ]
+    );
+  };
+
   // Mevcut grup üyelerini al
-  const existingMemberIds = room?.members?.map((m: any) => m.user_id || m.id) || [];
-  const availableUsers = allUsersData?.users?.filter(
-    u => u.id !== user?.id && !existingMemberIds.includes(u.id)
-  ) || [];
+  const existingMemberIds = groupMembers.map((m: any) => m.user_id || m.id);
+  const availableUsers =
+    allUsersData?.users?.filter(
+      (u) => u.id !== currentUserId && !existingMemberIds.includes(u.id)
+    ) || [];
 
   useEffect(() => {
     if (!roomId) return;
@@ -166,7 +268,7 @@ export default function ChatRoomScreen() {
           const fileName = `chat/${user?.id}/${Date.now()}-${file.name}`;
           
           const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('chat_media')
+            .from(CHAT_MEDIA_BUCKET)
             .upload(fileName, blob, {
               contentType: file.mimeType || 'application/octet-stream',
               upsert: false,
@@ -177,7 +279,7 @@ export default function ChatRoomScreen() {
           }
 
           const { data: { publicUrl } } = supabase.storage
-            .from('chat_media')
+            .from(CHAT_MEDIA_BUCKET)
             .getPublicUrl(uploadData.path);
 
           // Mesajı gönder
@@ -241,7 +343,7 @@ export default function ChatRoomScreen() {
       const blob = await response.blob();
 
       const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('chat_media')
+        .from(CHAT_MEDIA_BUCKET)
         .upload(fileName, blob, {
           contentType: 'image/jpeg',
           upsert: false,
@@ -254,7 +356,7 @@ export default function ChatRoomScreen() {
       }
 
       const { data: { publicUrl } } = supabase.storage
-        .from('chat_media')
+        .from(CHAT_MEDIA_BUCKET)
         .getPublicUrl(uploadData.path);
 
       // Mesajı gönder
@@ -505,7 +607,7 @@ export default function ChatRoomScreen() {
                 style={styles.headerButton}
                 onPress={() => {
                   if (isGroup) {
-                    setShowAddMembersModal(true);
+                    setShowGroupOptionsModal(true);
                   } else {
                     // Direct chat için diğer seçenekler
                   }
@@ -755,6 +857,155 @@ export default function ChatRoomScreen() {
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Group Options Modal */}
+      <Modal
+        visible={showGroupOptionsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowGroupOptionsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.optionsContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Grup Ayarları</Text>
+              <TouchableOpacity onPress={() => setShowGroupOptionsModal(false)} style={styles.modalCloseButton}>
+                <X size={20} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.optionButton,
+                !isGroupOwner && styles.optionButtonDisabled,
+              ]}
+              disabled={!isGroupOwner}
+              onPress={() => {
+                setShowGroupOptionsModal(false);
+                setShowAddMembersModal(true);
+              }}
+            >
+              <Users size={18} color={COLORS.primary} />
+              <Text style={styles.optionButtonText}>Üye Ekle</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.optionButton,
+                (!isGroupOwner || groupMembers.length === 0) && styles.optionButtonDisabled,
+              ]}
+              disabled={!isGroupOwner || groupMembers.length === 0}
+              onPress={() => {
+                setShowGroupOptionsModal(false);
+                setShowManageMembersModal(true);
+              }}
+            >
+              <UserMinus size={18} color={COLORS.primary} />
+              <Text style={styles.optionButtonText}>Üyeleri Yönet</Text>
+            </TouchableOpacity>
+
+            {!isGroupOwner && (
+              <TouchableOpacity
+                style={[styles.optionButton, styles.optionDangerButton]}
+                onPress={() => {
+                  setShowGroupOptionsModal(false);
+                  handleLeaveGroup();
+                }}
+              >
+                <LogOut size={18} color={COLORS.error} />
+                <Text style={[styles.optionButtonText, styles.optionDangerText]}>Gruptan Ayrıl</Text>
+              </TouchableOpacity>
+            )}
+
+            {isGroupOwner && (
+              <TouchableOpacity
+                style={[styles.optionButton, styles.optionDangerButton]}
+                onPress={() => {
+                  setShowGroupOptionsModal(false);
+                  handleDeleteGroup();
+                }}
+              >
+                <Trash2 size={18} color={COLORS.error} />
+                <Text style={[styles.optionButtonText, styles.optionDangerText]}>Grubu Sil</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Manage Members Modal */}
+      <Modal
+        visible={showManageMembersModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowManageMembersModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Üyeleri Yönet</Text>
+              <TouchableOpacity
+                onPress={() => setShowManageMembersModal(false)}
+                style={styles.modalCloseButton}
+              >
+                <X size={20} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+
+            <FlatList
+              data={groupMembers}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => {
+                const isOwner = item.user_id === room?.created_by;
+                return (
+                  <View style={styles.memberManageItem}>
+                    <Image
+                      source={{ uri: item.user?.avatar_url || 'https://via.placeholder.com/40' }}
+                      style={styles.memberAvatar}
+                    />
+                    <View style={styles.memberInfo}>
+                      <Text style={styles.memberName}>{item.user?.full_name}</Text>
+                      {item.user?.username && (
+                        <Text style={styles.memberUsername}>@{item.user.username}</Text>
+                      )}
+                    </View>
+                    <View
+                      style={[
+                        styles.memberRoleBadge,
+                        isOwner && styles.memberRoleBadgeOwner,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.memberRoleText,
+                          isOwner && styles.memberRoleTextOwner,
+                        ]}
+                      >
+                        {isOwner ? 'Kurucu' : 'Üye'}
+                      </Text>
+                    </View>
+                    {isGroupOwner && !isOwner && (
+                      <TouchableOpacity
+                        style={styles.memberRemoveButton}
+                        onPress={() =>
+                          handleRemoveMember(item.user_id, item.user?.full_name || 'Kullanıcı')
+                        }
+                      >
+                        <UserMinus size={16} color={COLORS.error} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              }}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>Üye bulunamadı</Text>
+                </View>
+              }
+            />
           </View>
         </View>
       </Modal>
@@ -1088,6 +1339,12 @@ const styles = StyleSheet.create({
     maxHeight: '90%',
     paddingBottom: SPACING.xl,
   },
+  optionsContent: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: SPACING.lg,
+    margin: SPACING.lg,
+  },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1165,6 +1422,31 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
+  optionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    gap: SPACING.sm,
+  },
+  optionButtonDisabled: {
+    opacity: 0.4,
+  },
+  optionButtonText: {
+    flex: 1,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  optionDangerButton: {
+    borderBottomWidth: 0,
+    marginTop: SPACING.md,
+  },
+  optionDangerText: {
+    color: COLORS.error,
+    fontWeight: '600',
+  },
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1181,5 +1463,34 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
+  },
+  memberManageItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    gap: SPACING.sm,
+  },
+  memberRoleBadge: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: COLORS.background,
+  },
+  memberRoleBadgeOwner: {
+    backgroundColor: COLORS.primary + '15',
+  },
+  memberRoleText: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.text,
+  },
+  memberRoleTextOwner: {
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  memberRemoveButton: {
+    padding: SPACING.xs,
   },
 });
