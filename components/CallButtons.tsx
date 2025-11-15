@@ -134,16 +134,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: SPACING.sm,
     marginVertical: SPACING.sm,
+    width: '100%',
   },
   callButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
     borderRadius: 12,
     gap: SPACING.xs,
+    minHeight: 44, // iOS minimum touch target
   },
   audioButton: {
     backgroundColor: COLORS.primary,
@@ -155,6 +157,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
+    flexShrink: 1,
   },
 });
 

@@ -11,25 +11,31 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
-  ScrollView,
+  Modal,
 } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
 import { trpc } from '@/lib/trpc';
-import { Send, Paperclip, Smile, MoreVertical, ImageIcon, Plus, Heart, MessageCircle, Share2, Phone, Video } from 'lucide-react-native';
+import { Send, Paperclip, Smile, MoreVertical, ImageIcon, Plus, Heart, MessageCircle, Share2, Phone, Video, Users, Search, Check, X } from 'lucide-react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { Message, Post } from '@/types/database';
 import { DISTRICT_BADGES } from '@/constants/districts';
 
 export default function ChatRoomScreen() {
   const { roomId } = useLocalSearchParams<{ roomId: string }>();
   const router = useRouter();
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const { messages, loadMessages, subscribeToRoom, unsubscribeFromRoom, sendTypingIndicator, typingIndicators } = useChat();
   const [messageText, setMessageText] = useState('');
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [activeTab, setActiveTab] = useState<'messages' | 'posts'>('messages');
+  const [uploading, setUploading] = useState(false);
+  const [showAddMembersModal, setShowAddMembersModal] = useState(false);
+  const [addMembersSearch, setAddMembersSearch] = useState('');
+  const [selectedMembersToAdd, setSelectedMembersToAdd] = useState<string[]>([]);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -68,6 +74,43 @@ export default function ChatRoomScreen() {
 
   const markAsReadMutation = trpc.chat.markAsRead.useMutation();
 
+  const { data: allUsersData } = trpc.user.getAllUsers.useQuery({
+    search: addMembersSearch || undefined,
+  });
+
+  const addMembersMutation = (trpc.chat as any).addMembers?.useMutation({
+    onSuccess: (data: any) => {
+      Alert.alert('Başarılı', `${data.addedCount} kullanıcı gruba eklendi`);
+      setShowAddMembersModal(false);
+      setSelectedMembersToAdd([]);
+      setAddMembersSearch('');
+    },
+    onError: (error: any) => {
+      Alert.alert('Hata', error.message || 'Üyeler eklenirken hata oluştu');
+    },
+  }) || {
+    mutate: () => {},
+    isPending: false,
+  };
+
+  const handleAddMembers = () => {
+    if (selectedMembersToAdd.length === 0) {
+      Alert.alert('Hata', 'Lütfen en az bir kullanıcı seçin');
+      return;
+    }
+
+    addMembersMutation.mutate({
+      roomId: roomId!,
+      memberIds: selectedMembersToAdd,
+    });
+  };
+
+  // Mevcut grup üyelerini al
+  const existingMemberIds = room?.members?.map((m: any) => m.user_id || m.id) || [];
+  const availableUsers = allUsersData?.users?.filter(
+    u => u.id !== user?.id && !existingMemberIds.includes(u.id)
+  ) || [];
+
   useEffect(() => {
     if (!roomId) return;
 
@@ -89,6 +132,147 @@ export default function ChatRoomScreen() {
       content: messageText.trim(),
       replyTo: replyTo?.id,
     });
+  };
+
+  const handlePickDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) return;
+
+      const file = result.assets[0];
+      const fileSizeMB = file.size ? file.size / (1024 * 1024) : 0;
+
+      // Dosya boyutu limiti: 10MB
+      if (fileSizeMB > 10) {
+        Alert.alert('Hata', 'Dosya boyutu 10MB\'dan büyük olamaz');
+        return;
+      }
+
+      setUploading(true);
+
+      // Dosyayı base64'e çevir
+      const response = await fetch(file.uri);
+      const blob = await response.blob();
+      const reader = new FileReader();
+      
+      reader.onloadend = async () => {
+        try {
+          // Supabase Storage'a yükle
+          const { supabase } = await import('@/lib/supabase');
+          const fileName = `chat/${user?.id}/${Date.now()}-${file.name}`;
+          
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('chat_media')
+            .upload(fileName, blob, {
+              contentType: file.mimeType || 'application/octet-stream',
+              upsert: false,
+            });
+
+          if (uploadError) {
+            throw uploadError;
+          }
+
+          const { data: { publicUrl } } = supabase.storage
+            .from('chat_media')
+            .getPublicUrl(uploadData.path);
+
+          // Mesajı gönder
+          sendMessageMutation.mutate({
+            roomId: roomId!,
+            content: messageText.trim() || file.name,
+            mediaUrl: publicUrl,
+            mediaType: 'file',
+            replyTo: replyTo?.id,
+          });
+
+          setMessageText('');
+          setReplyTo(null);
+        } catch (error: any) {
+          Alert.alert('Hata', `Dosya yüklenirken hata oluştu: ${error.message}`);
+        } finally {
+          setUploading(false);
+        }
+      };
+
+      reader.readAsDataURL(blob);
+    } catch (error: any) {
+      Alert.alert('Hata', `Belge seçilirken hata oluştu: ${error.message}`);
+      setUploading(false);
+    }
+  };
+
+  const handlePickImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('İzin Gerekli', 'Galeri erişimi için izin vermeniz gerekiyor');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+        allowsMultipleSelection: false,
+      });
+
+      if (result.canceled || !result.assets[0]) return;
+
+      const asset = result.assets[0];
+      const fileSizeMB = asset.fileSize ? asset.fileSize / (1024 * 1024) : 0;
+
+      // Resim boyutu limiti: 10MB
+      if (fileSizeMB > 10) {
+        Alert.alert('Hata', 'Resim boyutu 10MB\'dan büyük olamaz');
+        return;
+      }
+
+      setUploading(true);
+
+      // Resmi yükle
+      const { supabase } = await import('@/lib/supabase');
+      const fileName = `chat/${user?.id}/${Date.now()}-image.jpg`;
+      
+      const response = await fetch(asset.uri);
+      const blob = await response.blob();
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('chat_media')
+        .upload(fileName, blob, {
+          contentType: 'image/jpeg',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        Alert.alert('Hata', `Resim yüklenirken hata oluştu: ${uploadError.message}`);
+        setUploading(false);
+        return;
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('chat_media')
+        .getPublicUrl(uploadData.path);
+
+      // Mesajı gönder
+      sendMessageMutation.mutate({
+        roomId: roomId!,
+        content: messageText.trim() || '📷',
+        mediaUrl: publicUrl,
+        mediaType: 'image',
+        replyTo: replyTo?.id,
+      });
+
+      setMessageText('');
+      setReplyTo(null);
+      setUploading(false);
+    } catch (error: any) {
+      Alert.alert('Hata', `Resim seçilirken hata oluştu: ${error.message}`);
+      setUploading(false);
+    }
   };
 
   const handleTyping = useCallback(() => {
@@ -317,8 +501,17 @@ export default function ChatRoomScreen() {
                   </TouchableOpacity>
                 </>
               )}
-              <TouchableOpacity style={styles.headerButton}>
-                <MoreVertical size={24} color={COLORS.primary} />
+              <TouchableOpacity 
+                style={styles.headerButton}
+                onPress={() => {
+                  if (isGroup) {
+                    setShowAddMembersModal(true);
+                  } else {
+                    // Direct chat için diğer seçenekler
+                  }
+                }}
+              >
+                <MoreVertical size={20} color={COLORS.primary} />
               </TouchableOpacity>
             </View>
           ),
@@ -402,8 +595,19 @@ export default function ChatRoomScreen() {
         {/* Input Container - Sadece mesajlar sekmesinde göster */}
         {activeTab === 'messages' && (
           <View style={styles.inputContainer}>
-            <TouchableOpacity style={styles.attachButton}>
-              <Paperclip size={24} color={COLORS.textLight} />
+            <TouchableOpacity 
+              style={styles.attachButton}
+              onPress={handlePickDocument}
+              disabled={uploading}
+            >
+              <Paperclip size={20} color={uploading ? COLORS.textLight : COLORS.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.attachButton}
+              onPress={handlePickImage}
+              disabled={uploading}
+            >
+              <ImageIcon size={20} color={uploading ? COLORS.textLight : COLORS.primary} />
             </TouchableOpacity>
 
             <TextInput
@@ -426,15 +630,15 @@ export default function ChatRoomScreen() {
             <TouchableOpacity
               style={[
                 styles.sendButton,
-                (!messageText.trim() || sendMessageMutation.isPending) && styles.sendButtonDisabled,
+                (!messageText.trim() || sendMessageMutation.isPending || uploading) && styles.sendButtonDisabled,
               ]}
               onPress={handleSendMessage}
-              disabled={!messageText.trim() || sendMessageMutation.isPending}
+              disabled={!messageText.trim() || sendMessageMutation.isPending || uploading}
             >
-              {sendMessageMutation.isPending ? (
+              {(sendMessageMutation.isPending || uploading) ? (
                 <ActivityIndicator size="small" color={COLORS.white} />
               ) : (
-                <Send size={20} color={COLORS.white} />
+                <Send size={18} color={COLORS.white} />
               )}
             </TouchableOpacity>
           </View>
@@ -450,6 +654,110 @@ export default function ChatRoomScreen() {
           </TouchableOpacity>
         )}
       </KeyboardAvoidingView>
+
+      {/* Add Members Modal */}
+      <Modal
+        visible={showAddMembersModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => {
+          setShowAddMembersModal(false);
+          setSelectedMembersToAdd([]);
+          setAddMembersSearch('');
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Üye Ekle</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowAddMembersModal(false);
+                  setSelectedMembersToAdd([]);
+                  setAddMembersSearch('');
+                }}
+                style={styles.modalCloseButton}
+              >
+                <X size={20} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.searchContainer}>
+              <Search size={16} color={COLORS.textLight} />
+              <TextInput
+                style={styles.modalSearchInput}
+                placeholder="Kullanıcı ara..."
+                placeholderTextColor={COLORS.textLight}
+                value={addMembersSearch}
+                onChangeText={setAddMembersSearch}
+                autoCapitalize="none"
+              />
+            </View>
+
+            <FlatList
+              data={availableUsers}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => {
+                const isSelected = selectedMembersToAdd.includes(item.id);
+                return (
+                  <TouchableOpacity
+                    style={[styles.memberItem, isSelected && styles.memberItemSelected]}
+                    onPress={() => {
+                      if (isSelected) {
+                        setSelectedMembersToAdd(selectedMembersToAdd.filter(id => id !== item.id));
+                      } else {
+                        setSelectedMembersToAdd([...selectedMembersToAdd, item.id]);
+                      }
+                    }}
+                  >
+                    <Image
+                      source={{ uri: item.avatar_url || 'https://via.placeholder.com/40' }}
+                      style={styles.memberAvatar}
+                    />
+                    <View style={styles.memberInfo}>
+                      <Text style={styles.memberName}>{item.full_name}</Text>
+                      {(item as any).username && (
+                        <Text style={styles.memberUsername}>@{(item as any).username}</Text>
+                      )}
+                    </View>
+                    {isSelected && (
+                      <View style={styles.memberCheck}>
+                        <Check size={16} color={COLORS.white} />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              }}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>Kullanıcı bulunamadı</Text>
+                </View>
+              }
+            />
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.addButton, selectedMembersToAdd.length === 0 && styles.addButtonDisabled]}
+                onPress={handleAddMembers}
+                disabled={selectedMembersToAdd.length === 0 || addMembersMutation.isPending}
+              >
+                {addMembersMutation.isPending ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <>
+                    <Users size={16} color={COLORS.white} />
+                    <Text style={styles.addButtonText}>
+                      {selectedMembersToAdd.length > 0 
+                        ? `${selectedMembersToAdd.length} Üye Ekle` 
+                        : 'Üye Seç'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -484,9 +792,9 @@ const styles = StyleSheet.create({
     marginRight: SPACING.sm,
   },
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
   },
   avatarPlaceholder: {
     backgroundColor: COLORS.primary,
@@ -495,7 +803,7 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     color: COLORS.white,
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.xs,
     fontWeight: '600' as const,
   },
   messageBubble: {
@@ -519,9 +827,9 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
   },
   messageText: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     color: COLORS.text,
-    lineHeight: 20,
+    lineHeight: 18,
   },
   ownMessageText: {
     color: COLORS.white,
@@ -600,7 +908,8 @@ const styles = StyleSheet.create({
     borderTopColor: COLORS.border,
   },
   attachButton: {
-    padding: SPACING.sm,
+    padding: SPACING.xs,
+    marginRight: SPACING.xs,
   },
   input: {
     flex: 1,
@@ -608,7 +917,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     color: COLORS.text,
     maxHeight: 100,
   },
@@ -617,9 +926,9 @@ const styles = StyleSheet.create({
   },
   sendButton: {
     backgroundColor: COLORS.primary,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
     marginLeft: SPACING.sm,
@@ -766,5 +1075,111 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
     textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '90%',
+    paddingBottom: SPACING.xl,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  modalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  modalCloseButton: {
+    padding: SPACING.xs,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderRadius: 12,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  modalSearchInput: {
+    flex: 1,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+  },
+  memberItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  memberItemSelected: {
+    backgroundColor: COLORS.primary + '10',
+  },
+  memberAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.border,
+    marginRight: SPACING.md,
+  },
+  memberInfo: {
+    flex: 1,
+  },
+  memberName: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 2,
+  },
+  memberUsername: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+  },
+  memberCheck: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalFooter: {
+    padding: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    padding: SPACING.md,
+    borderRadius: 12,
+    gap: SPACING.sm,
+  },
+  addButtonDisabled: {
+    opacity: 0.5,
+  },
+  addButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
   },
 });

@@ -401,15 +401,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: COLORS.primary,
     paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: SPACING.xs,
+    minHeight: 44, // iOS minimum touch target
   },
   messageButtonText: {
     color: COLORS.white,
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
+    flexShrink: 1,
   },
   editButton: {
     flexDirection: 'row',

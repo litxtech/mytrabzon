@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -7,6 +7,8 @@ import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { DISTRICTS, DISTRICT_BADGES } from '@/constants/districts';
 import { District } from '@/types/database';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { PolicyConsentModal } from '@/components/PolicyConsentModal';
+import { trpc } from '@/lib/trpc';
 
 export default function OnboardingScreen() {
   const { user, refreshProfile } = useAuth();
@@ -15,11 +17,42 @@ export default function OnboardingScreen() {
   const [fullName, setFullName] = useState('');
   const [bio, setBio] = useState('');
   const [selectedDistrict, setSelectedDistrict] = useState<District | null>(null);
+  const [showPolicyModal, setShowPolicyModal] = useState(false);
+  const [policiesAccepted, setPoliciesAccepted] = useState(false);
+
+  // Zorunlu politikaları al
+  const { data: policiesData, isLoading: policiesLoading } = trpc.user.getRequiredPolicies.useQuery();
+  const consentMutation = trpc.user.consentToPolicies.useMutation();
+
+  // İlk açılışta politika modalını göster
+  useEffect(() => {
+    if (policiesData?.policies && policiesData.policies.length > 0 && !policiesAccepted) {
+      setShowPolicyModal(true);
+    }
+  }, [policiesData, policiesAccepted]);
+
+  const handlePolicyAccept = async (policyIds: string[]) => {
+    try {
+      await consentMutation.mutateAsync({ policyIds });
+      setPoliciesAccepted(true);
+      setShowPolicyModal(false);
+    } catch (error) {
+      console.error('Error accepting policies:', error);
+      alert('Politika onayı sırasında bir hata oluştu');
+    }
+  };
 
   const handleComplete = async () => {
     const trimmedFullName = fullName.trim();
     if (!trimmedFullName || !selectedDistrict || !user) {
       alert('Lütfen tüm alanları doldurun');
+      return;
+    }
+
+    // Politika onayı kontrolü
+    if (!policiesAccepted) {
+      alert('Devam etmek için politikaları kabul etmeniz gerekmektedir');
+      setShowPolicyModal(true);
       return;
     }
 
@@ -119,10 +152,10 @@ export default function OnboardingScreen() {
         <TouchableOpacity
           style={[
             styles.button, 
-            (loading || !fullName.trim() || !selectedDistrict) && styles.buttonDisabled
+            (loading || !fullName.trim() || !selectedDistrict || !policiesAccepted) && styles.buttonDisabled
           ]}
           onPress={handleComplete}
-          disabled={loading || !fullName.trim() || !selectedDistrict}
+          disabled={loading || !fullName.trim() || !selectedDistrict || !policiesAccepted}
         >
           {loading ? (
             <ActivityIndicator color={COLORS.white} />
@@ -131,6 +164,23 @@ export default function OnboardingScreen() {
           )}
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Politika Onay Modalı */}
+      {policiesData?.policies && (
+        <PolicyConsentModal
+          visible={showPolicyModal}
+          policies={policiesData.policies}
+          onAccept={() => {
+            const policyIds = policiesData.policies.map(p => p.id);
+            handlePolicyAccept(policyIds);
+          }}
+          onReject={() => {
+            // Zorunlu olduğu için reddetme seçeneği yok
+            alert('Politikaları kabul etmeden devam edemezsiniz');
+          }}
+          required={true}
+        />
+      )}
     </SafeAreaView>
   );
 }

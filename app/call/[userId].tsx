@@ -259,6 +259,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     gap: SPACING.lg,
     backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingBottom: SPACING.xl + (Platform.OS === 'ios' ? 20 : 0), // Safe area for iOS
   },
   controlButton: {
     width: 56,
@@ -267,6 +268,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
+    minWidth: 56,
+    minHeight: 56,
   },
   controlButtonDisabled: {
     backgroundColor: COLORS.textLight,

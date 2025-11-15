@@ -126,7 +126,7 @@ export default function AllUsersScreen() {
             targetUserName={item.full_name}
             targetUserAvatar={item.avatar_url || undefined}
           />
-          <ChevronRight size={20} color={COLORS.textLight} />
+          <ChevronRight size={16} color={COLORS.textLight} />
         </View>
       </TouchableOpacity>
     ),
@@ -198,7 +198,7 @@ export default function AllUsersScreen() {
             ]}
             onPress={() => handleGenderFilter('all')}
           >
-            <Users size={18} color={genderFilter === 'all' ? COLORS.white : COLORS.primary} />
+            <Users size={16} color={genderFilter === 'all' ? COLORS.white : COLORS.primary} />
             <Text
               style={[
                 styles.filterButtonText,
@@ -216,7 +216,7 @@ export default function AllUsersScreen() {
             ]}
             onPress={() => handleGenderFilter('male')}
           >
-            <User size={18} color={genderFilter === 'male' ? COLORS.white : COLORS.primary} />
+            <User size={16} color={genderFilter === 'male' ? COLORS.white : COLORS.primary} />
             <Text
               style={[
                 styles.filterButtonText,
@@ -234,7 +234,7 @@ export default function AllUsersScreen() {
             ]}
             onPress={() => handleGenderFilter('female')}
           >
-            <UserCheck size={18} color={genderFilter === 'female' ? COLORS.white : COLORS.primary} />
+            <UserCheck size={16} color={genderFilter === 'female' ? COLORS.white : COLORS.primary} />
             <Text
               style={[
                 styles.filterButtonText,
@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   title: {
-    fontSize: FONT_SIZES.xxl,
+    fontSize: FONT_SIZES.xl,
     fontWeight: '700',
     color: COLORS.text,
     marginBottom: SPACING.xs,
@@ -377,9 +377,9 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
   avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: COLORS.border,
   },
   userInfo: {
@@ -392,7 +392,7 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
   },
   userName: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     fontWeight: '700',
     color: COLORS.text,
   },

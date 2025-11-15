@@ -321,9 +321,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary + '10',
   },
   userAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: COLORS.border,
     marginRight: SPACING.md,
   },
@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   userName: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     fontWeight: '600',
     color: COLORS.text,
     marginBottom: SPACING.xs / 2,

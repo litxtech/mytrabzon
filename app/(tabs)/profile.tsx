@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, FlatList } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
-import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, MessageCircle, Share2, MoreVertical, Shield, CheckCircle2, Clock, XCircle, Sparkles } from 'lucide-react-native';
+import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, Sparkles } from 'lucide-react-native';
 import { DISTRICT_BADGES } from '../../constants/districts';
 import { useRouter } from 'expo-router';
 import { Footer } from '../../components/Footer';
 import { SupportPanel } from '../../components/SupportPanel';
-import { trpc, adminTrpcClient } from '../../lib/trpc';
-import { Post } from '../../types/database';
+import { trpc } from '../../lib/trpc';
 export default function ProfileScreen() {
   const { profile, user, signOut } = useAuth();
   const router = useRouter();
@@ -48,7 +47,7 @@ export default function ProfileScreen() {
   });
 
   // Kullanıcının gönderilerini getir
-  const { data: postsData, isLoading: postsLoading, refetch: refetchPosts } = trpc.post.getPosts.useQuery({
+  const { data: postsData, isLoading: postsLoading } = trpc.post.getPosts.useQuery({
     author_id: user?.id,
     limit: 50,
     offset: 0,
@@ -56,18 +55,8 @@ export default function ProfileScreen() {
     enabled: !!user?.id, // Sadece user varsa query çalışsın
   });
 
-  const deletePostMutation = trpc.post.deletePost.useMutation({
-    onSuccess: () => {
-      refetchPosts();
-    },
-  });
-
-  const sharePostMutation = trpc.post.sharePost.useMutation();
-
   // İstatistikleri hesapla
   const totalPosts = postsData?.posts?.length || 0;
-  const totalLikes = postsData?.posts?.reduce((sum: number, post: Post) => sum + (post.like_count || 0), 0) || 0;
-  const totalComments = postsData?.posts?.reduce((sum: number, post: Post) => sum + (post.comment_count || 0), 0) || 0;
 
   const handleLogout = async () => {
     await signOut();
@@ -109,120 +98,153 @@ export default function ProfileScreen() {
     );
   };
 
-  const handleDeletePost = (postId: string) => {
-    Alert.alert(
-      'Gönderiyi Sil',
-      'Bu gönderiyi silmek istediğinizden emin misiniz?',
-      [
-        { text: 'İptal', style: 'cancel' },
-        {
-          text: 'Sil',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const result = await deletePostMutation.mutateAsync({ postId });
-              if (result?.softDeleted) {
-                Alert.alert(
-                  'Gönderi Arşivlendi',
-                  'Bu gönderi paylaşıldığı için arşivlendi. Paylaşımlar devam edecek.'
-                );
-              } else {
-                Alert.alert('Başarılı', 'Gönderi silindi');
-              }
-              refetchPosts();
-            } catch (error: any) {
-              const errorMessage = error?.message || 'Gönderi silinirken bir hata oluştu';
-              Alert.alert('Hata', errorMessage);
-              console.error('Delete post error:', error);
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  const handleSharePost = async (postId: string) => {
-    try {
-      await sharePostMutation.mutateAsync({ post_id: postId, share_to: 'feed' });
-      Alert.alert('Başarılı', 'Gönderi paylaşıldı');
-      refetchPosts();
-    } catch (error) {
-      Alert.alert('Hata', 'Gönderi paylaşılırken bir hata oluştu');
-      console.error('Share post error:', error);
-    }
-  };
-
-  const formatPostTime = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Şimdi';
-    if (diffMins < 60) return `${diffMins} dk önce`;
-    if (diffHours < 24) return `${diffHours} sa önce`;
-    if (diffDays === 1) return 'Dün';
-    if (diffDays < 7) return `${diffDays} gün önce`;
-    return date.toLocaleDateString('tr-TR', {
-      day: 'numeric',
-      month: 'short',
-      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
-    });
-  };
-
-  const formatCount = (count: number | null | undefined): string => {
-    if (!count) return '0';
-    if (count >= 1000) {
-      return `${(count / 1000).toFixed(1)}K`;
-    }
-    return count.toString();
-  };
 
   if (!profile) return null;
 
   return (
     <View style={styles.container}>
-      <ScrollView>
-        <View style={styles.header}>
-          <Image
-            source={{ uri: profile.avatar_url || 'https://via.placeholder.com/100' }}
-            style={styles.avatar}
-          />
-          <Text style={styles.name}>{profile.full_name}</Text>
-          {profile.username && (
-            <Text style={styles.username}>@{profile.username}</Text>
-          )}
-          <View style={styles.badgesRow}>
-            <View style={styles.districtBadge}>
-              <Text style={styles.districtEmoji}>{DISTRICT_BADGES[profile.district as keyof typeof DISTRICT_BADGES] || '📍'}</Text>
-              <Text style={styles.districtText}>{profile.district}</Text>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Header - Resimdeki gibi */}
+        <View style={styles.profileHeader}>
+          <View style={styles.profileTopRow}>
+            <View style={styles.profileLeft}>
+              <View style={styles.avatarContainer}>
+                <Image
+                  source={{ uri: profile.avatar_url || 'https://via.placeholder.com/100' }}
+                  style={styles.avatar}
+                />
+                <TouchableOpacity style={styles.storyAddButton}>
+                  <Text style={styles.storyAddIcon}>+</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            {profile.supporter_badge && profile.supporter_badge_visible && (
-              <View style={styles.supporterBadge}>
-                <Heart size={14} color={COLORS.primary} fill={COLORS.primary} />
-                <Text style={styles.supporterBadgeText}>Destekçi</Text>
+            <View style={styles.profileRight}>
+              <View style={styles.statsRow}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{totalPosts}</Text>
+                  <Text style={styles.statLabel}>gönderi</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>0</Text>
+                  <Text style={styles.statLabel}>takipçi</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>0</Text>
+                  <Text style={styles.statLabel}>takip</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+          
+          <View style={styles.profileInfo}>
+            <View style={styles.nameRow}>
+              <Text style={styles.name}>{profile.full_name}</Text>
+              {profile.verified && (
+                <View style={styles.verifiedDot}>
+                  <Text style={styles.verifiedText}>✓</Text>
+                </View>
+              )}
+            </View>
+            {profile.username && (
+              <Text style={styles.username}>@{profile.username}</Text>
+            )}
+            {profile.bio && (
+              <Text style={styles.bio} numberOfLines={3}>
+                {profile.bio}
+              </Text>
+            )}
+            {profile.district && (
+              <View style={styles.locationRow}>
+                <Text style={styles.locationText}>
+                  {DISTRICT_BADGES[profile.district as keyof typeof DISTRICT_BADGES] || '📍'} {profile.district}
+                </Text>
               </View>
             )}
           </View>
-          {profile.bio && <Text style={styles.bio}>{profile.bio}</Text>}
 
-          <View style={styles.stats}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{totalPosts}</Text>
-              <Text style={styles.statLabel}>Gönderi</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{totalLikes}</Text>
-              <Text style={styles.statLabel}>Beğeni</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{totalComments}</Text>
-              <Text style={styles.statLabel}>Yorum</Text>
-            </View>
+          <View style={styles.actionButtons}>
+            <TouchableOpacity 
+              style={styles.editButton}
+              onPress={() => router.push('/profile/edit')}
+            >
+              <Text style={styles.editButtonText}>Düzenle</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.shareButton}
+              onPress={() => Alert.alert('Paylaş', 'Profil paylaşma özelliği yakında eklenecek')}
+            >
+              <Text style={styles.shareButtonText}>Profili paylaş</Text>
+            </TouchableOpacity>
           </View>
         </View>
+
+        {/* Tab Navigation - Grid, Reels, Tagged */}
+        <View style={styles.tabNavigation}>
+          <TouchableOpacity style={[styles.tab, styles.tabActive]}>
+            <View style={styles.tabIcon} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.tab}>
+            <View style={[styles.tabIcon, styles.tabIconReels]} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.tab}>
+            <View style={[styles.tabIcon, styles.tabIconTagged]} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Posts Grid - Resimdeki gibi boş durum */}
+        {postsLoading ? (
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>Yükleniyor...</Text>
+          </View>
+        ) : postsData?.posts && postsData.posts.length > 0 ? (
+          <View style={styles.postsGrid}>
+            {postsData.posts.map((post) => {
+              const firstMedia = post.media && post.media.length > 0 ? post.media[0] : null;
+              return (
+                <TouchableOpacity
+                  key={post.id}
+                  style={styles.postGridItem}
+                  onPress={() => router.push(`/post/${post.id}` as any)}
+                >
+                  {firstMedia ? (
+                    <Image
+                      source={{ uri: firstMedia.path }}
+                      style={styles.postGridImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={[styles.postGridImage, styles.postGridPlaceholder]}>
+                      <Text style={styles.postGridText} numberOfLines={3}>
+                        {post.content}
+                      </Text>
+                    </View>
+                  )}
+                  {post.media && post.media.length > 1 && (
+                    <View style={styles.postGridBadge}>
+                      <Text style={styles.postGridBadgeText}>+{post.media.length - 1}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : (
+          <View style={styles.emptyPostsContainer}>
+            <View style={styles.emptyPostsIllustration}>
+              <Text style={styles.emptyPostsEmoji}>🎨</Text>
+            </View>
+            <Text style={styles.emptyPostsTitle}>İlk gönderini oluştur</Text>
+            <Text style={styles.emptyPostsSubtitle}>
+              Bu alanı kendine özel hale getir.
+            </Text>
+            <TouchableOpacity
+              style={styles.createPostButton}
+              onPress={() => router.push('/create-post')}
+            >
+              <Text style={styles.createPostButtonText}>Oluştur</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={styles.menuSection}>
           <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/profile/edit')}>
@@ -245,7 +267,7 @@ export default function ProfileScreen() {
             onPress={() => router.push('/support/donate')}
           >
             <Heart size={20} color={COLORS.primary} />
-            <Text style={[styles.menuText, { color: COLORS.primary, fontWeight: '700' }]}>❤️ MyTrabzon'u Destekle</Text>
+            <Text style={[styles.menuText, { color: COLORS.primary, fontWeight: '700' }]}>❤️ MyTrabzon&apos;u Destekle</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.menuItem} onPress={() => setSupportVisible(true)}>
@@ -254,7 +276,7 @@ export default function ProfileScreen() {
           </TouchableOpacity>
 
           {/* KYC Butonu */}
-          {profile?.is_verified ? (
+          {profile?.verified ? (
             <View style={[styles.menuItem, styles.verifiedItem]}>
               <CheckCircle2 size={20} color={COLORS.success} />
               <Text style={[styles.menuText, { color: COLORS.success, fontWeight: '600' }]}>Kimlik Doğrulandı ✓</Text>
@@ -303,68 +325,6 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity 
-          style={styles.postsSection}
-          onPress={() => router.push('/profile/posts')}
-        >
-          <View style={styles.postsSectionHeader}>
-            <Text style={styles.postsSectionTitle}>Gönderilerim</Text>
-            {postsData?.posts && postsData.posts.length > 0 && (
-              <Text style={styles.postsCount}>({postsData.posts.length})</Text>
-            )}
-          </View>
-          {postsLoading ? (
-            <View style={styles.loadingContainer}>
-              <Text style={styles.loadingText}>Yükleniyor...</Text>
-            </View>
-          ) : postsData?.posts && postsData.posts.length > 0 ? (
-            <View style={styles.postsPreview}>
-              <FlatList
-                data={postsData.posts.slice(0, 3)}
-                renderItem={({ item }) => {
-                  const firstMedia = item.media && item.media.length > 0 ? item.media[0] : null;
-                  return (
-                    <TouchableOpacity 
-                      style={styles.postPreviewCard}
-                      onPress={() => router.push(`/post/${item.id}` as any)}
-                    >
-                      {firstMedia ? (
-                        <Image
-                          source={{ uri: firstMedia.path }}
-                          style={styles.postPreviewImage}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <View style={[styles.postPreviewImage, styles.postPreviewPlaceholder]}>
-                          <Text style={styles.postPreviewText} numberOfLines={2}>
-                            {item.content}
-                          </Text>
-                        </View>
-                      )}
-                      {item.media && item.media.length > 1 && (
-                        <View style={styles.postPreviewBadge}>
-                          <Text style={styles.postPreviewBadgeText}>+{item.media.length - 1}</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  );
-                }}
-                keyExtractor={(item) => item.id}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                scrollEnabled={false}
-              />
-              {postsData.posts.length > 3 && (
-                <Text style={styles.viewAllText}>Tümünü gör ({postsData.posts.length})</Text>
-              )}
-            </View>
-          ) : (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>Henüz gönderi yok</Text>
-              <Text style={styles.emptySubtext}>İlk paylaşımı yapan sen ol!</Text>
-            </View>
-          )}
-        </TouchableOpacity>
 
         <Footer />
       </ScrollView>
@@ -379,24 +339,263 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
+  profileHeader: {
+    backgroundColor: COLORS.white,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.lg,
+  },
+  profileTopRow: {
+    flexDirection: 'row',
+    marginBottom: SPACING.md,
+  },
+  profileLeft: {
+    marginRight: SPACING.lg,
+  },
+  avatarContainer: {
+    position: 'relative',
+  },
+  avatar: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+  },
+  storyAddButton: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.primary,
+    borderWidth: 2,
+    borderColor: COLORS.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  storyAddIcon: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    lineHeight: 20,
+  },
+  profileRight: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  statLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+    marginTop: 2,
+  },
+  profileInfo: {
+    marginBottom: SPACING.md,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+    gap: SPACING.xs,
+  },
+  name: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  verifiedDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  verifiedText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '700',
+  },
+  bio: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.text,
+    lineHeight: 16,
+    marginBottom: SPACING.xs,
+  },
+  locationRow: {
+    marginTop: SPACING.xs,
+  },
+  locationText: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  editButton: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    paddingVertical: SPACING.sm,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  editButtonText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  shareButton: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    paddingVertical: SPACING.sm,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  shareButtonText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  tabNavigation: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.white,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomColor: COLORS.text,
+  },
+  tabIcon: {
+    width: 24,
+    height: 24,
+    borderWidth: 1.5,
+    borderColor: COLORS.text,
+  },
+  tabIconReels: {
+    borderRadius: 4,
+  },
+  tabIconTagged: {
+    borderRadius: 12,
+  },
+  postsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    backgroundColor: COLORS.white,
+  },
+  postGridItem: {
+    width: '33.333%',
+    aspectRatio: 1,
+    borderWidth: 0.5,
+    borderColor: COLORS.border,
+    position: 'relative',
+  },
+  postGridImage: {
+    width: '100%',
+    height: '100%',
+  },
+  postGridPlaceholder: {
+    backgroundColor: COLORS.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.xs,
+  },
+  postGridText: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+    textAlign: 'center',
+  },
+  postGridBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  postGridBadgeText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '600',
+  },
+  emptyPostsContainer: {
+    backgroundColor: COLORS.white,
+    paddingVertical: SPACING.xxl * 2,
+    paddingHorizontal: SPACING.xl,
+    alignItems: 'center',
+    minHeight: 400,
+  },
+  emptyPostsIllustration: {
+    width: 120,
+    height: 120,
+    marginBottom: SPACING.lg,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyPostsEmoji: {
+    fontSize: 80,
+  },
+  emptyPostsTitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
+    textAlign: 'center',
+  },
+  emptyPostsSubtitle: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+    textAlign: 'center',
+    marginBottom: SPACING.xl,
+  },
+  createPostButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderRadius: 8,
+    minWidth: 120,
+  },
+  createPostButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   header: {
     backgroundColor: COLORS.white,
     alignItems: 'center' as const,
     paddingVertical: SPACING.xl,
     paddingHorizontal: SPACING.md,
     marginBottom: SPACING.md,
-  },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    marginBottom: SPACING.md,
-  },
-  name: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: '700' as const,
-    color: COLORS.text,
-    marginBottom: SPACING.xs,
   },
   username: {
     fontSize: FONT_SIZES.md,
@@ -442,30 +641,11 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontWeight: '600' as const,
   },
-  bio: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textLight,
-    textAlign: 'center' as const,
-    marginBottom: SPACING.md,
-  },
   stats: {
     flexDirection: 'row' as const,
     justifyContent: 'space-around' as const,
     width: '100%',
     marginTop: SPACING.md,
-  },
-  statItem: {
-    alignItems: 'center' as const,
-  },
-  statValue: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: '700' as const,
-    color: COLORS.text,
-  },
-  statLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textLight,
-    marginTop: 4,
   },
   menuSection: {
     backgroundColor: COLORS.white,
@@ -481,12 +661,12 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
   adminMenuItem: {
-    backgroundColor: COLORS.primaryLight + '20',
+    backgroundColor: COLORS.primary + '20',
     borderLeftWidth: 3,
     borderLeftColor: COLORS.primary,
   },
   verifyItem: {
-    backgroundColor: COLORS.primaryLight + '20',
+    backgroundColor: COLORS.primary + '20',
     borderLeftWidth: 3,
     borderLeftColor: COLORS.primary,
   },

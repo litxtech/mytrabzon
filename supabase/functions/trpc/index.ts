@@ -1623,7 +1623,92 @@ const appRouter = createTRPCRouter({
           throw new Error('Failed to mark messages as read');
         }
 
-        return { success: true };
+      return { success: true };
+    }),
+
+    addMembers: protectedProcedure
+      .input(
+        z.object({
+          roomId: z.string(),
+          memberIds: z.array(z.string()),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const userId = ctx.user.id;
+
+        // Room'un grup olduğunu ve kullanıcının üye olduğunu kontrol et
+        const { data: room, error: roomError } = await ctx.supabase
+          .from('chat_rooms')
+          .select('type, created_by')
+          .eq('id', input.roomId)
+          .single();
+
+        if (roomError || !room) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Grup bulunamadı',
+          });
+        }
+
+        if (room.type !== 'group') {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Bu işlem sadece gruplar için geçerlidir',
+          });
+        }
+
+        // Kullanıcının grup üyesi olduğunu kontrol et
+        const { data: member, error: memberError } = await ctx.supabase
+          .from('chat_members')
+          .select('role')
+          .eq('room_id', input.roomId)
+          .eq('user_id', userId)
+          .single();
+
+        if (memberError || !member) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Bu grubun üyesi değilsiniz',
+          });
+        }
+
+        // Zaten üye olan kullanıcıları filtrele
+        const { data: existingMembers } = await ctx.supabase
+          .from('chat_members')
+          .select('user_id')
+          .eq('room_id', input.roomId)
+          .in('user_id', input.memberIds);
+
+        const existingMemberIds = existingMembers?.map(m => m.user_id) || [];
+        const newMemberIds = input.memberIds.filter(id => !existingMemberIds.includes(id));
+
+        if (newMemberIds.length === 0) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Seçilen kullanıcılar zaten grup üyesi',
+          });
+        }
+
+        // Yeni üyeleri ekle
+        const memberInserts = newMemberIds.map(memberId => ({
+          room_id: input.roomId,
+          user_id: memberId,
+          role: 'member',
+        }));
+
+        const { error: insertError } = await ctx.supabase
+          .from('chat_members')
+          .insert(memberInserts);
+
+        if (insertError) {
+          console.error('Error adding members:', insertError);
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Üyeler eklenirken hata oluştu',
+          });
+        }
+
+        return { success: true, addedCount: newMemberIds.length };
       }),
 
     deleteMessage: protectedProcedure
@@ -3995,6 +4080,202 @@ const appRouter = createTRPCRouter({
       }),
 
     // Agora token oluştur
+    // Politika onayları
+    getRequiredPolicies: publicProcedure
+      .query(async ({ ctx }) => {
+        const { supabase } = ctx;
+        
+        const { data: policies, error } = await supabase
+          .from('policies')
+          .select('id, title, content, policy_type, display_order, updated_at')
+          .eq('is_active', true)
+          .in('policy_type', ['terms', 'privacy', 'community', 'cookie', 'child_safety'])
+          .order('display_order', { ascending: true });
+
+        if (error) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: error.message,
+          });
+        }
+
+        return { policies: policies || [] };
+      }),
+
+    checkPolicyConsents: protectedProcedure
+      .query(async ({ ctx }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Kullanıcının onayladığı politikaları kontrol et
+        const { data: consents, error } = await supabase
+          .from('user_policy_consents')
+          .select('policy_type, policy_id, consented, consent_date')
+          .eq('user_id', user.id)
+          .eq('consented', true);
+
+        if (error) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: error.message,
+          });
+        }
+
+        // Zorunlu politikaları al
+        const { data: requiredPolicies } = await supabase
+          .from('policies')
+          .select('id, policy_type')
+          .eq('is_active', true)
+          .in('policy_type', ['terms', 'privacy', 'community', 'cookie', 'child_safety']);
+
+        const consentedTypes = new Set(consents?.map(c => c.policy_type) || []);
+        const requiredTypes = new Set(requiredPolicies?.map(p => p.policy_type) || []);
+
+        const missingPolicies = Array.from(requiredTypes).filter(type => !consentedTypes.has(type));
+
+        return {
+          hasAllConsents: missingPolicies.length === 0,
+          missingPolicies,
+          consents: consents || [],
+        };
+      }),
+
+    consentToPolicies: protectedProcedure
+      .input(
+        z.object({
+          policyIds: z.array(z.string()),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Politikaları al
+        const { data: policies, error: policiesError } = await supabase
+          .from('policies')
+          .select('id, policy_type')
+          .in('id', input.policyIds);
+
+        if (policiesError || !policies || policies.length === 0) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Geçersiz politika ID\'leri',
+          });
+        }
+
+        // Onay kayıtlarını oluştur
+        const consents = policies.map(policy => ({
+          user_id: user.id,
+          policy_id: policy.id,
+          policy_type: policy.policy_type,
+          consented: true,
+          policy_version: 1, // Şimdilik 1, versiyon sistemi eklendiğinde güncellenecek
+        }));
+
+        const { error: insertError } = await supabase
+          .from('user_policy_consents')
+          .upsert(consents, {
+            onConflict: 'user_id,policy_id,policy_version',
+          });
+
+        if (insertError) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: insertError.message,
+          });
+        }
+
+        return { success: true, consentedCount: consents.length };
+      }),
+
+    consentToFeature: protectedProcedure
+      .input(
+        z.object({
+          featureType: z.enum(['matching', 'video_call', 'audio_call', 'ai_chat', 'location_sharing']),
+          ageVerified: z.boolean().optional(),
+          kycVerified: z.boolean().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // 18+ özellikler için yaş ve KYC doğrulaması gerekli
+        if (['matching', 'video_call', 'audio_call'].includes(input.featureType)) {
+          if (!input.ageVerified || !input.kycVerified) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Bu özellik için yaş ve KYC doğrulaması gereklidir',
+            });
+          }
+        }
+
+        const { error } = await supabase
+          .from('user_feature_consents')
+          .upsert({
+            user_id: user.id,
+            feature_type: input.featureType,
+            consented: true,
+            age_verified: input.ageVerified || false,
+            kyc_verified: input.kycVerified || false,
+            revoked_date: null,
+          }, {
+            onConflict: 'user_id,feature_type',
+          });
+
+        if (error) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: error.message,
+          });
+        }
+
+        return { success: true };
+      }),
+
+    checkFeatureConsent: protectedProcedure
+      .input(
+        z.object({
+          featureType: z.enum(['matching', 'video_call', 'audio_call', 'ai_chat', 'location_sharing']),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const { data: consent, error } = await supabase
+          .from('user_feature_consents')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('feature_type', input.featureType)
+          .is('revoked_date', null)
+          .maybeSingle();
+
+        if (error) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: error.message,
+          });
+        }
+
+        if (!consent || !consent.consented) {
+          return { hasConsent: false, canUse: false };
+        }
+
+        // 18+ özellikler için yaş ve KYC kontrolü
+        if (['matching', 'video_call', 'audio_call'].includes(input.featureType)) {
+          const canUse = consent.age_verified && consent.kyc_verified;
+          return {
+            hasConsent: true,
+            canUse,
+            ageVerified: consent.age_verified,
+            kycVerified: consent.kyc_verified,
+          };
+        }
+
+        return { hasConsent: true, canUse: true };
+      }),
+
     generateAgoraToken: protectedProcedure
       .input(
         z.object({
