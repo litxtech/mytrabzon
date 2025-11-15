@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { ArrowLeft, MapPin, AlertCircle, Image as ImageIcon, Mic } from 'lucide-react-native';
-import { TRABZON_DISTRICTS } from '@/constants/districts';
+import { TRABZON_DISTRICTS, GIRESUN_DISTRICTS, getDistrictsByCity } from '@/constants/districts';
 import { Footer } from '@/components/Footer';
 
 const EVENT_CATEGORIES = [
@@ -54,6 +54,7 @@ export default function CreateEventScreen() {
     description: '',
     category: '',
     severity: 'NORMAL' as 'CRITICAL' | 'HIGH' | 'NORMAL' | 'LOW',
+    city: 'Trabzon' as 'Trabzon' | 'Giresun',
     district: '',
     latitude: undefined as number | undefined,
     longitude: undefined as number | undefined,
@@ -84,7 +85,7 @@ export default function CreateEventScreen() {
         category: formData.category as any,
         severity: formData.severity,
         district: formData.district,
-        city: 'Trabzon',
+        city: formData.city,
         latitude: formData.latitude,
         longitude: formData.longitude,
       });
@@ -94,6 +95,9 @@ export default function CreateEventScreen() {
       setLoading(false);
     }
   };
+
+  // Seçili şehre göre ilçeleri al
+  const availableDistricts = getDistrictsByCity(formData.city);
 
   return (
     <KeyboardAvoidingView
@@ -206,30 +210,69 @@ export default function CreateEventScreen() {
           </View>
         </View>
 
+        {/* Şehir */}
+        <View style={styles.section}>
+          <Text style={styles.label}>Şehir *</Text>
+          <View style={styles.cityContainer}>
+            <TouchableOpacity
+              style={[
+                styles.cityButton,
+                formData.city === 'Trabzon' && styles.cityButtonSelected,
+              ]}
+              onPress={() => {
+                setFormData({ ...formData, city: 'Trabzon', district: '' });
+              }}
+            >
+              <Text style={[
+                styles.cityText,
+                formData.city === 'Trabzon' && styles.cityTextSelected,
+              ]}>
+                Trabzon
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.cityButton,
+                formData.city === 'Giresun' && styles.cityButtonSelected,
+              ]}
+              onPress={() => {
+                setFormData({ ...formData, city: 'Giresun', district: '' });
+              }}
+            >
+              <Text style={[
+                styles.cityText,
+                formData.city === 'Giresun' && styles.cityTextSelected,
+              ]}>
+                Giresun
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* İlçe */}
         <View style={styles.section}>
           <Text style={styles.label}>İlçe *</Text>
           <View style={styles.districtGrid}>
-            {TRABZON_DISTRICTS.map((district) => (
+            {availableDistricts.map((district) => (
               <TouchableOpacity
-                key={district.value}
+                key={district}
                 style={[
                   styles.districtChip,
-                  formData.district === district.value && styles.districtChipSelected,
+                  formData.district === district && styles.districtChipSelected,
                 ]}
                 onPress={() => {
                   // Toggle: Eğer zaten seçiliyse iptal et, değilse seç
                   setFormData({ 
                     ...formData, 
-                    district: formData.district === district.value ? '' : district.value 
+                    district: formData.district === district ? '' : district 
                   });
                 }}
               >
                 <Text style={[
                   styles.districtText,
-                  formData.district === district.value && styles.districtTextSelected,
+                  formData.district === district && styles.districtTextSelected,
                 ]}>
-                  {district.label}
+                  {district}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -384,6 +427,33 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   districtTextSelected: {
+    color: COLORS.white,
+  },
+  cityContainer: {
+    flexDirection: 'row' as const,
+    gap: SPACING.sm,
+  },
+  cityButton: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: 8,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  cityButtonSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  cityText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    fontWeight: '600' as const,
+  },
+  cityTextSelected: {
     color: COLORS.white,
   },
   submitButton: {
