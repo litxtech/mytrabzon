@@ -85,7 +85,7 @@ export const sendNotificationProcedure = protectedProcedure
       user_id: userId,
       type: input.type,
       title: input.title,
-      body: input.body,
+      message: input.body, // body yerine message kullan (notifications tablosunda message var)
       data: input.data || {},
       push_sent: false,
       is_deleted: false,

@@ -57,7 +57,7 @@ export default function KycVerifyScreen() {
   
   const [verificationCode] = useState(generateVerificationCode());
   
-  const { data: existingKyc } = trpc.kyc.get.useQuery();
+  const { data: existingKyc } = trpc.kyc.get.useQuery(undefined, { enabled: !!user?.id });
   const createKycMutation = trpc.kyc.create.useMutation({
     onSuccess: () => {
       Alert.alert(
@@ -112,20 +112,29 @@ export default function KycVerifyScreen() {
   const uploadImage = async (uri: string, type: DocumentType) => {
     setLoading(true);
     try {
-      const fileExt = uri.split('.').pop() || 'jpg';
+      let fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
+      // jpg -> jpeg düzelt
+      if (fileExt === 'jpg') fileExt = 'jpeg';
       const fileName = `${user?.id}/${type}_${Date.now()}.${fileExt}`;
       const filePath = `kyc-documents/${fileName}`;
       
+      // MIME type'ı düzelt
+      const mimeType = fileExt === 'jpeg' || fileExt === 'jpg' 
+        ? 'image/jpeg' 
+        : fileExt === 'png' 
+        ? 'image/png' 
+        : `image/${fileExt}`;
+      
       // React Native'de blob() yok, fetch ile base64 veya doğrudan URI kullan
       // Supabase Storage React Native için URI'yi doğrudan kabul eder
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('kyc-documents')
         .upload(filePath, {
           uri,
-          type: `image/${fileExt}`,
+          type: mimeType,
           name: fileName,
         } as any, {
-          contentType: `image/${fileExt}`,
+          contentType: mimeType,
           upsert: false,
         });
       
@@ -217,7 +226,7 @@ export default function KycVerifyScreen() {
         email: email || undefined,
         documents,
       });
-    } catch (error) {
+    } catch {
       // Error handled in mutation
     }
   };

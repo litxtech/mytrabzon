@@ -32,7 +32,8 @@ export const createEventProcedure = protectedProcedure
         ? new Date(input.expires_at)
         : new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 saat sonra
 
-      // Event oluştur
+      // Event oluştur - start_date şu anki zaman olarak ayarla
+      const now = new Date();
       const { data: event, error } = await supabase
         .from('events')
         .insert({
@@ -47,6 +48,7 @@ export const createEventProcedure = protectedProcedure
           longitude: input.longitude,
           media_urls: input.media_urls,
           audio_url: input.audio_url,
+          start_date: now.toISOString(), // start_date eklendi
           expires_at: expiresAt.toISOString(),
         })
         .select()
@@ -127,7 +129,7 @@ async function createNotificationsForEvent(
       event_id: event.id,
       type: 'EVENT',
       title: event.title,
-      body: event.description || `${event.category} - ${district}`,
+      message: event.description || `${event.category} - ${district}`, // body yerine message kullan
       data: { event_id: event.id, severity, category: event.category },
       push_sent: false,
     }));

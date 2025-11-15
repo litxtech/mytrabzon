@@ -171,11 +171,13 @@ export default function FootballScreen() {
           data={visibleMatches}
           renderItem={renderMatch}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: SPACING.xl * 2 }]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
           ListFooterComponent={<Footer />}
+          showsVerticalScrollIndicator={true}
+          nestedScrollEnabled={true}
         />
       ) : (
         <View style={styles.emptyContainer}>

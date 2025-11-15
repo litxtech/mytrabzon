@@ -243,7 +243,7 @@ export default function ProfileScreen() {
   });
 
   // Kullanıcının geçmiş maçlarını getir
-  const { data: userMatchesData } = trpc.football.getUserMatches.useQuery(
+  const { data: userMatchesData } = (trpc as any).football.getUserMatches.useQuery(
     {
       user_id: user?.id || '',
       limit: 20,
@@ -870,16 +870,21 @@ const styles = StyleSheet.create({
   },
   menuButton: {
     position: 'absolute',
-    top: SPACING.md + SPACING.sm,
+    top: SPACING.lg + SPACING.md, // Aşağı kaydırıldı
     right: SPACING.md,
-    padding: SPACING.sm, // Küçültüldü
-    minWidth: 36, // Küçültüldü
-    minHeight: 36, // Küçültüldü
+    padding: SPACING.sm,
+    minWidth: 36,
+    minHeight: 36,
     borderRadius: 12,
     backgroundColor: COLORS.background,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
     zIndex: 10,
+    elevation: 3, // Android için
+    shadowColor: '#000', // iOS için
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
   },
   tabNavigation: {
     flexDirection: 'row',

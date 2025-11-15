@@ -16,6 +16,7 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
+import { Swipeable } from 'react-native-gesture-handler';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
@@ -462,7 +463,34 @@ export default function ChatRoomScreen() {
     const isOwn = message.user_id === user?.id;
     const showAvatar = !isOwn && message.user;
 
-    return (
+    // Swipe delete için renderRightActions
+    const renderRightActions = () => {
+      if (!isOwn) return null;
+      return (
+        <TouchableOpacity
+          style={styles.swipeDeleteButton}
+          onPress={() => {
+            Alert.alert(
+              'Mesajı Sil',
+              'Bu mesajı silmek istediğinize emin misiniz?',
+              [
+                { text: 'İptal', style: 'cancel' },
+                {
+                  text: 'Sil',
+                  style: 'destructive',
+                  onPress: () => deleteMessageMutation.mutate({ messageId: message.id }),
+                },
+              ]
+            );
+          }}
+        >
+          <Trash2 size={20} color={COLORS.white} />
+          <Text style={styles.swipeDeleteText}>Sil</Text>
+        </TouchableOpacity>
+      );
+    };
+
+    const messageContent = (
       <View style={[styles.messageContainer, isOwn && styles.ownMessageContainer]}>
         {showAvatar && (
           <TouchableOpacity
@@ -549,6 +577,17 @@ export default function ChatRoomScreen() {
         </TouchableOpacity>
       </View>
     );
+
+    // Swipeable sadece kendi mesajları için
+    if (isOwn) {
+      return (
+        <Swipeable renderRightActions={renderRightActions} overshootRight={false}>
+          {messageContent}
+        </Swipeable>
+      );
+    }
+
+    return messageContent;
   };
 
   const formatCount = (count: number | null | undefined): string => {
@@ -869,8 +908,12 @@ export default function ChatRoomScreen() {
         animationType="fade"
         onRequestClose={closeMessageModals}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.messageActionSheet}>
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={closeMessageModals}
+        >
+          <View style={styles.messageActionSheet} onStartShouldSetResponder={() => true}>
             <Text style={styles.modalTitle}>Mesaj işlemleri</Text>
             <TouchableOpacity
               style={styles.messageActionButton}
@@ -894,7 +937,7 @@ export default function ChatRoomScreen() {
               <Text style={styles.messageActionText}>İptal</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
 
       <Modal
@@ -1681,6 +1724,21 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
+  },
+  swipeDeleteButton: {
+    backgroundColor: COLORS.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 12,
+    marginVertical: SPACING.xs,
+  },
+  swipeDeleteText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    marginTop: SPACING.xs,
   },
   messageActionSheet: {
     width: '80%',
