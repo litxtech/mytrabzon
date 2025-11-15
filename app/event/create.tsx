@@ -15,7 +15,7 @@ import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
-import { ArrowLeft, MapPin, AlertCircle, Image as ImageIcon, Mic } from 'lucide-react-native';
+import { ArrowLeft, AlertCircle, ChevronDown } from 'lucide-react-native';
 import { TRABZON_DISTRICTS, GIRESUN_DISTRICTS, getDistrictsByCity } from '@/constants/districts';
 import { Footer } from '@/components/Footer';
 
@@ -49,6 +49,8 @@ export default function CreateEventScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
+  const [showCityPicker, setShowCityPicker] = useState(false);
+  const [showDistrictPicker, setShowDistrictPicker] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -213,70 +215,112 @@ export default function CreateEventScreen() {
         {/* Şehir */}
         <View style={styles.section}>
           <Text style={styles.label}>Şehir *</Text>
-          <View style={styles.cityContainer}>
-            <TouchableOpacity
-              style={[
-                styles.cityButton,
-                formData.city === 'Trabzon' && styles.cityButtonSelected,
-              ]}
-              onPress={() => {
-                setFormData({ ...formData, city: 'Trabzon', district: '' });
-              }}
-            >
-              <Text style={[
-                styles.cityText,
-                formData.city === 'Trabzon' && styles.cityTextSelected,
-              ]}>
-                Trabzon
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.cityButton,
-                formData.city === 'Giresun' && styles.cityButtonSelected,
-              ]}
-              onPress={() => {
-                setFormData({ ...formData, city: 'Giresun', district: '' });
-              }}
-            >
-              <Text style={[
-                styles.cityText,
-                formData.city === 'Giresun' && styles.cityTextSelected,
-              ]}>
-                Giresun
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.pickerButton}
+            onPress={() => {
+              setShowCityPicker(!showCityPicker);
+              setShowDistrictPicker(false);
+            }}
+          >
+            <Text style={[styles.pickerButtonText, !formData.city && styles.pickerButtonPlaceholder]}>
+              {formData.city || 'Şehir seçin'}
+            </Text>
+            <ChevronDown size={20} color={COLORS.textLight} />
+          </TouchableOpacity>
+          {showCityPicker && (
+            <View style={styles.pickerContainer}>
+              <ScrollView style={styles.pickerScroll} nestedScrollEnabled>
+                <TouchableOpacity
+                  style={[
+                    styles.pickerOption,
+                    formData.city === 'Trabzon' && styles.pickerOptionActive,
+                  ]}
+                  onPress={() => {
+                    setFormData({ ...formData, city: 'Trabzon', district: '' });
+                    setShowCityPicker(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.pickerOptionText,
+                      formData.city === 'Trabzon' && styles.pickerOptionTextActive,
+                    ]}
+                  >
+                    Trabzon
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.pickerOption,
+                    formData.city === 'Giresun' && styles.pickerOptionActive,
+                  ]}
+                  onPress={() => {
+                    setFormData({ ...formData, city: 'Giresun', district: '' });
+                    setShowCityPicker(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.pickerOptionText,
+                      formData.city === 'Giresun' && styles.pickerOptionTextActive,
+                    ]}
+                  >
+                    Giresun
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          )}
         </View>
 
         {/* İlçe */}
         <View style={styles.section}>
           <Text style={styles.label}>İlçe *</Text>
-          <View style={styles.districtGrid}>
-            {availableDistricts.map((district) => (
-              <TouchableOpacity
-                key={district}
-                style={[
-                  styles.districtChip,
-                  formData.district === district && styles.districtChipSelected,
-                ]}
-                onPress={() => {
-                  // Toggle: Eğer zaten seçiliyse iptal et, değilse seç
-                  setFormData({ 
-                    ...formData, 
-                    district: formData.district === district ? '' : district 
-                  });
-                }}
-              >
-                <Text style={[
-                  styles.districtText,
-                  formData.district === district && styles.districtTextSelected,
-                ]}>
-                  {district}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <TouchableOpacity
+            style={styles.pickerButton}
+            onPress={() => {
+              if (!formData.city) {
+                Alert.alert('Uyarı', 'Önce şehir seçin');
+                return;
+              }
+              setShowDistrictPicker(!showDistrictPicker);
+              setShowCityPicker(false);
+            }}
+            disabled={!formData.city}
+          >
+            <Text style={[styles.pickerButtonText, !formData.district && styles.pickerButtonPlaceholder]}>
+              {formData.district || 'İlçe seçin'}
+            </Text>
+            <ChevronDown size={20} color={COLORS.textLight} />
+          </TouchableOpacity>
+          {showDistrictPicker && formData.city && (
+            <View style={styles.pickerContainer}>
+              <ScrollView style={styles.pickerScroll} nestedScrollEnabled>
+                {availableDistricts.map((district) => (
+                  <TouchableOpacity
+                    key={district}
+                    style={[
+                      styles.pickerOption,
+                      formData.district === district && styles.pickerOptionActive,
+                    ]}
+                    onPress={() => {
+                      setFormData({ ...formData, district });
+                      setShowDistrictPicker(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.pickerOptionText,
+                        formData.district === district && styles.pickerOptionTextActive,
+                      ]}
+                    >
+                      {district}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
         </View>
 
         {/* Gönder Butonu */}
@@ -429,32 +473,56 @@ const styles = StyleSheet.create({
   districtTextSelected: {
     color: COLORS.white,
   },
-  cityContainer: {
+  pickerButton: {
     flexDirection: 'row' as const,
-    gap: SPACING.sm,
-  },
-  cityButton: {
-    flex: 1,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: 8,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
     backgroundColor: COLORS.white,
+    borderRadius: 12,
+    padding: SPACING.md,
     borderWidth: 1,
     borderColor: COLORS.border,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+    minHeight: 50,
   },
-  cityButtonSelected: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  cityText: {
+  pickerButtonText: {
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
-    fontWeight: '600' as const,
+    flex: 1,
   },
-  cityTextSelected: {
-    color: COLORS.white,
+  pickerButtonPlaceholder: {
+    color: COLORS.textLight,
+  },
+  pickerContainer: {
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginTop: SPACING.sm,
+    maxHeight: 200,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  pickerScroll: {
+    maxHeight: 200,
+  },
+  pickerOption: {
+    padding: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  pickerOptionActive: {
+    backgroundColor: COLORS.primary + '20',
+  },
+  pickerOptionText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+  },
+  pickerOptionTextActive: {
+    color: COLORS.primary,
+    fontWeight: '700' as const,
   },
   submitButton: {
     backgroundColor: COLORS.primary,
