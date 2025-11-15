@@ -352,6 +352,86 @@ export default function KycVerifyScreen() {
     </View>
   );
   
+  // Mevcut KYC durumunu kontrol et
+  if (existingKyc?.status === 'pending') {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <ArrowLeft size={24} color={COLORS.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Kimlik Doğrulama</Text>
+          <View style={styles.placeholder} />
+        </View>
+        <View style={styles.statusContainer}>
+          <Text style={styles.statusTitle}>Başvurunuz Beklemede</Text>
+          <Text style={styles.statusText}>
+            Kimlik doğrulama başvurunuz şu anda inceleniyor. Onaylandığında veya reddedildiğinde size bilgi verilecektir.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (existingKyc?.status === 'approved') {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <ArrowLeft size={24} color={COLORS.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Kimlik Doğrulama</Text>
+          <View style={styles.placeholder} />
+        </View>
+        <View style={styles.statusContainer}>
+          <Text style={styles.statusTitle}>Kimlik Doğrulandı</Text>
+          <Text style={styles.statusText}>
+            Kimlik doğrulama başvurunuz onaylandı. Artık doğrulanmış kullanıcı olarak uygulamayı kullanabilirsiniz.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (existingKyc?.status === 'rejected') {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <ArrowLeft size={24} color={COLORS.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Kimlik Doğrulama</Text>
+          <View style={styles.placeholder} />
+        </View>
+        <View style={styles.statusContainer}>
+          <Text style={styles.statusTitle}>Başvurunuz Reddedildi</Text>
+          <Text style={styles.statusText}>
+            {existingKyc.review_notes || 'Kimlik doğrulama başvurunuz reddedildi. Lütfen bilgilerinizi kontrol ederek tekrar başvurun.'}
+          </Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => {
+              // Form'u sıfırla ve tekrar başvur
+              setStep(1);
+              setFullName('');
+              setNationalId('');
+              setBirthDate('');
+              setCountry('Türkiye');
+              setCity('');
+              setEmail('');
+              setIdFront(null);
+              setIdBack(null);
+              setSelfie(null);
+              setSelfieWithId(null);
+            }}
+          >
+            <Text style={styles.retryButtonText}>Tekrar Başvur</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
