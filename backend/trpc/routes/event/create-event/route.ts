@@ -134,12 +134,97 @@ async function createNotificationsForEvent(
       push_sent: false,
     }));
 
-    await supabase
+    const { data: insertedNotifications, error: insertError } = await supabase
       .from('notifications')
-      .insert(notifications);
+      .insert(notifications)
+      .select('id, user_id');
+
+    if (insertError) {
+      console.error('Notification insert error:', insertError);
+      // Bildirim hatası olsa bile event oluşturuldu, devam et
+    }
 
     // Push bildirimleri gönder (Expo Push API)
-    // Bu kısım Supabase Edge Function'da yapılabilir
+    if (insertedNotifications && insertedNotifications.length > 0) {
+      try {
+        // Push token'ları al
+        const userIds = insertedNotifications.map((n: any) => n.user_id);
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, push_token')
+          .in('id', userIds);
+
+        const pushTokens: string[] = [];
+        const notificationIdToTokenMap = new Map<string, string>();
+
+        if (profiles) {
+          for (const profile of profiles) {
+            if (profile.push_token) {
+              pushTokens.push(profile.push_token);
+              // Her notification için token bul
+              const notification = insertedNotifications.find((n: any) => n.user_id === profile.id);
+              if (notification) {
+                notificationIdToTokenMap.set(notification.id, profile.push_token);
+              }
+            }
+          }
+        }
+
+        // Expo Push API ile bildirim gönder
+        if (pushTokens.length > 0) {
+          const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+          const messages = insertedNotifications
+            .filter((n: any) => notificationIdToTokenMap.has(n.id))
+            .map((n: any) => {
+              const token = notificationIdToTokenMap.get(n.id);
+              if (!token) return null;
+              return {
+                to: token,
+                sound: 'default',
+                title: event.title,
+                body: event.description || `${event.category} - ${district}`,
+                data: { event_id: event.id, severity, category: event.category },
+                badge: 1,
+              };
+            })
+            .filter((m: any) => m !== null);
+
+          // Batch gönderim (100'lük gruplar halinde)
+          const batchSize = 100;
+          for (let i = 0; i < messages.length; i += batchSize) {
+            const batch = messages.slice(i, i + batchSize);
+            const response = await fetch(expoPushUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'Accept-Encoding': 'gzip, deflate',
+              },
+              body: JSON.stringify(batch),
+            });
+
+            if (!response.ok) {
+              console.error('Push notification error:', await response.text());
+            }
+          }
+
+          // Başarılı gönderimleri işaretle
+          const sentNotificationIds = insertedNotifications
+            .filter((n: any) => notificationIdToTokenMap.has(n.id))
+            .map((n: any) => n.id);
+
+          if (sentNotificationIds.length > 0) {
+            await supabase
+              .from('notifications')
+              .update({ push_sent: true })
+              .in('id', sentNotificationIds);
+          }
+        }
+      } catch (pushError) {
+        console.error('Push notification error:', pushError);
+        // Push hatası olsa bile bildirimler kaydedildi, devam et
+      }
+    }
   }
 }
 
