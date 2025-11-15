@@ -24,9 +24,15 @@ export default function FootballScreen() {
   const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
 
-  // Bugünün maçlarını getir
+  // Kullanıcı profilini getir (şehir bilgisi için)
+  const { data: userProfile } = trpc.user.getProfile.useQuery(
+    { userId: user?.id || '' },
+    { enabled: !!user?.id }
+  );
+
+  // Bugünün maçlarını getir - kullanıcının şehrine göre
   const { data: todayMatches, isLoading, refetch } = (trpc as any).football.getTodayMatches.useQuery(
-    { city: 'Trabzon' },
+    { city: (userProfile?.city as 'Trabzon' | 'Giresun') || 'Trabzon' },
     { enabled: !!user }
   );
 
