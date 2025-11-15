@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -165,7 +166,12 @@ export default function MatchScreen() {
       colors={['#F6F9FF', '#EEF2FF']}
       style={[styles.container, { paddingTop: insets.top }]}
     >
-      <View style={styles.inner}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={true}
+        nestedScrollEnabled={true}
+      >
         <View style={styles.header}>
           <Text style={styles.sectionLabel}>Sınırsız eşleşme</Text>
           <Text style={styles.title}>Görüntülü Eşleşme</Text>
@@ -289,7 +295,7 @@ export default function MatchScreen() {
         </View>
         
         <Footer />
-      </View>
+      </ScrollView>
     </LinearGradient>
   );
 }
@@ -316,8 +322,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  inner: {
+  scrollView: {
     flex: 1,
+  },
+  scrollContent: {
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.xxl,
   },
