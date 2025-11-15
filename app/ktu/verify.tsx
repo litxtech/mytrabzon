@@ -77,17 +77,28 @@ export default function KTUVerifyScreen() {
 
     setUploading(true);
     try {
-      const fileName = `ktu-verification/${user.id}-${Date.now()}.jpg`;
+      // Dosya uzantısını al ve düzelt
+      let fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
+      // jpg -> jpeg düzelt
+      if (fileExt === 'jpg') fileExt = 'jpeg';
+      const fileName = `ktu-verification/${user.id}-${Date.now()}.${fileExt}`;
+
+      // MIME type'ı düzelt
+      const mimeType = fileExt === 'jpeg' || fileExt === 'jpg' 
+        ? 'image/jpeg' 
+        : fileExt === 'png' 
+        ? 'image/png' 
+        : `image/${fileExt}`;
 
       // React Native'de blob() yok, doğrudan URI kullan
       const { error } = await supabase.storage
         .from('kyc-documents')
         .upload(fileName, {
           uri,
-          type: 'image/jpeg',
+          type: mimeType,
           name: fileName,
         } as any, {
-          contentType: 'image/jpeg',
+          contentType: mimeType,
           upsert: false,
         });
 

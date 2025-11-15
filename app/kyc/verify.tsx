@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Camera, Upload, CheckCircle2 } from 'lucide-react-native';
+import { ArrowLeft, Camera, Upload } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
@@ -57,7 +57,9 @@ export default function KycVerifyScreen() {
   
   const [verificationCode] = useState(generateVerificationCode());
   
+  // Mevcut KYC durumunu kontrol et (kullanıcıya gösterilmek için)
   const { data: existingKyc } = trpc.kyc.get.useQuery(undefined, { enabled: !!user?.id });
+  
   const createKycMutation = trpc.kyc.create.useMutation({
     onSuccess: () => {
       Alert.alert(
