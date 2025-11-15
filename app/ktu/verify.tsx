@@ -189,7 +189,7 @@ export default function KTUVerifyScreen() {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Fakülte *</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.facultyScroll}>
-              {faculties?.map((faculty) => (
+              {faculties?.map((faculty: any) => (
                 <TouchableOpacity
                   key={faculty.id}
                   style={[
