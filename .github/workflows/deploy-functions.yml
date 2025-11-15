@@ -12,6 +12,9 @@ jobs:
   deploy:
     name: Deploy All Edge Functions
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
     
     steps:
       - name: Checkout code
@@ -103,17 +106,31 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       
-      - name: Trigger Version Bump
+      - name: Bump Version After Deploy
         if: success()
-        uses: actions/github-script@v7
+        uses: actions/checkout@v4
         with:
-          script: |
-            github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'auto-version-on-deploy.yml',
-              ref: 'main'
-            });
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Node.js for Version Bump
+        if: success()
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      
+      - name: Bump version (patch)
+        if: success()
+        run: |
+          node scripts/bump-version.js patch
+      
+      - name: Commit version bump
+        if: success()
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add app.json package.json
+          git commit -m "chore: auto-bump version after successful deploy [skip ci]" || exit 0
+          git push
 
       - name: List Deployed Functions
         run: |

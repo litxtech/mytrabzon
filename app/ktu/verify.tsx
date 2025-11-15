@@ -81,7 +81,7 @@ export default function KTUVerifyScreen() {
 
       // React Native'de blob() yok, doğrudan URI kullan
       const { data: uploadData, error } = await supabase.storage
-        .from('kyc_documents')
+        .from('kyc-documents')
         .upload(fileName, {
           uri,
           type: 'image/jpeg',
@@ -97,7 +97,7 @@ export default function KTUVerifyScreen() {
       }
 
       const { data: urlData } = supabase.storage
-        .from('kyc_documents')
+        .from('kyc-documents')
         .getPublicUrl(fileName);
 
       if (!urlData?.publicUrl) {
