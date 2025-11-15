@@ -30,9 +30,9 @@ export default function AdminPoliciesScreen() {
     isActive: true,
   });
 
-  const { data: policies, isLoading, refetch } = trpc.admin.getAllPolicies.useQuery();
+  const { data: policies, isLoading, refetch } = (trpc as any).admin.getAllPolicies.useQuery();
 
-  const createPolicyMutation = trpc.admin.createPolicy.useMutation({
+  const createPolicyMutation = (trpc as any).admin.createPolicy.useMutation({
     onSuccess: () => {
       refetch();
       setShowForm(false);
@@ -45,12 +45,12 @@ export default function AdminPoliciesScreen() {
       });
       Alert.alert('Başarılı', 'Politika oluşturuldu');
     },
-    onError: (error) => {
+    onError: (error: any) => {
       Alert.alert('Hata', error.message);
     },
   });
 
-  const updatePolicyMutation = trpc.admin.updatePolicy.useMutation({
+  const updatePolicyMutation = (trpc as any).admin.updatePolicy.useMutation({
     onSuccess: () => {
       refetch();
       setEditingPolicy(null);
@@ -64,17 +64,17 @@ export default function AdminPoliciesScreen() {
       });
       Alert.alert('Başarılı', 'Politika güncellendi');
     },
-    onError: (error) => {
+    onError: (error: any) => {
       Alert.alert('Hata', error.message);
     },
   });
 
-  const deletePolicyMutation = trpc.admin.deletePolicy.useMutation({
+  const deletePolicyMutation = (trpc as any).admin.deletePolicy.useMutation({
     onSuccess: () => {
       refetch();
       Alert.alert('Başarılı', 'Politika silindi');
     },
-    onError: (error) => {
+    onError: (error: any) => {
       Alert.alert('Hata', error.message);
     },
   });
@@ -107,7 +107,7 @@ export default function AdminPoliciesScreen() {
           text: 'Sil',
           style: 'destructive',
           onPress: () => {
-            deletePolicyMutation.mutate({ policyId });
+            deletePolicyMutation.mutate({ id: policyId });
           },
         },
       ]
@@ -122,11 +122,21 @@ export default function AdminPoliciesScreen() {
 
     if (editingPolicy) {
       updatePolicyMutation.mutate({
-        policyId: editingPolicy.id,
-        ...formData,
+        id: editingPolicy.id,
+        title: formData.title,
+        content: formData.content,
+        policyType: formData.policyType,
+        displayOrder: formData.displayOrder,
+        isActive: formData.isActive,
       });
     } else {
-      createPolicyMutation.mutate(formData);
+      createPolicyMutation.mutate({
+        title: formData.title,
+        content: formData.content,
+        policyType: formData.policyType,
+        displayOrder: formData.displayOrder,
+        isActive: formData.isActive,
+      });
     }
   };
 
@@ -136,6 +146,13 @@ export default function AdminPoliciesScreen() {
     community: 'Topluluk Kuralları',
     cookie: 'Çerez Politikası',
     refund: 'İade Politikası',
+    child_safety: 'Çocuk Güvenliği',
+    payment: 'Ödeme ve Bağış',
+    moderation: 'Moderasyon & Şikâyet',
+    data_storage: 'Veri Saklama & İmha',
+    eula: 'Son Kullanıcı Lisans Sözleşmesi',
+    university: 'Üniversite Modu',
+    event: 'Etkinlik & Halı Saha',
     other: 'Diğer',
   };
 
@@ -197,27 +214,29 @@ export default function AdminPoliciesScreen() {
             />
 
             <Text style={styles.label}>Tip</Text>
-            <View style={styles.typeButtons}>
-              {Object.entries(policyTypeLabels).map(([key, label]) => (
-                <TouchableOpacity
-                  key={key}
-                  style={[
-                    styles.typeButton,
-                    formData.policyType === key && styles.typeButtonActive,
-                  ]}
-                  onPress={() => setFormData({ ...formData, policyType: key as any })}
-                >
-                  <Text
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeButtonsContainer}>
+              <View style={styles.typeButtons}>
+                {Object.entries(policyTypeLabels).map(([key, label]) => (
+                  <TouchableOpacity
+                    key={key}
                     style={[
-                      styles.typeButtonText,
-                      formData.policyType === key && styles.typeButtonTextActive,
+                      styles.typeButton,
+                      formData.policyType === key && styles.typeButtonActive,
                     ]}
+                    onPress={() => setFormData({ ...formData, policyType: key as any })}
                   >
-                    {label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+                    <Text
+                      style={[
+                        styles.typeButtonText,
+                        formData.policyType === key && styles.typeButtonTextActive,
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
 
             <Text style={styles.label}>Sıra</Text>
             <TextInput
@@ -229,6 +248,16 @@ export default function AdminPoliciesScreen() {
               keyboardType="numeric"
               placeholder="0"
             />
+
+            <View style={styles.switchContainer}>
+              <Text style={styles.label}>Aktif</Text>
+              <TouchableOpacity
+                style={[styles.switch, formData.isActive && styles.switchActive]}
+                onPress={() => setFormData({ ...formData, isActive: !formData.isActive })}
+              >
+                <View style={[styles.switchThumb, formData.isActive && styles.switchThumbActive]} />
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.formActions}>
               <TouchableOpacity
@@ -429,6 +458,9 @@ const styles = StyleSheet.create({
     minHeight: 150,
     textAlignVertical: 'top',
   },
+  typeButtonsContainer: {
+    marginBottom: SPACING.md,
+  },
   typeButtons: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -490,6 +522,34 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
+  },
+  switchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  switch: {
+    width: 50,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: COLORS.border,
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  switchActive: {
+    backgroundColor: COLORS.primary,
+  },
+  switchThumb: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: COLORS.white,
+    alignSelf: 'flex-start',
+  },
+  switchThumbActive: {
+    alignSelf: 'flex-end',
   },
 });
 

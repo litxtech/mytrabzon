@@ -5,7 +5,6 @@ import { supabase } from '@/lib/supabase';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Mail, Lock } from 'lucide-react-native';
-import { AppLogo } from '@/components/AppLogo';
 
 type AuthMode = 'login' | 'register' | 'magic' | 'forgot';
 
@@ -444,7 +443,6 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
-            <AppLogo size="large" style={styles.logoImage} />
             <Text style={styles.subtitle}>Trabzon&apos;un Dijital Sesi</Text>
           </View>
 
@@ -485,9 +483,6 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center' as const,
     marginBottom: SPACING.xxl,
-  },
-  logoImage: {
-    marginBottom: SPACING.md,
   },
   subtitle: {
     fontSize: FONT_SIZES.md,

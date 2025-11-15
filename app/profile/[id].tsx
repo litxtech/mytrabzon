@@ -25,6 +25,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CallButtons } from '@/components/CallButtons';
 import { SupporterBadge } from '@/components/SupporterBadge';
+import { Footer } from '@/components/Footer';
 
 // Mesaj butonu component'i
 function MessageButton({ targetUserId }: { targetUserId: string }) {
@@ -342,6 +343,8 @@ export default function UserProfileScreen() {
             </View>
           )}
         </View>
+        
+        <Footer />
       </ScrollView>
     </SafeAreaView>
   );

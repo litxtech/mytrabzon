@@ -21,8 +21,8 @@ export default function OnboardingScreen() {
   const [policiesAccepted, setPoliciesAccepted] = useState(false);
 
   // Zorunlu politikaları al
-  const { data: policiesData, isLoading: policiesLoading } = trpc.user.getRequiredPolicies.useQuery();
-  const consentMutation = trpc.user.consentToPolicies.useMutation();
+  const { data: policiesData } = (trpc as any).user.getRequiredPolicies.useQuery();
+  const consentMutation = (trpc as any).user.consentToPolicies.useMutation();
 
   // İlk açılışta politika modalını göster
   useEffect(() => {
@@ -82,7 +82,7 @@ export default function OnboardingScreen() {
       if (error) throw error;
 
       await refreshProfile();
-      router.replace('/(tabs)');
+      router.replace('/(tabs)' as any);
     } catch (error) {
       console.error('Error creating profile:', error);
       alert('Profil oluşturulurken bir hata oluştu');
@@ -171,7 +171,7 @@ export default function OnboardingScreen() {
           visible={showPolicyModal}
           policies={policiesData.policies}
           onAccept={() => {
-            const policyIds = policiesData.policies.map(p => p.id);
+            const policyIds = policiesData.policies.map((p: any) => p.id);
             handlePolicyAccept(policyIds);
           }}
           onReject={() => {

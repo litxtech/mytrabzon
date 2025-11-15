@@ -240,6 +240,7 @@ export default function RootLayout() {
           router.push(`/chat/${data.roomId}` as any);
         } else if (data?.type === 'post') {
           router.push(`/post/${data.postId}` as any);
+        }
       });
     } catch (err: any) {
       console.log('Notification response listener setup failed (normal in Expo Go):', err.message);

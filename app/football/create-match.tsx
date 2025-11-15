@@ -17,6 +17,7 @@ import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { ArrowLeft, ChevronDown } from 'lucide-react-native';
 import { TRABZON_DISTRICTS, GIRESUN_DISTRICTS } from '@/constants/districts';
+import { Footer } from '@/components/Footer';
 
 export default function CreateMatchScreen() {
   const router = useRouter();
@@ -373,6 +374,8 @@ export default function CreateMatchScreen() {
             <Text style={styles.submitButtonText}>Maç Oluştur</Text>
           )}
         </TouchableOpacity>
+        
+        <Footer />
       </ScrollView>
     </KeyboardAvoidingView>
   );

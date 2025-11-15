@@ -316,7 +316,7 @@ export function Footer() {
   const [modalVisible, setModalVisible] = useState(false);
   const [showPlatformPolicy, setShowPlatformPolicy] = useState(false);
 
-  const { data: policies } = trpc.admin.getPolicies.useQuery();
+  const { data: policies } = (trpc as any).admin.getPolicies.useQuery();
 
   const handlePolicyPress = (policy: any) => {
     setSelectedPolicy(policy);
@@ -336,6 +336,13 @@ export function Footer() {
     community: 'Topluluk Kuralları',
     cookie: 'Çerez Politikası',
     refund: 'İade Politikası',
+    child_safety: 'Çocuk Güvenliği Politikası',
+    payment: 'Ödeme ve Bağış Politikası',
+    moderation: 'Moderasyon & Şikâyet Politikası',
+    data_storage: 'Veri Saklama & İmha Politikası',
+    eula: 'Son Kullanıcı Lisans Sözleşmesi',
+    university: 'Üniversite Modu Politikası',
+    event: 'Etkinlik & Halı Saha Politikası',
     other: 'Diğer',
   };
 

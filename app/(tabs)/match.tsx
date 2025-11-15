@@ -21,6 +21,7 @@ import { BlurView } from 'expo-blur';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { trpc } from '@/lib/trpc';
+import { Footer } from '@/components/Footer';
 
 export default function MatchScreen() {
   const router = useRouter();
@@ -286,6 +287,8 @@ export default function MatchScreen() {
             </Text>
           )}
         </View>
+        
+        <Footer />
       </View>
     </LinearGradient>
   );

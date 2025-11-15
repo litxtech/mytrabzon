@@ -19,6 +19,7 @@ import { District } from '@/types/database';
 import { X, Image as ImageIcon, Camera, MapPin } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Footer } from '@/components/Footer';
 
 export default function CreatePostScreen() {
   const router = useRouter();
@@ -239,6 +240,8 @@ export default function CreatePostScreen() {
         <Text style={styles.characterCount}>
           {content.length} / 1000
         </Text>
+        
+        <Footer />
       </ScrollView>
 
       <View style={styles.toolbar}>

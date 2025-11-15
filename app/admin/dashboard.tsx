@@ -17,13 +17,12 @@ import {
   MessageSquare,
   FileText,
   Building2,
-  BarChart3,
   Ticket,
   Ban,
-  CheckCircle2,
   AlertCircle,
   ArrowRight,
   Shield,
+  Bell,
 } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { trpc } from '../../lib/trpc';
@@ -33,6 +32,7 @@ export default function AdminDashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const utils = trpc.useUtils();
   const [refreshing, setRefreshing] = useState(false);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [checkingAdmin, setCheckingAdmin] = useState(true);
@@ -59,7 +59,7 @@ export default function AdminDashboardScreen() {
 
       // tRPC ile admin kontrolü yap (backend'de bypass var)
       try {
-        const adminCheck = await trpc.admin.checkAdmin.query();
+        const adminCheck = await utils.admin.checkAdmin.fetch();
         console.log('Admin check result:', adminCheck);
         if (adminCheck?.isAdmin) {
           setIsAdmin(true);
@@ -87,6 +87,7 @@ export default function AdminDashboardScreen() {
     };
 
     checkAdminAccess();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, router]);
 
   // Gerçek verileri çek
@@ -127,6 +128,7 @@ export default function AdminDashboardScreen() {
       value: formatCount(stats?.totalPosts),
       icon: MessageSquare,
       color: COLORS.secondary,
+      route: '/admin/posts',
     },
     {
       id: 'banned',
@@ -150,6 +152,7 @@ export default function AdminDashboardScreen() {
       value: formatCount(stats?.todayRegistrations),
       icon: Users,
       color: COLORS.primary,
+      route: '/admin/users',
     },
     {
       id: 'todayReports',
@@ -185,6 +188,22 @@ export default function AdminDashboardScreen() {
       color: COLORS.primary,
     },
     {
+      id: 'posts',
+      title: 'Gönderi Yönetimi',
+      description: 'Tüm gönderileri görüntüle ve yönet',
+      icon: MessageSquare,
+      route: '/admin/posts',
+      color: COLORS.secondary,
+    },
+    {
+      id: 'comments',
+      title: 'Yorum Yönetimi',
+      description: 'Tüm yorumları görüntüle ve yönet',
+      icon: MessageSquare,
+      route: '/admin/comments',
+      color: COLORS.success,
+    },
+    {
       id: 'policies',
       title: 'Politika Yönetimi',
       description: 'Politikaları ekle, düzenle, sil',
@@ -215,6 +234,14 @@ export default function AdminDashboardScreen() {
       icon: Shield,
       route: '/admin/kyc',
       color: COLORS.primary,
+    },
+    {
+      id: 'send-notification',
+      title: 'Bildirim Gönder',
+      description: 'Kullanıcılara bildirim gönder',
+      icon: Bell,
+      route: '/admin/send-notification',
+      color: COLORS.warning,
     },
   ];
 

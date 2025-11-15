@@ -878,6 +878,36 @@ const appRouter = createTRPCRouter({
         return data;
       }),
 
+    deleteComment: protectedProcedure
+      .input(z.object({ commentId: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new Error("Unauthorized");
+
+        const { data: comment, error: fetchError } = await supabase
+          .from("comments")
+          .select("*")
+          .eq("id", input.commentId)
+          .eq("user_id", user.id)
+          .single();
+
+        if (fetchError || !comment) {
+          throw new Error("Yorum bulunamadı veya yetkisiz erişim");
+        }
+
+        const { error } = await supabase
+          .from("comments")
+          .delete()
+          .eq("id", input.commentId)
+          .eq("user_id", user.id);
+
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        return { success: true };
+      }),
+
     getComments: publicProcedure
       .input(
         z.object({
@@ -1739,6 +1769,52 @@ const appRouter = createTRPCRouter({
         }
 
         return { success: true };
+      }),
+
+    deleteAllMessages: protectedProcedure
+      .input(z.object({ roomId: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        const userId = ctx.user.id;
+
+        // Check if user is a member of the room
+        const { data: member, error: memberError } = await ctx.supabase
+          .from('chat_members')
+          .select('room_id, role')
+          .eq('room_id', input.roomId)
+          .eq('user_id', userId)
+          .single();
+
+        if (memberError || !member) {
+          throw new Error('Bu odaya erişim yetkiniz yok');
+        }
+
+        // Check if user is the room creator or has admin role
+        const { data: room, error: roomError } = await ctx.supabase
+          .from('chat_rooms')
+          .select('created_by, type')
+          .eq('id', input.roomId)
+          .single();
+
+        if (roomError || !room) {
+          throw new Error('Oda bulunamadı');
+        }
+
+        // Only room creator or admin can delete all messages
+        if (room.created_by !== userId && member.role !== 'admin') {
+          throw new Error('Sadece oda kurucusu veya admin tüm mesajları silebilir');
+        }
+
+        // Delete all messages in the room
+        const { error: deleteError } = await ctx.supabase
+          .from('messages')
+          .delete()
+          .eq('room_id', input.roomId);
+
+        if (deleteError) {
+          throw new Error('Mesajlar silinemedi');
+        }
+
+        return { success: true, deletedCount: 'all' };
       }),
 
     addReaction: protectedProcedure
@@ -4240,11 +4316,26 @@ const appRouter = createTRPCRouter({
       .query(async ({ ctx }) => {
         const { supabase } = ctx;
         
+        // Zorunlu politika tipleri - tüm önemli politikalar
+        const requiredPolicyTypes = [
+          'terms', 
+          'privacy', 
+          'community', 
+          'cookie', 
+          'child_safety',
+          'payment',
+          'moderation',
+          'data_storage',
+          'eula',
+          'university',
+          'event'
+        ];
+        
         const { data: policies, error } = await supabase
           .from('policies')
           .select('id, title, content, policy_type, display_order, updated_at')
           .eq('is_active', true)
-          .in('policy_type', ['terms', 'privacy', 'community', 'cookie', 'child_safety'])
+          .in('policy_type', requiredPolicyTypes)
           .order('display_order', { ascending: true });
 
         if (error) {
@@ -4615,6 +4706,830 @@ const appRouter = createTRPCRouter({
           blueTickUsers: blueTickUsers || 0,
           pendingTickets: pendingTickets || 0,
           pendingReports: pendingReports || 0,
+        };
+      }),
+
+    // Politika yönetimi
+    getPolicies: publicProcedure
+      .query(async ({ ctx }) => {
+        const { supabase } = ctx;
+        
+        const { data, error } = await supabase
+          .from("policies")
+          .select("*")
+          .eq("is_active", true)
+          .order("display_order", { ascending: true });
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        return data || [];
+      }),
+
+    getAllPolicies: protectedProcedure
+      .query(async ({ ctx }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        if (user.id !== SPECIAL_ADMIN_ID) {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("role, id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+        }
+        
+        const { data, error } = await supabase
+          .from("policies")
+          .select("*")
+          .order("display_order", { ascending: true });
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        return data || [];
+      }),
+
+    createPolicy: protectedProcedure
+      .input(
+        z.object({
+          title: z.string().min(1),
+          content: z.string().min(1),
+          policyType: z.enum(["terms", "privacy", "community", "cookie", "refund", "child_safety", "payment", "moderation", "data_storage", "eula", "university", "event", "other"]),
+          displayOrder: z.number().default(0),
+          isActive: z.boolean().default(true),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        let adminUser: any;
+        if (user.id === SPECIAL_ADMIN_ID) {
+          adminUser = { id: SPECIAL_ADMIN_ID, role: 'super_admin' };
+        } else {
+          const { data } = await supabase
+            .from("admin_users")
+            .select("role, id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!data) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+          adminUser = data;
+        }
+        
+        const { data, error } = await supabase
+          .from("policies")
+          .insert({
+            title: input.title,
+            content: input.content,
+            policy_type: input.policyType,
+            display_order: input.displayOrder,
+            is_active: input.isActive,
+            created_by: adminUser.id,
+          })
+          .select()
+          .single();
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        return data;
+      }),
+
+    updatePolicy: protectedProcedure
+      .input(
+        z.object({
+          id: z.string().uuid(),
+          title: z.string().min(1).optional(),
+          content: z.string().min(1).optional(),
+          policyType: z.enum(["terms", "privacy", "community", "cookie", "refund", "child_safety", "payment", "moderation", "data_storage", "eula", "university", "event", "other"]).optional(),
+          displayOrder: z.number().optional(),
+          isActive: z.boolean().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        let adminUser: any;
+        if (user.id === SPECIAL_ADMIN_ID) {
+          adminUser = { id: SPECIAL_ADMIN_ID, role: 'super_admin' };
+        } else {
+          const { data } = await supabase
+            .from("admin_users")
+            .select("role, id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!data) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+          adminUser = data;
+        }
+        
+        const updateData: any = {
+          updated_by: adminUser.id,
+          updated_at: new Date().toISOString(),
+        };
+        
+        if (input.title !== undefined) updateData.title = input.title;
+        if (input.content !== undefined) updateData.content = input.content;
+        if (input.policyType !== undefined) updateData.policy_type = input.policyType;
+        if (input.displayOrder !== undefined) updateData.display_order = input.displayOrder;
+        if (input.isActive !== undefined) updateData.is_active = input.isActive;
+        
+        const { data, error } = await supabase
+          .from("policies")
+          .update(updateData)
+          .eq("id", input.id)
+          .select()
+          .single();
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        return data;
+      }),
+
+    deletePolicy: protectedProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        if (user.id !== SPECIAL_ADMIN_ID) {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("role, id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+        }
+        
+        const { error } = await supabase
+          .from("policies")
+          .delete()
+          .eq("id", input.id);
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        return { success: true };
+      }),
+
+    // Kullanıcı yönetimi
+    getUsers: protectedProcedure
+      .input(
+        z.object({
+          search: z.string().optional(),
+          filter: z.enum(['all', 'today', 'banned', 'blueTick']).default('all'),
+          limit: z.number().min(1).max(100).default(50),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        if (user.id !== SPECIAL_ADMIN_ID) {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("role, id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+        }
+        
+        let query = supabase
+          .from("profiles")
+          .select(`
+            *,
+            blue_ticks!left(id, verified_at, verification_type, is_active),
+            user_bans!left(id, reason, ban_type, ban_until, is_active)
+          `, { count: "exact" });
+        
+        // Filtreler
+        if (input.filter === 'today') {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          query = query.gte('created_at', today.toISOString());
+        } else if (input.filter === 'banned') {
+          // Banlı kullanıcıları bulmak için subquery kullan
+          const { data: bannedUserIds } = await supabase
+            .from('user_bans')
+            .select('user_id')
+            .eq('is_active', true);
+          
+          if (bannedUserIds && bannedUserIds.length > 0) {
+            const userIds = bannedUserIds.map(b => b.user_id);
+            query = query.in('id', userIds);
+          } else {
+            // Banlı kullanıcı yoksa boş sonuç döndür
+            query = query.eq('id', '00000000-0000-0000-0000-000000000000');
+          }
+        } else if (input.filter === 'blueTick') {
+          // Mavi tikli kullanıcıları bulmak için subquery kullan
+          const { data: blueTickUserIds } = await supabase
+            .from('blue_ticks')
+            .select('user_id')
+            .eq('is_active', true);
+          
+          if (blueTickUserIds && blueTickUserIds.length > 0) {
+            const userIds = blueTickUserIds.map(b => b.user_id);
+            query = query.in('id', userIds);
+          } else {
+            // Mavi tikli kullanıcı yoksa boş sonuç döndür
+            query = query.eq('id', '00000000-0000-0000-0000-000000000000');
+          }
+        }
+        
+        if (input.search) {
+          query = query.or(`full_name.ilike.%${input.search}%,email.ilike.%${input.search}%`);
+        }
+        
+        query = query
+          .order("created_at", { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+        
+        const { data, error, count } = await query;
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        return {
+          users: data || [],
+          total: count || 0,
+        };
+      }),
+
+    banUser: protectedProcedure
+      .input(
+        z.object({
+          userId: z.string().uuid(),
+          reason: z.string().min(1),
+          banType: z.enum(["temporary", "permanent"]),
+          banUntil: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        let adminUserId: string;
+        if (user.id === SPECIAL_ADMIN_ID) {
+          const { data: adminUserRecord } = await supabase
+            .from("admin_users")
+            .select("id")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          adminUserId = adminUserRecord?.id || user.id;
+        } else {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+          adminUserId = adminUser.id;
+        }
+        
+        const banData: any = {
+          user_id: input.userId,
+          banned_by: adminUserId,
+          reason: input.reason,
+          ban_type: input.banType,
+          is_active: true,
+        };
+        
+        if (input.banType === "temporary" && input.banUntil) {
+          banData.ban_until = input.banUntil;
+        }
+        
+        const { data, error } = await supabase
+          .from("user_bans")
+          .insert(banData)
+          .select()
+          .single();
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        return data;
+      }),
+
+    unbanUser: protectedProcedure
+      .input(z.object({ userId: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        if (user.id !== SPECIAL_ADMIN_ID) {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("role, id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+        }
+        
+        const { error } = await supabase
+          .from("user_bans")
+          .update({ is_active: false })
+          .eq("user_id", input.userId)
+          .eq("is_active", true);
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        return { success: true };
+      }),
+
+    giveBlueTick: protectedProcedure
+      .input(
+        z.object({
+          userId: z.string().uuid(),
+          verificationType: z.enum(["manual", "automatic", "celebrity"]).default("manual"),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        let adminUserId: string;
+        if (user.id === SPECIAL_ADMIN_ID) {
+          const { data: adminUserRecord } = await supabase
+            .from("admin_users")
+            .select("id")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          adminUserId = adminUserRecord?.id || user.id;
+        } else {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+          adminUserId = adminUser.id;
+        }
+        
+        // Mevcut blue tick var mı kontrol et
+        const { data: existing } = await supabase
+          .from("blue_ticks")
+          .select("id")
+          .eq("user_id", input.userId)
+          .maybeSingle();
+        
+        if (existing) {
+          // Güncelle
+          const { data, error } = await supabase
+            .from("blue_ticks")
+            .update({
+              is_active: true,
+              verified_by: adminUserId,
+              verification_type: input.verificationType,
+            })
+            .eq("id", existing.id)
+            .select()
+            .single();
+          
+          if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+          
+          return data;
+        }
+        
+        // Yeni blue tick ekle
+        const { data, error } = await supabase
+          .from("blue_ticks")
+          .insert({
+            user_id: input.userId,
+            verified_by: adminUserId,
+            verification_type: input.verificationType,
+            is_active: true,
+          })
+          .select()
+          .single();
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        return data;
+      }),
+
+    removeBlueTick: protectedProcedure
+      .input(z.object({ userId: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        if (user.id !== SPECIAL_ADMIN_ID) {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("role, id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+        }
+        
+        const { error } = await supabase
+          .from("blue_ticks")
+          .update({ is_active: false })
+          .eq("user_id", input.userId)
+          .eq("is_active", true);
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        return { success: true };
+      }),
+
+    // Gönderi yönetimi
+    getAllPosts: protectedProcedure
+      .input(
+        z.object({
+          search: z.string().optional(),
+          limit: z.number().min(1).max(100).default(50),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        if (user.id !== SPECIAL_ADMIN_ID) {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("role, id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+        }
+        
+        let query = supabase
+          .from("posts")
+          .select(`
+            *,
+            author:profiles!posts_author_id_fkey(id, full_name, avatar_url, username),
+            post_media(*)
+          `, { count: "exact" })
+          .eq("is_deleted", false);
+        
+        if (input.search) {
+          query = query.or(`content.ilike.%${input.search}%`);
+        }
+        
+        query = query
+          .order("created_at", { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+        
+        const { data, error, count } = await query;
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        return {
+          posts: data || [],
+          total: count || 0,
+        };
+      }),
+
+    // Yorum yönetimi
+    getAllComments: protectedProcedure
+      .input(
+        z.object({
+          search: z.string().optional(),
+          limit: z.number().min(1).max(100).default(50),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        if (user.id !== SPECIAL_ADMIN_ID) {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("role, id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+        }
+        
+        let query = supabase
+          .from("comments")
+          .select(`
+            *,
+            user:profiles!comments_user_id_fkey(id, full_name, avatar_url, username),
+            post:posts!comments_post_id_fkey(id, content)
+          `, { count: "exact" });
+        
+        if (input.search) {
+          query = query.or(`content.ilike.%${input.search}%`);
+        }
+        
+        query = query
+          .order("created_at", { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+        
+        const { data, error, count } = await query;
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        return {
+          comments: data || [],
+          total: count || 0,
+        };
+      }),
+
+    // Kullanıcı detay bilgileri
+    getUserDetail: protectedProcedure
+      .input(z.object({ userId: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        if (user.id !== SPECIAL_ADMIN_ID) {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("role, id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+        }
+        
+        const { data: profile, error } = await supabase
+          .from("profiles")
+          .select(`
+            *,
+            blue_ticks!left(*),
+            user_bans!left(*),
+            supporter_badges!left(*)
+          `)
+          .eq("id", input.userId)
+          .single();
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        // Kullanıcının gönderi sayısı
+        const { count: postCount } = await supabase
+          .from("posts")
+          .select("*", { count: "exact", head: true })
+          .eq("author_id", input.userId)
+          .eq("is_deleted", false);
+        
+        // Kullanıcının yorum sayısı
+        const { count: commentCount } = await supabase
+          .from("comments")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", input.userId);
+        
+        return {
+          profile,
+          postCount: postCount || 0,
+          commentCount: commentCount || 0,
+        };
+      }),
+
+    // Bildirim gönderme
+    sendNotification: protectedProcedure
+      .input(
+        z.object({
+          userId: z.string().uuid().optional(), // Tek kullanıcı için
+          title: z.string().min(1).max(100),
+          body: z.string().min(1).max(500),
+          type: z.enum(['SYSTEM', 'EVENT', 'MESSAGE', 'RESERVATION', 'FOOTBALL']).default('SYSTEM'),
+          data: z.record(z.any()).optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        let isAdmin = false;
+
+        if (user.id === SPECIAL_ADMIN_ID) {
+          isAdmin = true;
+        } else {
+          const { data: adminUser } = await supabase
+            .from('admin_users')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('is_active', true)
+            .single();
+
+          if (adminUser) {
+            isAdmin = true;
+          }
+        }
+
+        if (!isAdmin) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Unauthorized: Admin access required',
+          });
+        }
+
+        // Kullanıcıları belirle
+        let targetUserIds: string[] = [];
+
+        if (input.userId) {
+          // Tek kullanıcı
+          const { data: targetUser } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', input.userId)
+            .single();
+
+          if (!targetUser) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Kullanıcı bulunamadı' });
+          }
+
+          targetUserIds = [targetUser.id];
+        } else {
+          // Tüm aktif kullanıcılar
+          const { data: allUsers, error } = await supabase
+            .from('profiles')
+            .select('id')
+            .not('id', 'is', null);
+
+          if (error) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: error.message,
+            });
+          }
+
+          targetUserIds = allUsers?.map((u) => u.id) || [];
+        }
+
+        if (targetUserIds.length === 0) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Hedef kullanıcı bulunamadı' });
+        }
+
+        // Bildirim kayıtlarını oluştur
+        const notifications = targetUserIds.map((userId) => ({
+          user_id: userId,
+          type: input.type,
+          title: input.title,
+          body: input.body,
+          data: input.data || {},
+          push_sent: false,
+          is_deleted: false,
+        }));
+
+        const { data: insertedNotifications, error: insertError } = await supabase
+          .from('notifications')
+          .insert(notifications)
+          .select('id, user_id');
+
+        if (insertError) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `Bildirimler oluşturulamadı: ${insertError.message}`,
+          });
+        }
+
+        // Push token'ları al ve push bildirimleri gönder
+        const pushTokens: string[] = [];
+        const userIdToTokenMap = new Map<string, string>();
+
+        for (const userId of targetUserIds) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('push_token')
+            .eq('id', userId)
+            .single();
+
+          if (profile?.push_token) {
+            pushTokens.push(profile.push_token);
+            userIdToTokenMap.set(userId, profile.push_token);
+          }
+        }
+
+        // Expo Push API ile bildirim gönder
+        if (pushTokens.length > 0) {
+          try {
+            const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+            const messages = pushTokens.map((token) => ({
+              to: token,
+              sound: 'default',
+              title: input.title,
+              body: input.body,
+              data: input.data || {},
+              badge: 1,
+            }));
+
+            // Batch gönderim (100'lük gruplar halinde)
+            const batchSize = 100;
+            for (let i = 0; i < messages.length; i += batchSize) {
+              const batch = messages.slice(i, i + batchSize);
+              const response = await fetch(expoPushUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Accept: 'application/json',
+                  'Accept-Encoding': 'gzip, deflate',
+                },
+                body: JSON.stringify(batch),
+              });
+
+              if (!response.ok) {
+                console.error('Push notification error:', await response.text());
+              }
+            }
+
+            // Başarılı gönderimleri işaretle
+            if (insertedNotifications) {
+              const sentNotificationIds = insertedNotifications.map((n) => n.id);
+              await supabase
+                .from('notifications')
+                .update({ push_sent: true })
+                .in('id', sentNotificationIds);
+            }
+          } catch (pushError) {
+            console.error('Push notification error:', pushError);
+            // Push hatası olsa bile bildirimler kaydedildi, devam et
+          }
+        }
+
+        return {
+          success: true,
+          sentCount: targetUserIds.length,
+          pushSentCount: pushTokens.length,
         };
       }),
   }),

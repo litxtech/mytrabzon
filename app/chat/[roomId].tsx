@@ -26,6 +26,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Video as ExpoVideo } from 'expo-av';
 import { Message, Post } from '@/types/database';
 import { DISTRICT_BADGES } from '@/constants/districts';
+import { Footer } from '@/components/Footer';
 
 const CHAT_MEDIA_BUCKET =
   (typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_CHAT_MEDIA_BUCKET : undefined) || 'post_media';
@@ -130,6 +131,19 @@ export default function ChatRoomScreen() {
     },
     onError: (error) => {
       Alert.alert('Hata', error.message || 'Mesaj silinemedi');
+    },
+  });
+
+  const deleteAllMessagesMutation = trpc.chat.deleteAllMessages.useMutation({
+    onSuccess: () => {
+      if (roomId) {
+        loadMessages(roomId);
+      }
+      setShowGroupOptionsModal(false);
+      Alert.alert('Başarılı', 'Tüm mesajlar silindi');
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Mesajlar silinemedi');
     },
   });
 
@@ -510,7 +524,6 @@ export default function ChatRoomScreen() {
                 source={{ uri: message.media_url }}
                 style={styles.messageVideo}
                 useNativeControls
-                resizeMode="cover"
               />
             )}
 
@@ -767,6 +780,7 @@ export default function ChatRoomScreen() {
                   <Text style={styles.emptySubtext}>İlk paylaşımı yapan sen ol!</Text>
                 </View>
               }
+              ListFooterComponent={<Footer />}
             />
           )}
 
@@ -1082,6 +1096,34 @@ export default function ChatRoomScreen() {
               </TouchableOpacity>
             )}
 
+            {(isGroupOwner || (room?.type === 'direct' && currentUserId)) && (
+              <TouchableOpacity
+                style={[styles.optionButton, styles.optionDangerButton]}
+                onPress={() => {
+                  setShowGroupOptionsModal(false);
+                  Alert.alert(
+                    'Tüm Mesajları Sil',
+                    'Tüm mesajları silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.',
+                    [
+                      { text: 'İptal', style: 'cancel' },
+                      {
+                        text: 'Sil',
+                        style: 'destructive',
+                        onPress: () => {
+                          if (roomId) {
+                            deleteAllMessagesMutation.mutate({ roomId });
+                          }
+                        },
+                      },
+                    ]
+                  );
+                }}
+              >
+                <Trash2 size={18} color={COLORS.error} />
+                <Text style={[styles.optionButtonText, styles.optionDangerText]}>Tüm Mesajları Sil</Text>
+              </TouchableOpacity>
+            )}
+
             {isGroupOwner && (
               <TouchableOpacity
                 style={[styles.optionButton, styles.optionDangerButton]}
@@ -1122,16 +1164,17 @@ export default function ChatRoomScreen() {
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => {
                 const isOwner = item.user_id === room?.created_by;
+                const user = (item as any).user || {};
                 return (
                   <View style={styles.memberManageItem}>
                     <Image
-                      source={{ uri: item.user?.avatar_url || 'https://via.placeholder.com/40' }}
+                      source={{ uri: user.avatar_url || 'https://via.placeholder.com/40' }}
                       style={styles.memberAvatar}
                     />
                     <View style={styles.memberInfo}>
-                      <Text style={styles.memberName}>{item.user?.full_name}</Text>
-                      {item.user?.username && (
-                        <Text style={styles.memberUsername}>@{item.user.username}</Text>
+                      <Text style={styles.memberName}>{user.full_name || 'Kullanıcı'}</Text>
+                      {user.username && (
+                        <Text style={styles.memberUsername}>@{user.username}</Text>
                       )}
                     </View>
                     <View
@@ -1153,7 +1196,7 @@ export default function ChatRoomScreen() {
                       <TouchableOpacity
                         style={styles.memberRemoveButton}
                         onPress={() =>
-                          handleRemoveMember(item.user_id, item.user?.full_name || 'Kullanıcı')
+                          handleRemoveMember(item.user_id, user.full_name || 'Kullanıcı')
                         }
                       >
                         <UserMinus size={16} color={COLORS.error} />
@@ -1269,7 +1312,7 @@ const styles = StyleSheet.create({
     height: 220,
     borderRadius: 16,
     marginTop: SPACING.sm,
-    backgroundColor: COLORS.black,
+    backgroundColor: COLORS.text,
   },
   fileAttachment: {
     flexDirection: 'row',

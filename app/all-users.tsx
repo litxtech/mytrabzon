@@ -16,6 +16,7 @@ import { Search, MapPin, ChevronRight, Users, User, UserCheck } from 'lucide-rea
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import { CallButtons } from '@/components/CallButtons';
+import { Footer } from '@/components/Footer';
 
 interface UserListItem {
   id: string;
@@ -267,6 +268,7 @@ export default function AllUsersScreen() {
           offset: 80 * index,
           index,
         })}
+        ListFooterComponent={<Footer />}
       />
     </View>
   );

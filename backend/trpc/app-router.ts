@@ -8,7 +8,7 @@ import { getRoomsProcedure } from "./routes/chat/get-rooms/route";
 import { getMessagesProcedure } from "./routes/chat/get-messages/route";
 import { sendMessageProcedure } from "./routes/chat/send-message/route";
 import { createRoomProcedure } from "./routes/chat/create-room/route";
-import { markAsReadProcedure } from "./routes/chat/mark-as-read/route";
+import { markAsReadProcedure as markChatAsReadProcedure } from "./routes/chat/mark-as-read/route";
 import { deleteMessageProcedure } from "./routes/chat/delete-message/route";
 import { addReactionProcedure } from "./routes/chat/add-reaction/route";
 import { blockUserProcedure, unblockUserProcedure } from "./routes/chat/block-user/route";
@@ -16,11 +16,13 @@ import { addMembersProcedure } from "./routes/chat/add-members/route";
 import { removeMemberProcedure } from "./routes/chat/remove-member/route";
 import { leaveRoomProcedure } from "./routes/chat/leave-room/route";
 import { deleteRoomProcedure } from "./routes/chat/delete-room/route";
+import { deleteAllMessagesProcedure } from "./routes/chat/delete-all-messages/route";
 import { updateMessageProcedure } from "./routes/chat/update-message/route";
 import { createPostProcedure } from "./routes/post/create-post/route";
 import { getPostsProcedure } from "./routes/post/get-posts/route";
 import { likePostProcedure } from "./routes/post/like-post/route";
 import { deletePostProcedure } from "./routes/post/delete-post/route";
+import { deleteCommentProcedure } from "./routes/post/delete-comment/route";
 import { uploadPostMediaProcedure } from "./routes/post/upload-media/route";
 import { getPostDetailProcedure } from "./routes/post/get-post-detail/route";
 import { addCommentProcedure } from "./routes/post/add-comment/route";
@@ -67,6 +69,9 @@ import {
   getSupportTicketsProcedure,
   updateSupportTicketProcedure,
 } from "./routes/admin/support-tickets/route";
+import { sendNotificationProcedure } from "./routes/admin/send-notification/route";
+import { getAllPostsProcedure } from "./routes/admin/get-all-posts/route";
+import { getAllCommentsProcedure } from "./routes/admin/get-all-comments/route";
 import { createKycProcedure } from "./routes/kyc/create-kyc/route";
 import { getKycProcedure } from "./routes/kyc/get-kyc/route";
 import {
@@ -78,7 +83,7 @@ import { createEventProcedure } from "./routes/event/create-event/route";
 import { getEventsProcedure } from "./routes/event/get-events/route";
 import { getNotificationsProcedure, getUnreadCountProcedure } from "./routes/notification/get-notifications/route";
 import {
-  markAsReadProcedure,
+  markAsReadProcedure as markNotificationAsReadProcedure,
   deleteNotificationProcedure,
   markAllAsReadProcedure,
   deleteAllNotificationsProcedure,
@@ -108,8 +113,9 @@ export const appRouter = createTRPCRouter({
     getMessages: getMessagesProcedure,
     sendMessage: sendMessageProcedure,
     createRoom: createRoomProcedure,
-    markAsRead: markAsReadProcedure,
+    markAsRead: markChatAsReadProcedure,
     deleteMessage: deleteMessageProcedure,
+    deleteAllMessages: deleteAllMessagesProcedure,
     updateMessage: updateMessageProcedure,
     addReaction: addReactionProcedure,
     blockUser: blockUserProcedure,
@@ -128,6 +134,7 @@ export const appRouter = createTRPCRouter({
     uploadMedia: uploadPostMediaProcedure,
     getPostDetail: getPostDetailProcedure,
     addComment: addCommentProcedure,
+    deleteComment: deleteCommentProcedure,
     getComments: getCommentsProcedure,
     toggleCommentLike: toggleCommentLikeProcedure,
     sharePost: sharePostProcedure,
@@ -143,6 +150,8 @@ export const appRouter = createTRPCRouter({
   admin: createTRPCRouter({
     checkAdmin: checkAdminProcedure,
     getUsers: getUsersProcedure,
+    getAllPosts: getAllPostsProcedure,
+    getAllComments: getAllCommentsProcedure,
     banUser: banUserProcedure,
     unbanUser: unbanUserProcedure,
     giveBlueTick: giveBlueTickProcedure,
@@ -160,6 +169,7 @@ export const appRouter = createTRPCRouter({
     getKycRequests: getKycRequestsProcedure,
     approveKyc: approveKycProcedure,
     rejectKyc: rejectKycProcedure,
+    sendNotification: sendNotificationProcedure,
   }),
   kyc: createTRPCRouter({
     create: createKycProcedure,
@@ -172,7 +182,7 @@ export const appRouter = createTRPCRouter({
   notification: createTRPCRouter({
     getNotifications: getNotificationsProcedure,
     getUnreadCount: getUnreadCountProcedure,
-    markAsRead: markAsReadProcedure,
+    markAsRead: markNotificationAsReadProcedure,
     deleteNotification: deleteNotificationProcedure,
     markAllAsRead: markAllAsReadProcedure,
     deleteAllNotifications: deleteAllNotificationsProcedure,

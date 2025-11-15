@@ -27,6 +27,7 @@ import {
   ArrowLeft,
   MoreVertical,
 } from 'lucide-react-native';
+import { Footer } from '@/components/Footer';
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -198,7 +199,7 @@ export default function PostDetailScreen() {
         }}
       />
 
-      <ScrollView style={styles.content}>
+      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: SPACING.xl }}>
         <View style={styles.postCard}>
           <View style={styles.postHeader}>
             <TouchableOpacity
@@ -332,6 +333,8 @@ export default function PostDetailScreen() {
             </View>
           ))}
         </View>
+        
+        <Footer />
       </ScrollView>
 
       <View style={styles.commentInputContainer}>

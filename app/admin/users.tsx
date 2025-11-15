@@ -17,15 +17,19 @@ import { useRouter } from 'expo-router';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { trpc } from '../../lib/trpc';
 
+type FilterType = 'all' | 'today' | 'banned' | 'blueTick';
+
 export default function AdminUsersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<FilterType>('all');
   const [refreshing, setRefreshing] = useState(false);
 
   const { data, isLoading, refetch } = trpc.admin.getUsers.useQuery({
     search: search || undefined,
-    limit: 50,
+    filter: filter,
+    limit: 100,
     offset: 0,
   });
 
@@ -150,6 +154,44 @@ export default function AdminUsersScreen() {
         />
       </View>
 
+      {/* Filtre Butonları */}
+      <View style={styles.filterContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+          <TouchableOpacity
+            style={[styles.filterButton, filter === 'all' && styles.filterButtonActive]}
+            onPress={() => setFilter('all')}
+          >
+            <Text style={[styles.filterButtonText, filter === 'all' && styles.filterButtonTextActive]}>
+              Tümü
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterButton, filter === 'today' && styles.filterButtonActive]}
+            onPress={() => setFilter('today')}
+          >
+            <Text style={[styles.filterButtonText, filter === 'today' && styles.filterButtonTextActive]}>
+              Bugünkü Kayıtlar
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterButton, filter === 'banned' && styles.filterButtonActive]}
+            onPress={() => setFilter('banned')}
+          >
+            <Text style={[styles.filterButtonText, filter === 'banned' && styles.filterButtonTextActive]}>
+              Banlı Kullanıcılar
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterButton, filter === 'blueTick' && styles.filterButtonActive]}
+            onPress={() => setFilter('blueTick')}
+          >
+            <Text style={[styles.filterButtonText, filter === 'blueTick' && styles.filterButtonTextActive]}>
+              Mavi Tikli
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -157,11 +199,18 @@ export default function AdminUsersScreen() {
       >
         {data?.users && data.users.length > 0 ? (
           data.users.map((user: any) => {
-            const isBanned = user.user_bans && user.user_bans.length > 0 && user.user_bans[0]?.is_active;
-            const hasBlueTick = user.blue_ticks && user.blue_ticks.length > 0 && user.blue_ticks[0]?.is_active;
+            // user_bans ve blue_ticks array veya object olabilir
+            const userBans = Array.isArray(user.user_bans) ? user.user_bans : (user.user_bans ? [user.user_bans] : []);
+            const blueTicks = Array.isArray(user.blue_ticks) ? user.blue_ticks : (user.blue_ticks ? [user.blue_ticks] : []);
+            const isBanned = userBans.length > 0 && userBans[0]?.is_active;
+            const hasBlueTick = blueTicks.length > 0 && blueTicks[0]?.is_active;
 
             return (
-              <View key={user.id} style={styles.userCard}>
+              <TouchableOpacity
+                key={user.id}
+                style={styles.userCard}
+                onPress={() => router.push(`/admin/user-detail/${user.id}` as any)}
+              >
                 <Image
                   source={{ uri: user.avatar_url || 'https://via.placeholder.com/50' }}
                   style={styles.avatar}
@@ -177,17 +226,26 @@ export default function AdminUsersScreen() {
                   </View>
                   <Text style={styles.userEmail}>{user.email || 'Email yok'}</Text>
                   <Text style={styles.userDistrict}>{user.district || 'İlçe belirtilmemiş'}</Text>
-                  {isBanned && (
+                  <Text style={styles.userDate}>
+                    Kayıt: {new Date(user.created_at).toLocaleDateString('tr-TR')}
+                  </Text>
+                  {isBanned && userBans[0] && (
                     <View style={styles.bannedBadge}>
                       <Ban size={14} color={COLORS.error} />
-                      <Text style={styles.bannedText}>Banlı</Text>
+                      <Text style={styles.bannedText}>
+                        Banlı - {userBans[0].ban_type === 'permanent' ? 'Kalıcı' : 'Geçici'}
+                        {userBans[0].ban_until && ` (${new Date(userBans[0].ban_until).toLocaleDateString('tr-TR')})`}
+                      </Text>
                     </View>
                   )}
                 </View>
                 <View style={styles.actions}>
                   <TouchableOpacity
                     style={[styles.actionButton, styles.blueTickButton]}
-                    onPress={() => handleBlueTick(user.id, hasBlueTick)}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleBlueTick(user.id, hasBlueTick);
+                    }}
                   >
                     {hasBlueTick ? (
                       <XCircle size={18} color={COLORS.primary} />
@@ -198,20 +256,26 @@ export default function AdminUsersScreen() {
                   {isBanned ? (
                     <TouchableOpacity
                       style={[styles.actionButton, styles.unbanButton]}
-                      onPress={() => handleUnban(user.id, user.full_name)}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleUnban(user.id, user.full_name);
+                      }}
                     >
                       <CheckCircle2 size={18} color={COLORS.success} />
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
                       style={[styles.actionButton, styles.banButton]}
-                      onPress={() => handleBan(user.id, user.full_name)}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleBan(user.id, user.full_name);
+                      }}
                     >
                       <Ban size={18} color={COLORS.error} />
                     </TouchableOpacity>
                   )}
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })
         ) : (
@@ -371,6 +435,39 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
+  },
+  filterContainer: {
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingVertical: SPACING.sm,
+  },
+  filterScroll: {
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.sm,
+  },
+  filterButton: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 20,
+    backgroundColor: COLORS.background,
+    marginRight: SPACING.sm,
+  },
+  filterButtonActive: {
+    backgroundColor: COLORS.primary,
+  },
+  filterButtonText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  filterButtonTextActive: {
+    color: COLORS.white,
+  },
+  userDate: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+    marginTop: SPACING.xs,
   },
 });
 

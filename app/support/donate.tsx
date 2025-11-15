@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'r
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { Heart, ExternalLink, Coffee } from 'lucide-react-native';
+import { Footer } from '@/components/Footer';
 
 const DONATION_AMOUNTS = [
   { amount: 89, label: 'Bir Kahve', color: '#FFD700', badgeColor: 'yellow' },
@@ -81,6 +82,8 @@ function DonateScreenContent() {
             Bağış sayfasına gitmek için yukarıdaki butona tıklayın.
           </Text>
         </View>
+        
+        <Footer />
       </ScrollView>
     </SafeAreaView>
   );

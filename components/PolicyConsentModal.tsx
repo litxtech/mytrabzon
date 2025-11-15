@@ -14,12 +14,12 @@ import { trpc } from '@/lib/trpc';
 
 interface PolicyConsentModalProps {
   visible: boolean;
-  policies: Array<{
+  policies: {
     id: string;
     title: string;
     content: string;
     policy_type: string;
-  }>;
+  }[];
   onAccept: () => void;
   onReject: () => void;
   required?: boolean; // Zorunlu mu? (true ise reddetme seçeneği yok)
@@ -35,7 +35,7 @@ export function PolicyConsentModal({
   const [acceptedPolicies, setAcceptedPolicies] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
 
-  const consentMutation = trpc.user.consentToPolicies.useMutation();
+  const consentMutation = (trpc as any).user.consentToPolicies.useMutation();
 
   const handleTogglePolicy = (policyId: string) => {
     const newAccepted = new Set(acceptedPolicies);

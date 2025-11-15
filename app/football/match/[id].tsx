@@ -15,6 +15,7 @@ import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { ArrowLeft, Calendar, Clock, MapPin, Users, Trophy, MessageCircle, AlertCircle } from 'lucide-react-native';
+import { Footer } from '@/components/Footer';
 
 export default function MatchDetailScreen() {
   const router = useRouter();
@@ -241,6 +242,8 @@ export default function MatchDetailScreen() {
             </Text>
           </View>
         )}
+        
+        <Footer />
       </ScrollView>
     </View>
   );
