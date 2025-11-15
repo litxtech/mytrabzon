@@ -312,6 +312,7 @@ Amacımız, Trabzon ve Karadeniz'in dijital dünyada hak ettiği modern, güvenl
 };
 
 export function Footer() {
+  const insets = useSafeAreaInsets();
   const [selectedPolicy, setSelectedPolicy] = useState<any>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [showPlatformPolicy, setShowPlatformPolicy] = useState(false);
@@ -390,10 +391,23 @@ export function Footer() {
         visible={modalVisible}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={() => {
+          setModalVisible(false);
+          setShowPlatformPolicy(false);
+          setSelectedPolicy(null);
+        }}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <TouchableOpacity 
+            style={styles.modalOverlayTouchable}
+            activeOpacity={1}
+            onPress={() => {
+              setModalVisible(false);
+              setShowPlatformPolicy(false);
+              setSelectedPolicy(null);
+            }}
+          />
+          <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, SPACING.xl) }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
                 {showPlatformPolicy 
@@ -410,7 +424,12 @@ export function Footer() {
               </TouchableOpacity>
             </View>
             
-            <ScrollView style={styles.modalScrollView} contentContainerStyle={styles.modalScrollContent}>
+            <ScrollView 
+              style={styles.modalScrollView} 
+              contentContainerStyle={styles.modalScrollContent}
+              showsVerticalScrollIndicator={true}
+              nestedScrollEnabled={true}
+            >
               {showPlatformPolicy ? (
                 <>
                   <Text style={styles.modalPolicyTitle}>{PLATFORM_POLICY.title}</Text>
@@ -532,11 +551,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end' as const,
   },
+  modalOverlayTouchable: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   modalContent: {
     backgroundColor: COLORS.white,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '90%',
+    minHeight: '50%',
     paddingBottom: SPACING.xl,
   },
   modalHeader: {
@@ -558,9 +585,11 @@ const styles = StyleSheet.create({
   },
   modalScrollView: {
     flex: 1,
+    maxHeight: '100%',
   },
   modalScrollContent: {
     padding: SPACING.md,
+    paddingBottom: SPACING.xl,
   },
   modalPolicyTitle: {
     fontSize: FONT_SIZES.xl,

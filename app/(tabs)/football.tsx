@@ -25,7 +25,7 @@ export default function FootballScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   // Bugünün maçlarını getir
-  const { data: todayMatches, isLoading, refetch } = trpc.football.getTodayMatches.useQuery(
+  const { data: todayMatches, isLoading, refetch } = (trpc as any).football.getTodayMatches.useQuery(
     { city: 'Trabzon' },
     { enabled: !!user }
   );
