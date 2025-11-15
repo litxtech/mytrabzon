@@ -33,23 +33,23 @@ export default function KTUVerifyScreen() {
   const [uploading, setUploading] = useState(false);
 
   // Fakülteleri ve bölümleri getir
-  const { data: faculties } = trpc.ktu.getFaculties.useQuery();
-  const { data: departments } = trpc.ktu.getDepartments.useQuery({
+  const { data: faculties } = (trpc as any).ktu.getFaculties.useQuery();
+  const { data: departments } = (trpc as any).ktu.getDepartments.useQuery({
     faculty_id: selectedFacultyId || undefined,
   });
 
   // Mevcut öğrenci bilgilerini getir
-  const { data: studentInfo } = trpc.ktu.getStudentInfo.useQuery(undefined, {
+  const { data: studentInfo } = (trpc as any).ktu.getStudentInfo.useQuery(undefined, {
     enabled: !!user?.id,
   });
 
-  const verifyMutation = trpc.ktu.verifyStudent.useMutation({
+  const verifyMutation = (trpc as any).ktu.verifyStudent.useMutation({
     onSuccess: () => {
       Alert.alert('Başarılı', 'Öğrenci doğrulama başvurunuz alındı. İnceleme sonrası bilgilendirileceksiniz.', [
         { text: 'Tamam', onPress: () => router.back() },
       ]);
     },
-    onError: (error) => {
+    onError: (error: any) => {
       Alert.alert('Hata', error.message);
     },
   });
@@ -80,7 +80,7 @@ export default function KTUVerifyScreen() {
       const fileName = `ktu-verification/${user.id}-${Date.now()}.jpg`;
 
       // React Native'de blob() yok, doğrudan URI kullan
-      const { data: uploadData, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from('kyc-documents')
         .upload(fileName, {
           uri,
@@ -218,7 +218,7 @@ export default function KTUVerifyScreen() {
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Bölüm *</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.departmentScroll}>
-                {departments?.map((dept) => (
+                {departments?.map((dept: any) => (
                   <TouchableOpacity
                     key={dept.id}
                     style={[
