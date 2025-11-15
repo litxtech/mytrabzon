@@ -77,25 +77,36 @@ export default function KTUVerifyScreen() {
 
     setUploading(true);
     try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
       const fileName = `ktu-verification/${user.id}-${Date.now()}.jpg`;
 
-      const { data, error } = await supabase.storage
+      // React Native'de blob() yok, doğrudan URI kullan
+      const { data: uploadData, error } = await supabase.storage
         .from('kyc_documents')
-        .upload(fileName, blob, {
+        .upload(fileName, {
+          uri,
+          type: 'image/jpeg',
+          name: fileName,
+        } as any, {
           contentType: 'image/jpeg',
           upsert: false,
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Upload error:', error);
+        throw error;
+      }
 
       const { data: urlData } = supabase.storage
         .from('kyc_documents')
-        .getPublicUrl(data.path);
+        .getPublicUrl(fileName);
+
+      if (!urlData?.publicUrl) {
+        throw new Error('Public URL oluşturulamadı');
+      }
 
       setDocumentUri(urlData.publicUrl);
     } catch (error: any) {
+      console.error('Upload error:', error);
       Alert.alert('Hata', error.message || 'Belge yüklenirken bir hata oluştu.');
     } finally {
       setUploading(false);

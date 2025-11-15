@@ -6,10 +6,10 @@ import {
   FlatList,
   TextInput,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Search, MapPin, ChevronRight, Users, User, UserCheck } from 'lucide-react-native';
@@ -40,24 +40,32 @@ export default function AllUsersScreen() {
 
   const debouncedSearch = useDebounce(search, 500);
 
-  const { data, isLoading, isFetching, refetch } = trpc.user.getAllUsers.useQuery({
+  const { data, isLoading, isFetching, refetch, error } = trpc.user.getAllUsers.useQuery({
     search: debouncedSearch || undefined,
     gender: genderFilter === 'all' ? undefined : genderFilter,
   }, {
     enabled: true,
-    staleTime: 30000, // 30 saniye
+    staleTime: 60000, // 60 saniye cache
+    gcTime: 300000, // 5 dakika
+    retry: 1, // Daha az retry
   });
 
   useEffect(() => {
-    console.log('getAllUsers response:', data);
-    if (data && data.users) {
-      console.log('Setting users:', data.users.length);
-      setAllUsers(data.users);
-    } else {
-      console.log('No users in response');
+    if (error) {
       setAllUsers([]);
+      return;
     }
-  }, [data]);
+    if (data && data.users && Array.isArray(data.users)) {
+      setAllUsers(data.users);
+    } else if (data && !data.users) {
+      setAllUsers([]);
+    } else {
+      // Don't clear users while loading
+      if (!isLoading && !isFetching) {
+        setAllUsers([]);
+      }
+    }
+  }, [data, error, isLoading, isFetching]);
 
   const handleSearchChange = useCallback((text: string) => {
     setSearch(text);
@@ -90,6 +98,9 @@ export default function AllUsersScreen() {
             uri: item.avatar_url || 'https://via.placeholder.com/60',
           }}
           style={styles.avatar}
+          contentFit="cover"
+          transition={200}
+          cachePolicy="memory-disk"
         />
         <View style={styles.userInfo}>
           <View style={styles.nameRow}>
@@ -245,6 +256,16 @@ export default function AllUsersScreen() {
         refreshing={isLoading}
         onRefresh={handleRefresh}
         showsVerticalScrollIndicator={false}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={15}
+        updateCellsBatchingPeriod={50}
+        initialNumToRender={15}
+        windowSize={10}
+        getItemLayout={(data, index) => ({
+          length: 80, // User card height
+          offset: 80 * index,
+          index,
+        })}
       />
     </View>
   );

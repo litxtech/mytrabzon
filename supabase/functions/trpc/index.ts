@@ -325,10 +325,10 @@ const appRouter = createTRPCRouter({
 
         console.log('getAllUsers called with:', { search, gender });
 
-        // TÜM KULLANICILARI GÖSTER - show_in_directory filtresini kaldırdık
+        // TÜM KULLANICILARI GÖSTER - HİÇBİR FİLTRE YOK
         let query = supabase
           .from('profiles')
-          .select('id, full_name, avatar_url, bio, city, district, created_at, verified, gender, public_id, username', { count: 'exact' })
+          .select('id, full_name, avatar_url, bio, city, district, created_at, gender, public_id, username', { count: 'exact' })
           .order('created_at', { ascending: false });
 
         // Cinsiyet filtresi: sadece 'all' değilse filtrele
@@ -359,25 +359,10 @@ const appRouter = createTRPCRouter({
           });
         }
 
-        // Email araması için auth.users tablosundan email'leri al
+        // Email araması için - auth.users tablosuna direkt erişim yok, bu yüzden sadece profiles'da arama yapıyoruz
+        // Email araması için kullanıcıların email'lerini başka bir yöntemle almak gerekir
+        // Şimdilik sadece name, username ve bio'da arama yapıyoruz
         let usersWithEmail = data || [];
-        if (search && search.trim() && data && data.length > 0) {
-          const userIds = data.map((u: any) => u.id);
-          const { data: authUsers } = await supabase
-            .from('auth.users')
-            .select('id, email')
-            .in('id', userIds);
-          
-          // Email araması yapıldıysa ve email'de eşleşme varsa filtrele
-          const searchTerm = search.trim().toLowerCase();
-          const matchingUserIds = authUsers?.filter((au: any) => 
-            au.email?.toLowerCase().includes(searchTerm)
-          ).map((au: any) => au.id) || [];
-          
-          if (matchingUserIds.length > 0) {
-            usersWithEmail = data.filter((u: any) => matchingUserIds.includes(u.id));
-          }
-        }
 
         // Response'u serialize edilebilir hale getir - TÜM KULLANICILARI GÖSTER
         const serializedUsers = usersWithEmail
@@ -389,7 +374,7 @@ const appRouter = createTRPCRouter({
             city: user.city,
             district: user.district,
             created_at: user.created_at ? new Date(user.created_at).toISOString() : null,
-            verified: user.verified || false,
+            verified: false, // verified column yok, her zaman false döndür
             gender: user.gender,
             public_id: user.public_id,
             username: user.username || null,
@@ -402,7 +387,7 @@ const appRouter = createTRPCRouter({
 
         return {
           users: serializedUsers,
-          total: serializedUsers.length,
+          total: count || serializedUsers.length,
         };
       }),
 
@@ -1154,7 +1139,7 @@ const appRouter = createTRPCRouter({
           thumbnail_url: z.string().url().optional(),
           width: z.number().int().positive(),
           height: z.number().int().positive(),
-          duration_seconds: z.number().int().positive().max(60),
+          duration_seconds: z.number().int().positive(), // Süre sınırı kaldırıldı
           tags: z.array(z.string()).optional(),
           district: z.string(),
         })
@@ -3702,6 +3687,350 @@ const appRouter = createTRPCRouter({
         if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
 
         return { success: true };
+      }),
+  }),
+
+  // ============================================
+  // GÖRÜNTÜLÜ EŞLEŞME SİSTEMİ
+  // ============================================
+  match: createTRPCRouter({
+    // Kuyruğa gir
+    joinQueue: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Kullanıcı profilini al
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('gender, city, district')
+          .eq('id', user.id)
+          .single();
+
+        if (profileError || !profile) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Profil bulunamadı',
+          });
+        }
+
+        if (!profile.gender || (profile.gender !== 'male' && profile.gender !== 'female')) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Cinsiyet seçmelisiniz (erkek/kadın)',
+          });
+        }
+
+        // Günlük limit kontrolü
+        const { data: limitCheck } = await supabase.rpc('check_user_match_limit', {
+          p_user_id: user.id,
+          p_daily_limit: 50,
+        });
+
+        if (!limitCheck) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Günlük eşleşme limitiniz doldu veya hesabınız kısıtlandı',
+          });
+        }
+
+        // Eşleşme ara
+        const { data: matchId } = await supabase.rpc('find_match', {
+          p_user_id: user.id,
+          p_gender: profile.gender,
+          p_city: profile.city || null,
+          p_district: profile.district || null,
+        });
+
+        if (matchId) {
+          // Eşleşme bulundu
+          const { data: session } = await supabase
+            .from('match_sessions')
+            .select('*, user1:profiles!match_sessions_user1_id_fkey(id, full_name, avatar_url, gender), user2:profiles!match_sessions_user2_id_fkey(id, full_name, avatar_url, gender)')
+            .eq('id', matchId)
+            .single();
+
+          // Günlük limiti artır
+          await supabase.rpc('increment_daily_match_limit', { p_user_id: user.id });
+
+          return {
+            matched: true,
+            session: session,
+          };
+        }
+
+        // Eşleşme bulunamadı, kuyruğa ekle
+        const { data: queueId, error: queueError } = await supabase.rpc('join_waiting_queue', {
+          p_user_id: user.id,
+          p_gender: profile.gender,
+          p_city: profile.city || null,
+          p_district: profile.district || null,
+        });
+
+        if (queueError) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: queueError.message,
+          });
+        }
+
+        return {
+          matched: false,
+          queueId: queueId,
+          message: 'Eşleşme aranıyor...',
+        };
+      }),
+
+    // Kuyruktan çık
+    leaveQueue: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const { error } = await supabase.rpc('leave_waiting_queue', {
+          p_user_id: user.id,
+        });
+
+        if (error) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: error.message,
+          });
+        }
+
+        return { success: true };
+      }),
+
+    // Eşleşme durumunu kontrol et (polling için)
+    checkMatch: protectedProcedure
+      .query(async ({ ctx }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Aktif eşleşme var mı kontrol et
+        const { data: activeSession } = await supabase
+          .from('match_sessions')
+          .select('*, user1:profiles!match_sessions_user1_id_fkey(id, full_name, avatar_url, gender), user2:profiles!match_sessions_user2_id_fkey(id, full_name, avatar_url, gender)')
+          .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
+          .is('ended_at', null)
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (activeSession) {
+          return {
+            matched: true,
+            session: activeSession,
+          };
+        }
+
+        return {
+          matched: false,
+        };
+      }),
+
+    // Match session'ı güncelle (next, video/audio toggle)
+    updateSession: protectedProcedure
+      .input(
+        z.object({
+          session_id: z.string().uuid(),
+          action: z.enum(['next', 'toggle_video', 'toggle_audio', 'end']),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Session'ı kontrol et
+        const { data: session } = await supabase
+          .from('match_sessions')
+          .select('*')
+          .eq('id', input.session_id)
+          .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
+          .is('ended_at', null)
+          .single();
+
+        if (!session) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Eşleşme bulunamadı',
+          });
+        }
+
+        const isUser1 = session.user1_id === user.id;
+        const updateData: any = {};
+
+        if (input.action === 'next') {
+          if (isUser1) {
+            updateData.user1_next = true;
+          } else {
+            updateData.user2_next = true;
+          }
+
+          // Her iki taraf da next dediyse bitir
+          if ((isUser1 && session.user2_next) || (!isUser1 && session.user1_next)) {
+            updateData.ended_at = new Date().toISOString();
+            updateData.disconnect_reason = 'next';
+          }
+        } else if (input.action === 'toggle_video') {
+          if (isUser1) {
+            updateData.user1_video_enabled = !session.user1_video_enabled;
+          } else {
+            updateData.user2_video_enabled = !session.user2_video_enabled;
+          }
+        } else if (input.action === 'toggle_audio') {
+          if (isUser1) {
+            updateData.user1_audio_enabled = !session.user1_audio_enabled;
+          } else {
+            updateData.user2_audio_enabled = !session.user2_audio_enabled;
+          }
+        } else if (input.action === 'end') {
+          updateData.ended_at = new Date().toISOString();
+          updateData.disconnect_reason = 'next';
+        }
+
+        const { data: updatedSession, error } = await supabase
+          .from('match_sessions')
+          .update(updateData)
+          .eq('id', input.session_id)
+          .select('*')
+          .single();
+
+        if (error) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: error.message,
+          });
+        }
+
+        return { session: updatedSession };
+      }),
+
+    // Şikayet oluştur
+    reportUser: protectedProcedure
+      .input(
+        z.object({
+          reported_user_id: z.string().uuid(),
+          match_session_id: z.string().uuid().optional(),
+          reason: z.enum(['inappropriate', 'harassment', 'spam', 'fake', 'other']),
+          description: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const { error } = await supabase
+          .from('match_reports')
+          .insert({
+            reporter_id: user.id,
+            reported_user_id: input.reported_user_id,
+            match_session_id: input.match_session_id,
+            reason: input.reason,
+            description: input.description,
+          });
+
+        if (error) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: error.message,
+          });
+        }
+
+        // 3 şikayet varsa kullanıcıyı kısıtla
+        const { count } = await supabase
+          .from('match_reports')
+          .select('*', { count: 'exact', head: true })
+          .eq('reported_user_id', input.reported_user_id);
+
+        if (count && count >= 3) {
+          await supabase
+            .from('user_match_limits')
+            .upsert({
+              user_id: input.reported_user_id,
+              is_restricted: true,
+              restriction_reason: '3 veya daha fazla şikayet',
+              restriction_until: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 gün
+            });
+        }
+
+        return { success: true };
+      }),
+
+    // Günlük limiti kontrol et
+    checkDailyLimit: protectedProcedure
+      .query(async ({ ctx }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const { data: limits } = await supabase
+          .from('user_match_limits')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (!limits) {
+          return {
+            daily_matches: 0,
+            daily_limit: 50,
+            is_restricted: false,
+            can_match: true,
+          };
+        }
+
+        // Bugün mü kontrol et
+        const today = new Date().toDateString();
+        const lastReset = limits.last_reset_date ? new Date(limits.last_reset_date).toDateString() : null;
+
+        const dailyMatches = today === lastReset ? limits.daily_matches : 0;
+
+        return {
+          daily_matches: dailyMatches,
+          daily_limit: 50,
+          is_restricted: limits.is_restricted || false,
+          restriction_reason: limits.restriction_reason,
+          restriction_until: limits.restriction_until,
+          can_match: !limits.is_restricted && dailyMatches < 50,
+        };
+      }),
+
+    // Agora token oluştur
+    generateAgoraToken: protectedProcedure
+      .input(
+        z.object({
+          channel_name: z.string(),
+          uid: z.number(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Session'ı kontrol et
+        const { data: session } = await supabase
+          .from('match_sessions')
+          .select('*')
+          .eq('channel_name', input.channel_name)
+          .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
+          .is('ended_at', null)
+          .single();
+
+        if (!session) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Eşleşme bulunamadı',
+          });
+        }
+
+        // Agora token oluştur (backend'de token generation yapılmalı)
+        // Şimdilik boş token döndürüyoruz (test için)
+        // Production'da Agora token server kullanılmalı
+
+        return {
+          token: '', // Agora token generation için backend endpoint gerekli
+          channel_name: input.channel_name,
+          uid: input.uid,
+        };
       }),
   }),
 });

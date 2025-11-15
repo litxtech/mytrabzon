@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Mytrabzon",
-    "slug": "mytrabzon-",
+    "name": "MyTrabzon",
+    "slug": "MyTrabzon",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -35,7 +35,9 @@
         "RECORD_AUDIO",
         "INTERNET",
         "ACCESS_NETWORK_STATE",
-        "ACCESS_WIFI_STATE"
+        "ACCESS_WIFI_STATE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
       ],
       "intentFilters": [
         {
@@ -62,7 +64,12 @@
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photos",
         "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to access your camera",
-        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to access your microphone"
+        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to access your microphone",
+        "NSLocationWhenInUseUsageDescription": "Allow $(PRODUCT_NAME) to access your location to show nearby events and matches",
+        "NSLocationAlwaysUsageDescription": "Allow $(PRODUCT_NAME) to access your location for better recommendations"
+      },
+      "config": {
+        "usesNonExemptEncryption": false
       }
     },
     "web": {
@@ -113,6 +120,10 @@
       "visible": "immersive",
       "backgroundColor": "#ffffff"
     },
-    "privacy": "unlisted"
+    "privacy": "unlisted",
+    "description": "Trabzon'un dijital sesi. Sosyal medya, etkinlikler, halı saha maçları ve daha fazlası.",
+    "primaryColor": "#DC2626",
+    "privacyPolicy": "https://www.litxtech.com/privacy-policy",
+    "termsOfService": "https://www.litxtech.com/terms-of-service"
   }
 }

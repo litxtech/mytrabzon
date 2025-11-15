@@ -112,40 +112,52 @@ export default function KycVerifyScreen() {
   const uploadImage = async (uri: string, type: DocumentType) => {
     setLoading(true);
     try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const fileExt = uri.split('.').pop();
+      const fileExt = uri.split('.').pop() || 'jpg';
       const fileName = `${user?.id}/${type}_${Date.now()}.${fileExt}`;
       const filePath = `kyc-documents/${fileName}`;
       
-      const { error: uploadError } = await supabase.storage
+      // React Native'de blob() yok, fetch ile base64 veya doğrudan URI kullan
+      // Supabase Storage React Native için URI'yi doğrudan kabul eder
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from('kyc-documents')
-        .upload(filePath, blob, {
+        .upload(filePath, {
+          uri,
+          type: `image/${fileExt}`,
+          name: fileName,
+        } as any, {
           contentType: `image/${fileExt}`,
           upsert: false,
         });
       
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        throw uploadError;
+      }
       
-      const { data } = supabase.storage
+      const { data: urlData } = supabase.storage
         .from('kyc-documents')
         .getPublicUrl(filePath);
       
+      if (!urlData?.publicUrl) {
+        throw new Error('Public URL oluşturulamadı');
+      }
+      
       switch (type) {
         case 'id_front':
-          setIdFront(data.publicUrl);
+          setIdFront(urlData.publicUrl);
           break;
         case 'id_back':
-          setIdBack(data.publicUrl);
+          setIdBack(urlData.publicUrl);
           break;
         case 'selfie':
-          setSelfie(data.publicUrl);
+          setSelfie(urlData.publicUrl);
           break;
         case 'selfie_with_id':
-          setSelfieWithId(data.publicUrl);
+          setSelfieWithId(urlData.publicUrl);
           break;
       }
     } catch (error: any) {
+      console.error('Upload error:', error);
       Alert.alert('Hata', error.message || 'Fotoğraf yüklenirken bir hata oluştu');
     } finally {
       setLoading(false);

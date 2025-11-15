@@ -1,0 +1,14 @@
+{
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@^2.81.0",
+    "@trpc/server": "npm:@trpc/server@^11.7.1",
+    "superjson": "npm:superjson@^2.2.5",
+    "zod": "npm:zod@^4.1.12",
+    "stripe": "npm:stripe@^17.3.1"
+  },
+  "compilerOptions": {
+    "lib": ["deno.window", "deno.unstable"],
+    "strict": true
+  }
+}
+

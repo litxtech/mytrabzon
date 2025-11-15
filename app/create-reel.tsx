@@ -57,7 +57,7 @@ export default function CreateReelScreen() {
       mediaTypes: ['videos'],
       allowsEditing: true,
       quality: 1,
-      videoMaxDuration: 60, // Max 60 saniye
+      // Süre sınırı kaldırıldı - isteyen istediği sürede paylaşım yapabilir
       aspect: [9, 16], // 9:16 aspect ratio
     });
 
@@ -93,7 +93,7 @@ export default function CreateReelScreen() {
       mediaTypes: ['videos'],
       allowsEditing: true,
       quality: 1,
-      videoMaxDuration: 60,
+      // Süre sınırı kaldırıldı - isteyen istediği sürede paylaşım yapabilir
       aspect: [9, 16],
     });
 
@@ -118,14 +118,14 @@ export default function CreateReelScreen() {
     const fileExtension = uri.split('.').pop() || 'mp4';
     const fileName = `reels/${Date.now()}.${fileExtension}`;
 
-    // Video'yu base64'e çevir (basit implementasyon)
-    // Gerçek uygulamada FormData kullanılmalı
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    
+    // React Native'de blob() yok, doğrudan URI kullan
     const { data, error } = await supabase.storage
       .from('post_media')
-      .upload(fileName, blob, {
+      .upload(fileName, {
+        uri,
+        type: 'video/mp4',
+        name: fileName,
+      } as any, {
         contentType: 'video/mp4',
         upsert: false,
       });
@@ -152,10 +152,7 @@ export default function CreateReelScreen() {
       return;
     }
 
-    if (videoMetadata.duration > 60) {
-      Alert.alert('Uyarı', 'Video süresi maksimum 60 saniye olmalıdır.');
-      return;
-    }
+    // Süre kontrolü kaldırıldı - isteyen istediği sürede paylaşım yapabilir
 
     setIsUploading(true);
     try {
@@ -165,13 +162,16 @@ export default function CreateReelScreen() {
       // Thumbnail yükle (eğer varsa)
       let thumbnailUrl: string | undefined;
       if (thumbnail) {
-        const thumbnailResponse = await fetch(thumbnail);
-        const thumbnailBlob = await thumbnailResponse.blob();
         const thumbnailFileName = `reels/thumbnails/${Date.now()}.jpg`;
         
+        // React Native'de blob() yok, doğrudan URI kullan
         const { data: thumbData, error: thumbError } = await supabase.storage
           .from('post_media')
-          .upload(thumbnailFileName, thumbnailBlob, {
+          .upload(thumbnailFileName, {
+            uri: thumbnail,
+            type: 'image/jpeg',
+            name: thumbnailFileName,
+          } as any, {
             contentType: 'image/jpeg',
             upsert: false,
           });
