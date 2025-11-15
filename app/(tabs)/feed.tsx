@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
+  Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
 
@@ -15,11 +17,11 @@ import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { DISTRICTS, DISTRICT_BADGES } from '@/constants/districts';
 import { Post, District } from '@/types/database';
-import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, Sparkles } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, Sparkles, MoreVertical } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLogo } from '@/components/AppLogo';
-import { useQueryClient } from '@tanstack/react-query';
+import { SupporterBadge } from '@/components/SupporterBadge';
 
 type SortType = 'new' | 'hot' | 'trending';
 
@@ -27,7 +29,7 @@ export default function FeedScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const queryClient = useQueryClient();
+  const utils = trpc.useUtils();
   const [selectedDistrict, setSelectedDistrict] = useState<District | 'all'>('all');
   const [sortType, setSortType] = useState<SortType>('new');
 
@@ -39,35 +41,10 @@ export default function FeedScreen() {
     return count.toString();
   }, []);
 
-  // Kişiselleştirilmiş feed kullan (eğer kullanıcı giriş yaptıysa)
-  const hasUser = !!user?.id;
-
-  const { 
-    data: personalizedFeedData, 
-    isLoading: isLoadingPersonalized, 
-    refetch: refetchPersonalized,
-    error: personalizedFeedError,
-  } = trpc.post.getPersonalizedFeed.useQuery(
-    { 
-      district: selectedDistrict === 'all' ? undefined : selectedDistrict,
-      sort: sortType,
-      limit: 20, 
-      offset: 0 
-    } as any,
-    { 
-      enabled: hasUser,
-      staleTime: 30000, // 30 saniye cache
-      gcTime: 300000, // 5 dakika garbage collection
-    }
-  );
-
-  const shouldUseGeneralFeed = !hasUser || personalizedFeedError || (personalizedFeedData?.posts?.length ?? 0) === 0;
-
-  // Fallback: Normal feed
-  const { 
-    data: postsData, 
-    isLoading: isLoadingGeneral, 
-    refetch: refetchGeneral 
+  const {
+    data: feedData,
+    isLoading,
+    refetch,
   } = trpc.post.getPosts.useQuery(
     {
       district: selectedDistrict === 'all' ? undefined : selectedDistrict,
@@ -76,63 +53,46 @@ export default function FeedScreen() {
       offset: 0,
     } as any,
     {
-      enabled: shouldUseGeneralFeed,
       staleTime: 30000,
       gcTime: 300000,
     }
   );
 
-  const usePersonalizedFeed = hasUser && !personalizedFeedError && (personalizedFeedData?.posts?.length ?? 0) > 0;
-
-  const feedData = usePersonalizedFeed ? personalizedFeedData : postsData;
-  const isLoading = usePersonalizedFeed ? isLoadingPersonalized : isLoadingGeneral;
-  const refetch = usePersonalizedFeed ? refetchPersonalized : refetchGeneral;
-
   const likePostMutation = trpc.post.likePost.useMutation({
     onMutate: async ({ postId }) => {
-      // Optimistic update - hemen UI'ı güncelle
-      const queryKey = user?.id 
-        ? [['post', 'getPersonalizedFeed'], { district: selectedDistrict === 'all' ? undefined : selectedDistrict, sort: sortType, limit: 20, offset: 0 }]
-        : [['post', 'getPosts'], { district: selectedDistrict === 'all' ? undefined : selectedDistrict, sort: sortType, limit: 20, offset: 0 }];
-      
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey });
-
-      // Snapshot previous value
-      const previousData = queryClient.getQueryData(queryKey);
-
-      // Optimistically update
-      queryClient.setQueryData(queryKey, (old: any) => {
-        if (!old?.posts) return old;
-        return {
-          ...old,
-          posts: old.posts.map((post: Post) => {
-            if (post.id === postId) {
-              const isCurrentlyLiked = post.is_liked;
-              return {
-                ...post,
-                is_liked: !isCurrentlyLiked,
-                like_count: (post.like_count || 0) + (isCurrentlyLiked ? -1 : 1),
-              };
-            }
-            return post;
-          }),
-        };
-      });
-
+      await utils.post.getPosts.cancel();
+      const previousData = utils.post.getPosts.getData();
+      utils.post.getPosts.setData(
+        { district: selectedDistrict === 'all' ? undefined : selectedDistrict, sort: sortType, limit: 20, offset: 0 },
+        (old: any) => {
+          if (!old?.posts) return old;
+          return {
+            ...old,
+            posts: old.posts.map((post: Post) => {
+              if (post.id === postId) {
+                const isCurrentlyLiked = post.is_liked;
+                return {
+                  ...post,
+                  is_liked: !isCurrentlyLiked,
+                  like_count: (post.like_count || 0) + (isCurrentlyLiked ? -1 : 1),
+                };
+              }
+              return post;
+            }),
+          };
+        }
+      );
       return { previousData };
     },
     onError: (err, variables, context) => {
-      // Rollback on error
       if (context?.previousData) {
-        const queryKey = user?.id 
-          ? [['post', 'getPersonalizedFeed'], { district: selectedDistrict === 'all' ? undefined : selectedDistrict, sort: sortType, limit: 20, offset: 0 }]
-          : [['post', 'getPosts'], { district: selectedDistrict === 'all' ? undefined : selectedDistrict, sort: sortType, limit: 20, offset: 0 }];
-        queryClient.setQueryData(queryKey, context.previousData);
+        utils.post.getPosts.setData(
+          { district: selectedDistrict === 'all' ? undefined : selectedDistrict, sort: sortType, limit: 20, offset: 0 },
+          context.previousData
+        );
       }
     },
     onSettled: () => {
-      // Refetch to ensure consistency
       refetch();
     },
   });
@@ -205,6 +165,29 @@ export default function FeedScreen() {
     </View>
   ), [selectedDistrict]);
 
+  const deletePostMutation = trpc.post.deletePost.useMutation({
+    onSuccess: () => {
+      refetch();
+    },
+    onError: (error) => Alert.alert('Hata', error.message),
+  });
+
+  const handlePostOptions = useCallback((post: Post) => {
+    if (post.author_id !== user?.id) return;
+    Alert.alert('Gönderi', 'Seçenekler', [
+      { text: 'İptal', style: 'cancel' },
+      {
+        text: 'Düzenle',
+        onPress: () => router.push(`/create-post?edit=${post.id}` as any),
+      },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: () => deletePostMutation.mutate({ postId: post.id }),
+      },
+    ]);
+  }, [deletePostMutation, router, user?.id]);
+
   const renderPost = useCallback(({ item }: { item: Post }) => {
     const firstMedia = item.media && item.media.length > 0 ? item.media[0] : null;
 
@@ -237,6 +220,13 @@ export default function FeedScreen() {
               <Text style={styles.postAuthor}>
                 {item.author?.full_name}
               </Text>
+              {item.author?.supporter_badge && item.author?.supporter_badge_visible && (
+                <SupporterBadge 
+                  visible={true} 
+                  size="small" 
+                  color={item.author?.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
+                />
+              )}
             </View>
             {item.author?.username && (
               <View style={styles.postUsernameContainer}>
@@ -262,10 +252,23 @@ export default function FeedScreen() {
               </View>
             </View>
           </TouchableOpacity>
+          {item.author_id === user?.id && (
+            <TouchableOpacity
+              style={styles.postMenuButton}
+              onPress={() => handlePostOptions(item)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <MoreVertical size={18} color={COLORS.textLight} />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.postContentContainer}>
-          <Text style={styles.postContent}>
+          <Text 
+            style={styles.postContent}
+            numberOfLines={10}
+            ellipsizeMode="tail"
+          >
             {item.content}
           </Text>
         </View>
@@ -312,11 +315,11 @@ export default function FeedScreen() {
         </View>
       </TouchableOpacity>
     );
-  }, [handleLike, router, formatCount]);
+  }, [handleLike, router, formatCount, user?.id, handlePostOptions]);
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, SPACING.md) }]}>
+    <View style={[styles.container, { paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.md) : 0 }]}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, Platform.OS === 'android' ? SPACING.lg : SPACING.md) }]}>
         <AppLogo size="medium" style={styles.headerLogo} />
         <TouchableOpacity
           style={styles.usersButton}
@@ -367,7 +370,7 @@ export default function FeedScreen() {
       )}
 
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { bottom: (Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.lg) : SPACING.lg) + 60 }]}
         onPress={() => router.push('/create-post')}
       >
         <Plus size={24} color={COLORS.white} />
@@ -375,7 +378,7 @@ export default function FeedScreen() {
 
       {/* LazGPT Floating Button */}
       <TouchableOpacity
-        style={styles.lazgptFab}
+        style={[styles.lazgptFab, { bottom: Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.lg) : SPACING.lg }]}
         onPress={() => router.push('/lazgpt/chat')}
       >
         <Sparkles size={20} color={COLORS.white} />
@@ -491,6 +494,10 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     padding: SPACING.md,
   },
+  postMenuButton: {
+    padding: SPACING.xs,
+    marginLeft: SPACING.sm,
+  },
   avatar: {
     width: 40,
     height: 40,
@@ -504,6 +511,9 @@ const styles = StyleSheet.create({
   postAuthorContainer: {
     flex: 1,
     flexShrink: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.xs,
   },
   postAuthor: {
     fontSize: FONT_SIZES.md,
@@ -551,6 +561,8 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
     lineHeight: 20,
+    flexShrink: 1,
+    flexWrap: 'wrap',
   },
   postImage: {
     width: '100%',
@@ -610,14 +622,14 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute' as const,
     right: SPACING.lg,
-    bottom: SPACING.lg + 60, // LazGPT butonunun üstünde
-    width: 48, // Küçültüldü: 56 -> 48
-    height: 48, // Küçültüldü: 56 -> 48
-    borderRadius: 24, // Küçültüldü: 28 -> 24
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: COLORS.secondary,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
-    elevation: 4,
+    elevation: 20,
+    zIndex: 999,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
@@ -626,14 +638,14 @@ const styles = StyleSheet.create({
   lazgptFab: {
     position: 'absolute' as const,
     right: SPACING.lg,
-    bottom: SPACING.lg,
-    width: 48, // Küçük floating button
+    width: 48,
     height: 48,
     borderRadius: 24,
     backgroundColor: COLORS.primary,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
-    elevation: 4,
+    elevation: 20,
+    zIndex: 999,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,

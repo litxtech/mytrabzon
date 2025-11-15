@@ -10,10 +10,15 @@ import { TRPCError } from "npm:@trpc/server@^11.7.1";
 
 // DeepSeek API Configuration
 const DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions";
-const DEEPSEEK_API_KEY = Deno.env.get("DEEPSEEK_API_KEY");
 
-if (!DEEPSEEK_API_KEY) {
-  throw new Error("DEEPSEEK_API_KEY environment variable is required");
+// Get API key from environment (don't throw error at module level)
+function getDeepSeekApiKey(): string {
+  const apiKey = Deno.env.get("DEEPSEEK_API_KEY");
+  if (!apiKey) {
+    console.warn("DEEPSEEK_API_KEY environment variable is not set");
+    return ""; // Return empty string, will be checked in API call
+  }
+  return apiKey;
 }
 
 // LazGPT System Prompt
@@ -45,13 +50,18 @@ Konuşma tarzın:
 - Karadeniz şivesini kullan ama abartma, anlaşılır ol`;
 
 // DeepSeek API çağrısı
-async function callDeepSeekAPI(messages: Array<{ role: string; content: string }>) {
+async function callDeepSeekAPI(messages: { role: string; content: string }[]) {
+  const apiKey = getDeepSeekApiKey();
+  if (!apiKey) {
+    throw new Error("DEEPSEEK_API_KEY environment variable is required");
+  }
+
   try {
     const response = await fetch(DEEPSEEK_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${DEEPSEEK_API_KEY}`,
+        "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: "deepseek-chat",
@@ -91,7 +101,7 @@ const lazgptRouter = createTRPCRouter({
       if (!user) throw new TRPCError({ code: "UNAUTHORIZED" });
 
       // Konuşma geçmişini al (varsa)
-      let conversationHistory: Array<{ role: string; content: string }> = [
+      let conversationHistory: { role: string; content: string }[] = [
         { role: "system", content: LAZGPT_SYSTEM_PROMPT },
       ];
 
@@ -119,14 +129,6 @@ const lazgptRouter = createTRPCRouter({
 
       // DeepSeek API'ye gönder
       const aiResponse = await callDeepSeekAPI(conversationHistory);
-
-      // Konuşmayı kaydet
-      const conversationData = {
-        user_id: user.id,
-        user_message: input.message,
-        ai_response: aiResponse,
-        created_at: new Date().toISOString(),
-      };
 
       let conversationId = input.conversation_id;
 
@@ -241,7 +243,7 @@ const lazgptRouter = createTRPCRouter({
   // Fıkra anlat (özel endpoint)
   tellJoke: protectedProcedure
     .mutation(async ({ ctx }) => {
-      const { supabase, user } = ctx;
+      const { user } = ctx;
       if (!user) throw new TRPCError({ code: "UNAUTHORIZED" });
 
       const jokePrompt = `Karadeniz/Trabzon fıkrası anlat. Kısa, komik ve Karadeniz şivesiyle anlat.`;
@@ -260,7 +262,7 @@ const lazgptRouter = createTRPCRouter({
 
   // Uygulama hakkında bilgi ver
   getAppInfo: protectedProcedure
-    .query(async () => {
+    .mutation(async () => {
       const infoPrompt = `MyTrabzon uygulaması hakkında kısa ve öz bilgi ver. Karadeniz şivesiyle, samimi bir dille anlat.`;
 
       const messages = [
@@ -300,11 +302,15 @@ serve(async (req) => {
   let pathname = url.pathname;
 
   // Normalize pathname for lazgpt-worker
-  // Remove function prefix if present
+  // Remove function prefix if present, but keep the tRPC path
   if (pathname.startsWith("/functions/v1/lazgpt-worker")) {
-    pathname = pathname.replace("/functions/v1/lazgpt-worker", "");
+    // Extract the tRPC path after the function prefix
+    const trpcPath = pathname.replace("/functions/v1/lazgpt-worker", "");
+    pathname = trpcPath || "/api/trpc";
   } else if (pathname.startsWith("/lazgpt-worker")) {
-    pathname = pathname.replace("/lazgpt-worker", "");
+    // Extract the tRPC path after the function prefix
+    const trpcPath = pathname.replace("/lazgpt-worker", "");
+    pathname = trpcPath || "/api/trpc";
   }
 
   // Ensure pathname starts with /api/trpc
@@ -318,7 +324,7 @@ serve(async (req) => {
     }
   }
 
-  // Create normalized request
+  // Create normalized request - preserve query string and body
   const normalizedUrl = new URL(pathname + url.search, url.origin);
   const normalizedReq = new Request(normalizedUrl.toString(), {
     method: req.method,
@@ -331,28 +337,47 @@ serve(async (req) => {
   console.log('LazGPT Worker - Normalized path:', pathname);
   console.log('LazGPT Worker - Full URL:', normalizedUrl.toString());
   console.log('LazGPT Worker - Router keys:', Object.keys(appRouter._def?.record || {}));
+  console.log('LazGPT Worker - Request method:', req.method);
 
-  const response = await fetchRequestHandler({
-    endpoint: "/api/trpc",
-    router: appRouter,
-    req: normalizedReq,
-    createContext: () => createContext(normalizedReq),
-    onError: ({ error, path, type }) => {
-      console.error(`LazGPT Worker tRPC error on '${path}':`, {
-        code: error.code,
-        message: error.message,
-        type,
-        path,
-        routerKeys: Object.keys(appRouter._def?.record || {}),
-      });
-    },
-  });
+  try {
+    const response = await fetchRequestHandler({
+      endpoint: "/api/trpc",
+      router: appRouter,
+      req: normalizedReq,
+      createContext: async () => await createContext(normalizedReq),
+      onError: ({ error, path, type }) => {
+        console.error(`LazGPT Worker tRPC error on '${path}':`, {
+          code: error.code,
+          message: error.message,
+          type,
+          path,
+          routerKeys: Object.keys(appRouter._def?.record || {}),
+        });
+      },
+    });
 
+    response.headers.set("Access-Control-Allow-Origin", "*");
+    response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
-  response.headers.set("Access-Control-Allow-Origin", "*");
-  response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-
-  return response;
+    return response;
+  } catch (error) {
+    console.error("LazGPT Worker error:", error);
+    return new Response(
+      JSON.stringify({ 
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : String(error)
+      }),
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+      }
+    );
+  }
 });
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { trpc } from '@/lib/trpc';
@@ -14,8 +15,7 @@ import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLogo } from '@/components/AppLogo';
-import { Calendar, Users, MapPin, Clock, AlertCircle, ChevronRight, Plus } from 'lucide-react-native';
-import { Image } from 'react-native';
+import { Calendar, MapPin, Clock, AlertCircle, ChevronRight, Plus } from 'lucide-react-native';
 
 export default function FootballScreen() {
   const router = useRouter();
@@ -29,25 +29,52 @@ export default function FootballScreen() {
     { enabled: !!user }
   );
 
+  const visibleMatches = useMemo(() => {
+    if (!todayMatches?.matches || !Array.isArray(todayMatches.matches)) return [];
+    const now = Date.now();
+    const gracePeriod = 5 * 60 * 1000; // 5 dakika tolerans
+    
+    return todayMatches.matches.filter((match: any) => {
+      // match_date_time varsa onu kullan, yoksa match_date ve start_time'i birleştir
+      let matchDateTime: string | null = null;
+      
+      if (match.match_date_time) {
+        matchDateTime = match.match_date_time;
+      } else if (match.match_date && match.start_time) {
+        // Tarih ve saati birleştir (Türkiye saati UTC+3)
+        matchDateTime = `${match.match_date}T${match.start_time}+03:00`;
+      }
+      
+      if (!matchDateTime) return false;
+      
+      const start = new Date(matchDateTime).getTime();
+      // Maç başlangıç zamanı + 5 dakika geçmişse listeden kaldır
+      return start + gracePeriod >= now;
+    });
+  }, [todayMatches]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await refetch();
     setRefreshing(false);
   };
 
-  const formatTime = (time: string) => {
-    return new Date(time).toLocaleTimeString('tr-TR', { 
+  const formatTime = (match: any) => {
+    // match_date_time varsa onu kullan, yoksa match_date ve start_time'i birleştir
+    let matchDateTime: string | null = null;
+    
+    if (match.match_date_time) {
+      matchDateTime = match.match_date_time;
+    } else if (match.match_date && match.start_time) {
+      matchDateTime = `${match.match_date}T${match.start_time}+03:00`;
+    }
+    
+    if (!matchDateTime) return '--:--';
+    
+    return new Date(matchDateTime).toLocaleTimeString('tr-TR', { 
       hour: '2-digit', 
       minute: '2-digit',
       timeZone: 'Europe/Istanbul',
-    });
-  };
-
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString('tr-TR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
     });
   };
 
@@ -59,7 +86,7 @@ export default function FootballScreen() {
       <View style={styles.matchHeader}>
         <View style={styles.matchTimeContainer}>
           <Clock size={16} color={COLORS.primary} />
-          <Text style={styles.matchTime}>{formatTime(item.match_date)}</Text>
+          <Text style={styles.matchTime}>{formatTime(item)}</Text>
         </View>
         <View style={styles.matchFieldContainer}>
           <MapPin size={14} color={COLORS.textLight} />
@@ -117,9 +144,9 @@ export default function FootballScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
-      ) : todayMatches && todayMatches.length > 0 ? (
+      ) : visibleMatches.length > 0 ? (
         <FlatList
-          data={todayMatches}
+          data={visibleMatches}
           renderItem={renderMatch}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
@@ -129,7 +156,11 @@ export default function FootballScreen() {
         />
       ) : (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Bugün maç yok</Text>
+          <Text style={styles.emptyText}>
+            {todayMatches?.matches && Array.isArray(todayMatches.matches) && todayMatches.matches.length > 0
+              ? 'Planlanan maçlar tamamlandı'
+              : 'Bugün maç yok'}
+          </Text>
           <TouchableOpacity
             style={styles.createMatchButton}
             onPress={() => router.push('/football/create-match' as any)}

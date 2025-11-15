@@ -81,6 +81,10 @@ export interface UserProfile {
   points: number;
   deletion_requested_at: string | null;
   deletion_scheduled_at: string | null;
+  supporter_badge: boolean;
+  supporter_badge_color: 'yellow' | 'green' | 'blue' | 'red' | null;
+  supporter_badge_visible: boolean;
+  supporter_badge_expires_at: string | null;
   created_at: string;
   updated_at: string;
 }

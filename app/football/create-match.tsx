@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,16 +15,15 @@ import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
-import { useAuth } from '@/contexts/AuthContext';
-import { ArrowLeft, Calendar, Clock, MapPin, ChevronDown } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown } from 'lucide-react-native';
 import { TRABZON_DISTRICTS, GIRESUN_DISTRICTS } from '@/constants/districts';
 
 export default function CreateMatchScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [showDistrictPicker, setShowDistrictPicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [formData, setFormData] = useState({
     field_name: '',
     city: 'Trabzon' as 'Trabzon' | 'Giresun',
@@ -48,6 +47,7 @@ export default function CreateMatchScreen() {
   });
 
   const districts = formData.city === 'Trabzon' ? TRABZON_DISTRICTS : GIRESUN_DISTRICTS;
+  const timeSlots = useMemo(() => generateTimeSlots(), []);
 
   const handleSubmit = async () => {
     if (!formData.field_name || !formData.district || !formData.match_date || !formData.match_time) {
@@ -275,30 +275,49 @@ export default function CreateMatchScreen() {
 
         <View style={styles.formGroup}>
           <Text style={styles.label}>Saat *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Örnek: 18:00"
-            value={formData.match_time}
-            onChangeText={(text) => {
-              // Sadece rakam ve tek nokta üst üste (:) kabul et
-              let cleaned = text.replace(/[^0-9:]/g, '');
-              // Çift nokta üst üste (::) yerine tek nokta üst üste (:) kullan
-              cleaned = cleaned.replace(/::/g, ':');
-              // Birden fazla iki nokta üst üste varsa sadece bir tane bırak
-              const parts = cleaned.split(':');
-              if (parts.length > 2) {
-                cleaned = parts[0] + ':' + parts.slice(1).join('');
-              }
-              // Maksimum 5 karakter (HH:MM)
-              if (cleaned.length > 5) {
-                cleaned = cleaned.substring(0, 5);
-              }
-              setFormData({ ...formData, match_time: cleaned });
-            }}
-            keyboardType="numeric"
-            maxLength={5}
-          />
-          <Text style={styles.hintText}>Format: SS:DD (Örnek: 18:00)</Text>
+          <TouchableOpacity
+            style={styles.pickerButton}
+            onPress={() => setShowTimePicker(!showTimePicker)}
+          >
+            <Text
+              style={[
+                styles.pickerButtonText,
+                !formData.match_time && styles.pickerButtonPlaceholder,
+              ]}
+            >
+              {formData.match_time || 'Saat seçin'}
+            </Text>
+            <ChevronDown size={20} color={COLORS.textLight} />
+          </TouchableOpacity>
+          <Text style={styles.hintText}>12:00 - 23:45 arası 15 dakikalık dilimler</Text>
+          {showTimePicker && (
+            <View style={styles.districtPicker}>
+              <ScrollView style={styles.districtScroll} nestedScrollEnabled>
+                {timeSlots.map((slot) => (
+                  <TouchableOpacity
+                    key={slot}
+                    style={[
+                      styles.districtOption,
+                      formData.match_time === slot && styles.districtOptionActive,
+                    ]}
+                    onPress={() => {
+                      setFormData({ ...formData, match_time: slot });
+                      setShowTimePicker(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.districtOptionText,
+                        formData.match_time === slot && styles.districtOptionTextActive,
+                      ]}
+                    >
+                      {slot}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
         </View>
 
         <View style={styles.formGroup}>
@@ -357,6 +376,17 @@ export default function CreateMatchScreen() {
       </ScrollView>
     </KeyboardAvoidingView>
   );
+}
+
+function generateTimeSlots() {
+  const slots: string[] = [];
+  for (let hour = 12; hour < 24; hour++) {
+    for (const minute of [0, 15, 30, 45]) {
+      const label = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+      slots.push(label);
+    }
+  }
+  return slots;
 }
 
 const styles = StyleSheet.create({

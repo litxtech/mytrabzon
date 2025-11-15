@@ -16,6 +16,7 @@ import { addMembersProcedure } from "./routes/chat/add-members/route";
 import { removeMemberProcedure } from "./routes/chat/remove-member/route";
 import { leaveRoomProcedure } from "./routes/chat/leave-room/route";
 import { deleteRoomProcedure } from "./routes/chat/delete-room/route";
+import { updateMessageProcedure } from "./routes/chat/update-message/route";
 import { createPostProcedure } from "./routes/post/create-post/route";
 import { getPostsProcedure } from "./routes/post/get-posts/route";
 import { likePostProcedure } from "./routes/post/like-post/route";
@@ -38,6 +39,12 @@ import { shareReelProcedure } from "./routes/post/share-reel/route";
 import { updateProfileProcedure } from "./routes/user/update-profile/route";
 import { uploadAvatarProcedure } from "./routes/user/upload-avatar/route";
 import { getProfileProcedure } from "./routes/user/get-profile/route";
+import { followUserProcedure } from "./routes/user/follow/route";
+import { unfollowUserProcedure } from "./routes/user/unfollow/route";
+import { checkFollowStatusProcedure } from "./routes/user/check-follow-status/route";
+import { getFollowersProcedure } from "./routes/user/get-followers/route";
+import { getFollowingProcedure } from "./routes/user/get-following/route";
+import { getFollowStatsProcedure } from "./routes/user/get-follow-stats/route";
 import { checkAdminProcedure } from "./routes/admin/check-admin/route";
 import { getUsersProcedure } from "./routes/admin/get-users/route";
 import { banUserProcedure } from "./routes/admin/ban-user/route";
@@ -80,6 +87,12 @@ export const appRouter = createTRPCRouter({
     updateProfile: updateProfileProcedure,
     uploadAvatar: uploadAvatarProcedure,
     getProfile: getProfileProcedure,
+    follow: followUserProcedure,
+    unfollow: unfollowUserProcedure,
+    checkFollowStatus: checkFollowStatusProcedure,
+    getFollowers: getFollowersProcedure,
+    getFollowing: getFollowingProcedure,
+    getFollowStats: getFollowStatsProcedure,
   }),
   chat: createTRPCRouter({
     getRooms: getRoomsProcedure,
@@ -88,6 +101,7 @@ export const appRouter = createTRPCRouter({
     createRoom: createRoomProcedure,
     markAsRead: markAsReadProcedure,
     deleteMessage: deleteMessageProcedure,
+    updateMessage: updateMessageProcedure,
     addReaction: addReactionProcedure,
     blockUser: blockUserProcedure,
     unblockUser: unblockUserProcedure,

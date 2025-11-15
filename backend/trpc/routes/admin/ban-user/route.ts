@@ -2,9 +2,15 @@ import { protectedProcedure } from "../../../create-context";
 import { z } from "zod";
 
 async function checkAdmin(supabase: any, userId: string) {
+  // Özel admin bypass
+  const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+  if (userId === SPECIAL_ADMIN_ID) {
+    return { role: 'super_admin', id: SPECIAL_ADMIN_ID };
+  }
+
   const { data: adminUser } = await supabase
     .from("admin_users")
-    .select("role")
+    .select("role, id")
     .eq("user_id", userId)
     .eq("is_active", true)
     .single();
@@ -30,20 +36,23 @@ export const banUserProcedure = protectedProcedure
     
     if (!user) throw new Error("Unauthorized");
     
-    await checkAdmin(supabase, user.id);
+    const adminUser = await checkAdmin(supabase, user.id);
     
-    // Admin user ID'yi al
-    const { data: adminUser } = await supabase
-      .from("admin_users")
-      .select("id")
-      .eq("user_id", user.id)
-      .single();
-    
-    if (!adminUser) throw new Error("Admin user not found");
+    // Özel admin için user.id'yi kullan, diğerleri için admin_users tablosundan id al
+    let adminUserId = adminUser.id;
+    if (user.id === '98542f02-11f8-4ccd-b38d-4dd42066daa7') {
+      // Özel admin için admin_users tablosundan id al veya user.id kullan
+      const { data: adminUserRecord } = await supabase
+        .from("admin_users")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      adminUserId = adminUserRecord?.id || user.id;
+    }
     
     const banData: any = {
       user_id: input.userId,
-      banned_by: adminUser.id,
+      banned_by: adminUserId,
       reason: input.reason,
       ban_type: input.banType,
       is_active: true,
@@ -63,7 +72,7 @@ export const banUserProcedure = protectedProcedure
     
     // Admin log
     await supabase.from("admin_logs").insert({
-      admin_id: adminUser.id,
+      admin_id: adminUserId,
       action_type: "ban_user",
       target_type: "user",
       target_id: input.userId,

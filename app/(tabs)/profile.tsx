@@ -1,19 +1,155 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Share, Platform, FlatList, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
-import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, Sparkles } from 'lucide-react-native';
+import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, Sparkles, MoreVertical, Share2, Users } from 'lucide-react-native';
 import { DISTRICT_BADGES } from '../../constants/districts';
 import { useRouter } from 'expo-router';
 import { Footer } from '../../components/Footer';
 import { SupportPanel } from '../../components/SupportPanel';
+import { SupporterBadge } from '../../components/SupporterBadge';
 import { trpc } from '../../lib/trpc';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+type QuickAction = {
+  id: string;
+  label: string;
+  icon: any;
+  onPress?: () => void;
+  disabled?: boolean;
+  tone?: 'danger' | 'success';
+};
+
+// Takipçiler Listesi Component
+function FollowersList({ userId }: { userId: string }) {
+  const router = useRouter();
+  const { data, isLoading } = trpc.user.getFollowers.useQuery(
+    { user_id: userId, limit: 100, offset: 0 },
+    { enabled: !!userId }
+  );
+
+  if (isLoading) {
+    return (
+      <View style={styles.modalLoadingContainer}>
+        <ActivityIndicator size="small" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (!data?.followers || data.followers.length === 0) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Users size={48} color={COLORS.textLight} />
+        <Text style={styles.emptyText}>Henüz takipçi yok</Text>
+        <Text style={styles.emptySubtext}>
+          Paylaşımlarınızı artırarak daha fazla takipçi kazanabilirsiniz
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <FlatList
+      data={data.followers}
+      keyExtractor={(item) => item.id}
+      renderItem={({ item }) => (
+        <TouchableOpacity
+          style={styles.followerItem}
+          onPress={() => router.push(`/profile/${item.id}` as any)}
+        >
+          <Image
+            source={{ uri: item.avatar_url || 'https://via.placeholder.com/50' }}
+            style={styles.followerAvatar}
+          />
+          <View style={styles.followerInfo}>
+            <Text style={styles.followerName}>{item.full_name}</Text>
+            {item.username && (
+              <Text style={styles.followerUsername}>@{item.username}</Text>
+            )}
+          </View>
+          {item.supporter_badge && item.supporter_badge_visible && (
+            <SupporterBadge
+              visible={true}
+              size="small"
+              color={item.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
+            />
+          )}
+        </TouchableOpacity>
+      )}
+      contentContainerStyle={styles.modalListContent}
+    />
+  );
+}
+
+// Takip Edilenler Listesi Component
+function FollowingList({ userId }: { userId: string }) {
+  const router = useRouter();
+  const { data, isLoading } = trpc.user.getFollowing.useQuery(
+    { user_id: userId, limit: 100, offset: 0 },
+    { enabled: !!userId }
+  );
+
+  if (isLoading) {
+    return (
+      <View style={styles.modalLoadingContainer}>
+        <ActivityIndicator size="small" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (!data?.following || data.following.length === 0) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Users size={48} color={COLORS.textLight} />
+        <Text style={styles.emptyText}>Henüz kimseyi takip etmiyorsunuz</Text>
+        <Text style={styles.emptySubtext}>
+          İlginizi çeken kullanıcıları takip ederek içeriklerini görebilirsiniz
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <FlatList
+      data={data.following}
+      keyExtractor={(item) => item.id}
+      renderItem={({ item }) => (
+        <TouchableOpacity
+          style={styles.followerItem}
+          onPress={() => router.push(`/profile/${item.id}` as any)}
+        >
+          <Image
+            source={{ uri: item.avatar_url || 'https://via.placeholder.com/50' }}
+            style={styles.followerAvatar}
+          />
+          <View style={styles.followerInfo}>
+            <Text style={styles.followerName}>{item.full_name}</Text>
+            {item.username && (
+              <Text style={styles.followerUsername}>@{item.username}</Text>
+            )}
+          </View>
+          {item.supporter_badge && item.supporter_badge_visible && (
+            <SupporterBadge
+              visible={true}
+              size="small"
+              color={item.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
+            />
+          )}
+        </TouchableOpacity>
+      )}
+      contentContainerStyle={styles.modalListContent}
+    />
+  );
+}
+
 export default function ProfileScreen() {
   const { profile, user, signOut } = useAuth();
   const router = useRouter();
   const [supportVisible, setSupportVisible] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [followersModalVisible, setFollowersModalVisible] = useState(false);
+  const [followingModalVisible, setFollowingModalVisible] = useState(false);
   const insets = useSafeAreaInsets();
 
   const deleteAccountMutation = trpc.user.requestAccountDeletion.useMutation();
@@ -63,8 +199,52 @@ export default function ProfileScreen() {
     enabled: !!user?.id, // Sadece user varsa query çalışsın
   });
 
+  // Kullanıcının geçmiş maçlarını getir
+  const { data: userMatchesData, isLoading: matchesLoading } = trpc.football.getUserMatches.useQuery(
+    {
+      user_id: user?.id || '',
+      limit: 20,
+      offset: 0,
+    },
+    {
+      enabled: !!user?.id,
+    }
+  );
+
+  // Geçmiş maçları filtrele (süresi geçmiş olanlar)
+  const pastMatches = useMemo(() => {
+    if (!userMatchesData?.matches || !Array.isArray(userMatchesData.matches)) return [];
+    const now = Date.now();
+    const gracePeriod = 5 * 60 * 1000; // 5 dakika tolerans
+    
+    return userMatchesData.matches.filter((match: any) => {
+      let matchDateTime: string | null = null;
+      
+      if (match.match_date_time) {
+        matchDateTime = match.match_date_time;
+      } else if (match.match_date && match.start_time) {
+        matchDateTime = `${match.match_date}T${match.start_time}+03:00`;
+      }
+      
+      if (!matchDateTime) return false;
+      
+      const start = new Date(matchDateTime).getTime();
+      // Süresi geçmiş maçlar (başlangıç + 5 dakika < şimdi)
+      return start + gracePeriod < now;
+    });
+  }, [userMatchesData]);
+
   // İstatistikleri hesapla
   const totalPosts = postsData?.posts?.length || 0;
+  
+  // Takipçi ve takip sayılarını getir
+  const { data: followStats } = trpc.user.getFollowStats.useQuery(
+    { user_id: user?.id || '' },
+    { enabled: !!user?.id }
+  );
+  
+  const followersCount = followStats?.followers_count || 0;
+  const followingCount = followStats?.following_count || 0;
 
   const handleLogout = async () => {
     await signOut();
@@ -106,14 +286,100 @@ export default function ProfileScreen() {
     );
   };
 
+  const handleShareProfile = async () => {
+    try {
+      const message = `MyTrabzon profilimi keşfet: ${profile?.full_name || 'Kullanıcı'}`;
+      await Share.share({ message });
+    } catch (error: any) {
+      Alert.alert('Hata', error.message || 'Paylaşım yapılamadı');
+    } finally {
+      setMenuVisible(false);
+    }
+  };
+
+  const handleNavigate = (path: string) => {
+    setMenuVisible(false);
+    router.push(path as any);
+  };
+
+  const kycAction = (() => {
+    if (profile?.verified) {
+      return {
+        id: 'kyc-verified',
+        label: 'Kimlik Onaylı',
+        icon: CheckCircle2,
+        disabled: true,
+        tone: 'success',
+      };
+    }
+
+    if (kycData?.status === 'pending') {
+      return {
+        id: 'kyc-pending',
+        label: 'Onay Bekleniyor',
+        icon: Clock,
+        disabled: true,
+      };
+    }
+
+    if (kycData?.status === 'rejected') {
+      return {
+        id: 'kyc-retry',
+        label: 'Tekrar Doğrula',
+        icon: XCircle,
+        onPress: () => handleNavigate('/kyc/verify'),
+        tone: 'danger',
+      };
+    }
+
+    return {
+      id: 'kyc-start',
+      label: 'Kimliği Doğrula',
+      icon: Shield,
+      onPress: () => handleNavigate('/kyc/verify'),
+    };
+  })();
+
+  // Sadece "Profili Düzenle" ve "Destekle" butonları grid'de kalacak
+  const quickActions: QuickAction[] = [
+    { id: 'edit', label: 'Profili Düzenle', icon: Edit3, onPress: () => handleNavigate('/profile/edit') },
+    { id: 'donate', label: 'Destekle', icon: Heart, onPress: () => handleNavigate('/support/donate') },
+  ];
+
+  // Menüye eklenecek butonlar
+  const menuActions: QuickAction[] = [
+    { id: 'share', label: 'Profili Paylaş', icon: Share2, onPress: handleShareProfile },
+    { id: 'settings', label: 'Ayarlar', icon: Settings, onPress: () => handleNavigate('/profile/settings') },
+    { id: 'lazgpt', label: 'LazGPT', icon: Sparkles, onPress: () => handleNavigate('/lazgpt/chat') },
+    { id: 'support', label: 'Destek', icon: HelpCircle, onPress: () => { setMenuVisible(false); setSupportVisible(true); } },
+    kycAction as QuickAction,
+    { id: 'logout', label: 'Çıkış Yap', icon: LogOut, onPress: () => { setMenuVisible(false); handleLogout(); }, tone: 'danger' },
+    { id: 'delete', label: 'Hesabı Sil', icon: Trash2, onPress: () => { setMenuVisible(false); handleDeleteAccount(); }, tone: 'danger' },
+  ];
+
+  if (isAdmin) {
+    menuActions.splice(4, 0, {
+      id: 'admin',
+      label: 'Admin Paneli',
+      icon: Shield,
+      onPress: () => handleNavigate('/admin/dashboard'),
+    });
+  }
+
 
   if (!profile) return null;
 
   return (
-    <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+    <View style={[styles.container, { paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.md) : 0 }]}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: Platform.OS === 'android' ? SPACING.lg : 0 }}
+      >
         {/* Header - Resimdeki gibi */}
         <View style={[styles.profileHeader, { paddingTop: Math.max(insets.top, SPACING.md) }]}>
+          <TouchableOpacity style={styles.menuButton} onPress={() => setMenuVisible(true)}>
+            <MoreVertical size={20} color={COLORS.text} />
+          </TouchableOpacity>
           <View style={styles.profileTopRow}>
             <View style={styles.profileLeft}>
               <View style={styles.avatarContainer}>
@@ -128,18 +394,24 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.profileRight}>
               <View style={styles.statsRow}>
-                <View style={styles.statItem}>
+                <TouchableOpacity style={styles.statItem} onPress={() => {}}>
                   <Text style={styles.statValue}>{totalPosts}</Text>
                   <Text style={styles.statLabel}>gönderi</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statValue}>0</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.statItem} 
+                  onPress={() => setFollowersModalVisible(true)}
+                >
+                  <Text style={styles.statValue}>{followersCount}</Text>
                   <Text style={styles.statLabel}>takipçi</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statValue}>0</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.statItem} 
+                  onPress={() => setFollowingModalVisible(true)}
+                >
+                  <Text style={styles.statValue}>{followingCount}</Text>
                   <Text style={styles.statLabel}>takip</Text>
-                </View>
+                </TouchableOpacity>
               </View>
             </View>
           </View>
@@ -151,6 +423,13 @@ export default function ProfileScreen() {
                 <View style={styles.verifiedDot}>
                   <Text style={styles.verifiedText}>✓</Text>
                 </View>
+              )}
+              {profile.supporter_badge && profile.supporter_badge_visible && (
+                <SupporterBadge 
+                  visible={true} 
+                  size="small" 
+                  color={profile.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
+                />
               )}
             </View>
             {profile.username && (
@@ -168,31 +447,47 @@ export default function ProfileScreen() {
                 </Text>
               </View>
             )}
+            {/* Mesaj Butonu - Kendi profiline mesaj göndermek mantıklı değil, bu yüzden kaldırıldı */}
           </View>
 
-          <View style={styles.actionButtons}>
-            <TouchableOpacity 
-              style={styles.editButton}
-              onPress={() => router.push('/profile/edit')}
-            >
-              <Text style={styles.editButtonText}>Düzenle</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.shareButton}
-              onPress={() => Alert.alert('Paylaş', 'Profil paylaşma özelliği yakında eklenecek')}
-            >
-              <Text style={styles.shareButtonText}>Profili paylaş</Text>
-            </TouchableOpacity>
-          </View>
+        <View style={styles.quickActions}>
+          {quickActions.map((action) => {
+            const IconComponent = action.icon;
+            const isDisabled = action.disabled;
+            const toneColor =
+              action.tone === 'danger'
+                ? COLORS.error
+                : action.tone === 'success'
+                ? COLORS.success
+                : COLORS.primary;
+            return (
+              <TouchableOpacity
+                key={action.id}
+                style={[styles.quickActionCard, isDisabled && styles.quickActionCardDisabled]}
+                onPress={action.onPress}
+                disabled={isDisabled || !action.onPress}
+                activeOpacity={isDisabled ? 1 : 0.8}
+              >
+                <IconComponent size={18} color={toneColor} />
+                <Text
+                  style={[
+                    styles.quickActionLabel,
+                    isDisabled && styles.quickActionLabelDisabled,
+                  ]}
+                >
+                  {action.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
-        {/* Tab Navigation - Grid, Reels, Tagged */}
+        </View>
+
+        {/* Tab Navigation - Grid, Tagged */}
         <View style={styles.tabNavigation}>
           <TouchableOpacity style={[styles.tab, styles.tabActive]}>
             <View style={styles.tabIcon} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.tab}>
-            <View style={[styles.tabIcon, styles.tabIconReels]} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.tab}>
             <View style={[styles.tabIcon, styles.tabIconTagged]} />
@@ -254,90 +549,152 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        <View style={styles.menuSection}>
-          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/profile/edit')}>
-            <Edit3 size={20} color={COLORS.text} />
-            <Text style={styles.menuText}>Profili Düzenle</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/profile/settings')}>
-            <Settings size={20} color={COLORS.text} />
-            <Text style={styles.menuText}>Ayarlar</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/lazgpt/chat')}>
-            <Sparkles size={20} color={COLORS.primary} />
-            <Text style={[styles.menuText, { color: COLORS.primary, fontWeight: '600' }]}>LazGPT ile Sohbet</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.menuItem, { backgroundColor: COLORS.primary + '20', borderLeftWidth: 3, borderLeftColor: COLORS.primary }]} 
-            onPress={() => router.push('/support/donate')}
-          >
-            <Heart size={20} color={COLORS.primary} />
-            <Text style={[styles.menuText, { color: COLORS.primary, fontWeight: '700' }]}>❤️ MyTrabzon&apos;u Destekle</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.menuItem} onPress={() => setSupportVisible(true)}>
-            <HelpCircle size={20} color={COLORS.text} />
-            <Text style={styles.menuText}>Destek</Text>
-          </TouchableOpacity>
-
-          {/* KYC Butonu */}
-          {profile?.verified ? (
-            <View style={[styles.menuItem, styles.verifiedItem]}>
-              <CheckCircle2 size={20} color={COLORS.success} />
-              <Text style={[styles.menuText, { color: COLORS.success, fontWeight: '600' }]}>Kimlik Doğrulandı ✓</Text>
+        {/* Geçmiş Maçlar Bölümü */}
+        {pastMatches.length > 0 && (
+          <View style={styles.matchesSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Geçmiş Maçlar</Text>
             </View>
-          ) : kycData?.status === 'pending' ? (
-            <View style={[styles.menuItem, styles.pendingItem]}>
-              <Clock size={20} color={COLORS.warning} />
-              <Text style={[styles.menuText, { color: COLORS.warning }]}>Kimlik Doğrulama Beklemede</Text>
+            <View style={styles.matchesList}>
+              {pastMatches.map((match: any) => {
+                let matchDateTime: string | null = null;
+                if (match.match_date_time) {
+                  matchDateTime = match.match_date_time;
+                } else if (match.match_date && match.start_time) {
+                  matchDateTime = `${match.match_date}T${match.start_time}+03:00`;
+                }
+                
+                const formattedDate = matchDateTime 
+                  ? new Date(matchDateTime).toLocaleDateString('tr-TR', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                    })
+                  : 'Tarih bilgisi yok';
+                
+                const formattedTime = matchDateTime
+                  ? new Date(matchDateTime).toLocaleTimeString('tr-TR', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : '--:--';
+
+                return (
+                  <TouchableOpacity
+                    key={match.id}
+                    style={styles.matchItem}
+                    onPress={() => router.push(`/football/match/${match.id}` as any)}
+                  >
+                    <View style={styles.matchItemContent}>
+                      <Text style={styles.matchItemField}>{match.field?.name || 'Halı Saha'}</Text>
+                      <Text style={styles.matchItemDate}>{formattedDate}</Text>
+                      <Text style={styles.matchItemTime}>{formattedTime}</Text>
+                      {match.district && (
+                        <Text style={styles.matchItemDistrict}>{match.district}</Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-          ) : kycData?.status === 'rejected' ? (
-            <TouchableOpacity 
-              style={[styles.menuItem, styles.rejectedItem]} 
-              onPress={() => router.push('/kyc/verify')}
-            >
-              <XCircle size={20} color={COLORS.error} />
-              <Text style={[styles.menuText, { color: COLORS.error }]}>Kimlik Doğrulama Reddedildi - Tekrar Dene</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity 
-              style={[styles.menuItem, styles.verifyItem]} 
-              onPress={() => router.push('/kyc/verify')}
-            >
-              <Shield size={20} color={COLORS.primary} />
-              <Text style={[styles.menuText, { color: COLORS.primary, fontWeight: '600' }]}>Kimliği Doğrula</Text>
-            </TouchableOpacity>
-          )}
-
-          {isAdmin && (
-            <TouchableOpacity 
-              style={[styles.menuItem, styles.adminMenuItem]} 
-              onPress={() => router.push('/admin/dashboard')}
-            >
-              <Shield size={20} color={COLORS.primary} />
-              <Text style={[styles.menuText, { color: COLORS.primary, fontWeight: '700' }]}>Admin Paneli</Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity style={styles.menuItem} onPress={handleDeleteAccount}>
-            <Trash2 size={20} color={COLORS.error} />
-            <Text style={[styles.menuText, { color: COLORS.error }]}>Hesabı Sil</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
-            <LogOut size={20} color={COLORS.error} />
-            <Text style={[styles.menuText, { color: COLORS.error }]}>Çıkış Yap</Text>
-          </TouchableOpacity>
-        </View>
-
+          </View>
+        )}
 
         <Footer />
       </ScrollView>
 
+      <Modal
+        visible={menuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuVisible(false)}
+      >
+        <View style={styles.menuOverlay}>
+          <View style={styles.menuContent}>
+            <Text style={styles.menuTitle}>Profil menüsü</Text>
+            {menuActions.map((action) => {
+              const IconComponent = action.icon;
+              const isDisabled = action.disabled;
+              const toneColor =
+                action.tone === 'danger'
+                  ? COLORS.error
+                  : action.tone === 'success'
+                  ? COLORS.success
+                  : COLORS.text;
+              
+              return (
+                <TouchableOpacity
+                  key={action.id}
+                  style={[
+                    styles.menuOption,
+                    action.tone === 'danger' && styles.menuOptionDanger,
+                    isDisabled && styles.menuOptionDisabled
+                  ]}
+                  onPress={() => {
+                    if (!isDisabled && action.onPress) {
+                      action.onPress();
+                    }
+                  }}
+                  disabled={isDisabled || !action.onPress}
+                >
+                  <IconComponent size={18} color={toneColor} />
+                  <Text
+                    style={[
+                      styles.menuOptionText,
+                      action.tone === 'danger' && styles.menuOptionDangerText,
+                      isDisabled && styles.menuOptionTextDisabled
+                    ]}
+                  >
+                    {action.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </Modal>
+
       <SupportPanel visible={supportVisible} onClose={() => setSupportVisible(false)} />
+
+      {/* Takipçiler Modal */}
+      <Modal
+        visible={followersModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setFollowersModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.followersModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Takipçiler</Text>
+              <TouchableOpacity onPress={() => setFollowersModalVisible(false)}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <FollowersList userId={user?.id || ''} />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Takip Edilenler Modal */}
+      <Modal
+        visible={followingModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setFollowingModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.followersModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Takip Edilenler</Text>
+              <TouchableOpacity onPress={() => setFollowingModalVisible(false)}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <FollowingList userId={user?.id || ''} />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -352,6 +709,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.lg,
+    position: 'relative',
   },
   profileTopRow: {
     flexDirection: 'row',
@@ -414,6 +772,36 @@ const styles = StyleSheet.create({
   profileInfo: {
     marginBottom: SPACING.md,
   },
+  quickActions: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    justifyContent: 'space-between',
+    marginTop: SPACING.md,
+  },
+  quickActionCard: {
+    width: '48%',
+    backgroundColor: COLORS.background,
+    borderRadius: 12,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  quickActionCardDisabled: {
+    opacity: 0.6,
+  },
+  quickActionLabel: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  quickActionLabelDisabled: {
+    color: COLORS.textLight,
+  },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -451,38 +839,18 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
   },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING.md,
-  },
-  editButton: {
-    flex: 1,
+  menuButton: {
+    position: 'absolute',
+    top: SPACING.md + SPACING.sm,
+    right: SPACING.md,
+    padding: SPACING.md,
+    minWidth: 44,
+    minHeight: 44,
+    borderRadius: 12,
     backgroundColor: COLORS.background,
-    paddingVertical: SPACING.sm,
-    borderRadius: 8,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  editButtonText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  shareButton: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-    paddingVertical: SPACING.sm,
-    borderRadius: 8,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  shareButtonText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    color: COLORS.text,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    zIndex: 10,
   },
   tabNavigation: {
     flexDirection: 'row',
@@ -503,20 +871,18 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.text,
   },
   tabIcon: {
-    width: 24,
-    height: 24,
+    width: 18,
+    height: 18,
     borderWidth: 1.5,
     borderColor: COLORS.text,
-  },
-  tabIconReels: {
-    borderRadius: 4,
   },
   tabIconTagged: {
     borderRadius: 12,
   },
   postsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    width: '100%',
     backgroundColor: COLORS.white,
   },
   postGridItem: {
@@ -524,7 +890,8 @@ const styles = StyleSheet.create({
     aspectRatio: 1,
     borderWidth: 0.5,
     borderColor: COLORS.border,
-    position: 'relative',
+    position: 'relative' as const,
+    overflow: 'hidden' as const,
   },
   postGridImage: {
     width: '100%',
@@ -655,48 +1022,6 @@ const styles = StyleSheet.create({
     width: '100%',
     marginTop: SPACING.md,
   },
-  menuSection: {
-    backgroundColor: COLORS.white,
-    marginBottom: SPACING.md,
-  },
-  menuItem: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    gap: SPACING.md,
-  },
-  adminMenuItem: {
-    backgroundColor: COLORS.primary + '20',
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.primary,
-  },
-  verifyItem: {
-    backgroundColor: COLORS.primary + '20',
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.primary,
-  },
-  verifiedItem: {
-    backgroundColor: COLORS.success + '20',
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.success,
-  },
-  pendingItem: {
-    backgroundColor: COLORS.warning + '20',
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.warning,
-  },
-  rejectedItem: {
-    backgroundColor: COLORS.error + '20',
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.error,
-  },
-  menuText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
-  },
   postsSection: {
     backgroundColor: COLORS.white,
     marginBottom: SPACING.md,
@@ -788,5 +1113,176 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
     textAlign: 'center' as const,
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  menuContent: {
+    backgroundColor: COLORS.white,
+    padding: SPACING.lg,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    gap: SPACING.sm,
+  },
+  menuTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  menuOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+  },
+  menuOptionText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  menuOptionDanger: {
+    borderTopWidth: 1,
+    borderColor: COLORS.border,
+    marginTop: SPACING.sm,
+    paddingTop: SPACING.sm,
+  },
+  menuOptionDangerText: {
+    color: COLORS.error,
+  },
+  menuOptionDisabled: {
+    opacity: 0.5,
+  },
+  menuOptionTextDisabled: {
+    color: COLORS.textLight,
+  },
+  messageButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: 20,
+    marginTop: SPACING.md,
+    gap: SPACING.xs,
+  },
+  messageButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600' as const,
+  },
+  followersModalContent: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: SPACING.lg,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  modalCloseText: {
+    fontSize: FONT_SIZES.xl,
+    color: COLORS.textLight,
+    fontWeight: '300' as const,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  modalLoadingContainer: {
+    padding: SPACING.xl,
+    alignItems: 'center' as const,
+  },
+  modalListContent: {
+    padding: SPACING.md,
+  },
+  followerItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    gap: SPACING.md,
+  },
+  followerAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+  followerInfo: {
+    flex: 1,
+  },
+  followerName: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600' as const,
+    color: COLORS.text,
+    marginBottom: 2,
+  },
+  followerUsername: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+  },
+  matchesSection: {
+    backgroundColor: COLORS.white,
+    marginTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  sectionHeader: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  sectionTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  matchesList: {
+    padding: SPACING.md,
+  },
+  matchItem: {
+    backgroundColor: COLORS.background,
+    borderRadius: 12,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  matchItemContent: {
+    gap: SPACING.xs,
+  },
+  matchItemField: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  matchItemDate: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+  },
+  matchItemTime: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  matchItemDistrict: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
   },
 });

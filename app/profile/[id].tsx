@@ -24,6 +24,7 @@ import {
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CallButtons } from '@/components/CallButtons';
+import { SupporterBadge } from '@/components/SupporterBadge';
 
 // Mesaj butonu component'i
 function MessageButton({ targetUserId }: { targetUserId: string }) {
@@ -49,8 +50,7 @@ function MessageButton({ targetUserId }: { targetUserId: string }) {
       onPress={handleMessage}
       disabled={createRoomMutation.isPending}
     >
-      <MessageCircle size={20} color={COLORS.white} />
-      <Text style={styles.messageButtonText}>Mesaj</Text>
+      <MessageCircle size={18} color={COLORS.white} />
     </TouchableOpacity>
   );
 }
@@ -83,6 +83,35 @@ export default function UserProfileScreen() {
       enabled: !!id,
     }
   );
+
+  // Takip durumunu kontrol et
+  const { data: followStatus, refetch: refetchFollowStatus } = trpc.user.checkFollowStatus.useQuery(
+    { user_id: id! },
+    { enabled: !!id && !!currentUser && !isOwnProfile }
+  );
+
+  // Takipçi ve takip sayılarını getir
+  const { data: followStats } = trpc.user.getFollowStats.useQuery(
+    { user_id: id! },
+    { enabled: !!id }
+  );
+
+  // Takip/Takipten çık mutation'ları
+  const followMutation = trpc.user.follow.useMutation({
+    onSuccess: () => {
+      refetchFollowStatus();
+    },
+  });
+
+  const unfollowMutation = trpc.user.unfollow.useMutation({
+    onSuccess: () => {
+      refetchFollowStatus();
+    },
+  });
+
+  const isFollowing = followStatus?.is_following || false;
+  const followersCount = followStats?.followers_count || 0;
+  const followingCount = followStats?.following_count || 0;
 
   if (profileLoading) {
     return (
@@ -163,7 +192,21 @@ export default function UserProfileScreen() {
             )}
           </View>
 
-          <Text style={styles.name}>{profile.full_name || 'İsimsiz'}</Text>
+          <View style={styles.nameRow}>
+            <Text style={styles.name}>{profile.full_name || 'İsimsiz'}</Text>
+            {profile.verified && (
+              <View style={styles.verifiedBadge}>
+                <Text style={styles.verifiedText}>✓</Text>
+              </View>
+            )}
+            {profile.supporter_badge && profile.supporter_badge_visible && (
+              <SupporterBadge 
+                visible={true} 
+                size="small" 
+                color={profile.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
+              />
+            )}
+          </View>
           {profile.username && (
             <Text style={styles.username}>@{profile.username}</Text>
           )}
@@ -190,19 +233,45 @@ export default function UserProfileScreen() {
               <Text style={styles.statLabel}>Gönderi</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{totalLikes}</Text>
-              <Text style={styles.statLabel}>Beğeni</Text>
+              <Text style={styles.statNumber}>{followersCount}</Text>
+              <Text style={styles.statLabel}>Takipçi</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{followingCount}</Text>
+              <Text style={styles.statLabel}>Takip</Text>
             </View>
           </View>
 
           {/* Action Buttons */}
           {!isOwnProfile && (
             <View style={styles.actionButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.followButton,
+                  isFollowing && styles.followingButton
+                ]}
+                onPress={() => {
+                  if (isFollowing) {
+                    unfollowMutation.mutate({ following_id: id! });
+                  } else {
+                    followMutation.mutate({ following_id: id! });
+                  }
+                }}
+                disabled={followMutation.isPending || unfollowMutation.isPending}
+              >
+                <Text style={[
+                  styles.followButtonText,
+                  isFollowing && styles.followingButtonText
+                ]}>
+                  {isFollowing ? 'Takipten Çık' : 'Takip Et'}
+                </Text>
+              </TouchableOpacity>
               <MessageButton targetUserId={id!} />
               <CallButtons
                 targetUserId={id!}
                 targetUserName={profile.full_name || 'Kullanıcı'}
                 targetUserAvatar={profile.avatar_url}
+                variant="compact"
               />
             </View>
           )}
@@ -352,6 +421,28 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 20,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    marginBottom: SPACING.xs,
+  },
+  verifiedBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.white,
+  },
+  verifiedText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '700',
+  },
   name: {
     fontSize: FONT_SIZES.xxl,
     fontWeight: '700',
@@ -393,26 +484,44 @@ const styles = StyleSheet.create({
   actionButtons: {
     flexDirection: 'row',
     width: '100%',
-    gap: SPACING.md,
+    gap: SPACING.sm,
     paddingHorizontal: SPACING.lg,
+    alignItems: 'center' as const,
   },
   messageButton: {
-    flex: 1,
-    flexDirection: 'row',
+    width: 44,
+    height: 44,
     backgroundColor: COLORS.primary,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.sm,
-    borderRadius: 12,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: SPACING.xs,
-    minHeight: 44, // iOS minimum touch target
   },
   messageButtonText: {
     color: COLORS.white,
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     flexShrink: 1,
+  },
+  followButton: {
+    flex: 1,
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 8,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: 44,
+  },
+  followingButton: {
+    backgroundColor: COLORS.border,
+  },
+  followButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600' as const,
+  },
+  followingButtonText: {
+    color: COLORS.text,
   },
   editButton: {
     flexDirection: 'row',

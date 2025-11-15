@@ -1007,7 +1007,8 @@ const appRouter = createTRPCRouter({
           .eq('follower_id', user.id);
 
         const followingIds = following?.map(f => f.following_id) || [];
-        followingIds.push(user.id); // Kendi gönderilerini de ekle
+        const authorFilterIds = Array.from(new Set([...followingIds, user.id]));
+        const hasFollowing = authorFilterIds.length > 1;
 
         // Post sorgusu oluştur
         let query = supabase
@@ -1024,12 +1025,9 @@ const appRouter = createTRPCRouter({
           .is('room_id', null)
           .eq("visibility", "public");
 
-        // Takip edilen kullanıcıların gönderileri + kendi gönderileri
-        if (followingIds.length > 0) {
-          query = query.in("author_id", followingIds);
-        } else {
-          // Takip edilen yoksa sadece kendi gönderilerini göster
-          query = query.eq("author_id", user.id);
+        // Takip edilen kullanıcılar varsa sadece onları göster, yoksa herkese açık feed'i kullan
+        if (hasFollowing) {
+          query = query.in("author_id", authorFilterIds);
         }
 
         // District filtresi
@@ -2329,8 +2327,21 @@ const appRouter = createTRPCRouter({
         const { data, error, count } = await query;
         if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
 
+        // Tarih ve saati birleştirerek match_date_time oluştur
+        const matchesWithDateTime = (data || []).map((match: any) => {
+          // match_date (DATE) ve start_time (TIME) birleştir
+          const matchDateTime = match.match_date && match.start_time 
+            ? `${match.match_date}T${match.start_time}+03:00` // Türkiye saati (UTC+3)
+            : null;
+          
+          return {
+            ...match,
+            match_date_time: matchDateTime, // Frontend için birleştirilmiş tarih-saat
+          };
+        });
+
         return {
-          matches: data || [],
+          matches: matchesWithDateTime,
           total: count || 0,
           hasMore: count ? input.offset + input.limit < count : false,
         };
@@ -2869,7 +2880,8 @@ const appRouter = createTRPCRouter({
               name: input.field_name,
               city: input.city,
               district: input.district,
-              created_by: user.id,
+              owner_id: user.id,
+              address: `${input.district}, ${input.city}`, // Varsayılan adres
             })
             .select()
             .single();
@@ -2880,11 +2892,25 @@ const appRouter = createTRPCRouter({
 
         // Match oluştur
         const matchDateTime = new Date(input.match_date);
+        
+        // Tarih ve saati ayrı ayrı al (YYYY-MM-DD ve HH:MM:SS formatında)
+        // Frontend'den gelen tarih Türkiye saatinde (UTC+3), bu yüzden local time kullanıyoruz
+        const year = matchDateTime.getFullYear();
+        const month = String(matchDateTime.getMonth() + 1).padStart(2, '0');
+        const day = String(matchDateTime.getDate()).padStart(2, '0');
+        const hours = String(matchDateTime.getHours()).padStart(2, '0');
+        const minutes = String(matchDateTime.getMinutes()).padStart(2, '0');
+        const seconds = String(matchDateTime.getSeconds()).padStart(2, '0');
+        
+        const matchDate = `${year}-${month}-${day}`; // YYYY-MM-DD
+        const matchTime = `${hours}:${minutes}:${seconds}`; // HH:MM:SS
+        
         const { data, error } = await supabase
           .from('matches')
           .insert({
             field_id: fieldId,
-            match_date: matchDateTime.toISOString(),
+            match_date: matchDate, // DATE formatı (YYYY-MM-DD)
+            start_time: matchTime, // TIME formatı (HH:MM:SS)
             city: input.city,
             district: input.district,
             organizer_id: user.id,
@@ -2893,6 +2919,8 @@ const appRouter = createTRPCRouter({
             max_players: input.max_players || 10,
             is_public: true,
             match_type: 'friendly',
+            // team1_id ve team2_id artık NULL olabilir (SQL'de düzenlendi)
+            // Eğer kullanıcı takım adı girmişse, ileride takım oluşturulabilir
           })
           .select()
           .single();
@@ -2902,7 +2930,56 @@ const appRouter = createTRPCRouter({
         return data;
       }),
 
-    // 8. Takım detayı
+    // 8. Kullanıcının geçmiş maçlarını getir
+    getUserMatches: publicProcedure
+      .input(
+        z.object({
+          user_id: z.string().uuid(),
+          limit: z.number().min(1).max(100).default(20),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+
+        // Kullanıcının organize ettiği maçları getir (geçmiş ve gelecek)
+        let query = supabase
+          .from('matches')
+          .select(`
+            *,
+            team1:teams!matches_team1_id_fkey(id, name, logo_url),
+            team2:teams!matches_team2_id_fkey(id, name, logo_url),
+            field:football_fields(id, name, district, address),
+            organizer:profiles!matches_organizer_id_fkey(id, full_name, avatar_url)
+          `, { count: 'exact' })
+          .eq('organizer_id', input.user_id)
+          .order('match_date', { ascending: false })
+          .order('start_time', { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+
+        const { data, error, count } = await query;
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        // Tarih ve saati birleştirerek match_date_time oluştur
+        const matchesWithDateTime = (data || []).map((match: any) => {
+          const matchDateTime = match.match_date && match.start_time 
+            ? `${match.match_date}T${match.start_time}+03:00`
+            : null;
+          
+          return {
+            ...match,
+            match_date_time: matchDateTime,
+          };
+        });
+
+        return {
+          matches: matchesWithDateTime,
+          total: count || 0,
+          hasMore: count ? input.offset + input.limit < count : false,
+        };
+      }),
+
+    // 9. Takım detayı
     getTeamDetails: publicProcedure
       .input(z.object({ team_id: z.string().uuid() }))
       .query(async ({ ctx, input }) => {
@@ -4315,6 +4392,44 @@ const appRouter = createTRPCRouter({
           token: '', // Agora token generation için backend endpoint gerekli
           channel_name: input.channel_name,
           uid: input.uid,
+        };
+      }),
+  }),
+
+  admin: createTRPCRouter({
+    checkAdmin: protectedProcedure
+      .query(async ({ ctx }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Unauthorized' });
+        }
+        
+        // Özel admin bypass
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        if (user.id === SPECIAL_ADMIN_ID) {
+          return {
+            isAdmin: true,
+            role: 'super_admin',
+            permissions: {},
+          };
+        }
+        
+        const { data: adminUser, error } = await supabase
+          .from("admin_users")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("is_active", true)
+          .single();
+        
+        if (error || !adminUser) {
+          return { isAdmin: false, role: null };
+        }
+        
+        return {
+          isAdmin: true,
+          role: adminUser.role,
+          permissions: adminUser.permissions || {},
         };
       }),
   }),

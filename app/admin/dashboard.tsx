@@ -28,7 +28,6 @@ import {
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { trpc } from '../../lib/trpc';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
 
 export default function AdminDashboardScreen() {
   const router = useRouter();
@@ -37,6 +36,7 @@ export default function AdminDashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [checkingAdmin, setCheckingAdmin] = useState(true);
+  const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
 
   // Admin kontrolü
   useEffect(() => {
@@ -50,31 +50,37 @@ export default function AdminDashboardScreen() {
         return;
       }
 
-      try {
-        const { data, error } = await supabase
-          .from('admin_users')
-          .select('id, role, is_active')
-          .eq('user_id', user.id)
-          .eq('is_active', true)
-          .maybeSingle();
+      // Özel admin bypass - direkt admin erişimi ver
+      if (user.id === SPECIAL_ADMIN_ID) {
+        setIsAdmin(true);
+        setCheckingAdmin(false);
+        return;
+      }
 
-        if (error) {
-          console.error('Admin check error:', error);
-          setIsAdmin(false);
+      // tRPC ile admin kontrolü yap (backend'de bypass var)
+      try {
+        const adminCheck = await trpc.admin.checkAdmin.query();
+        console.log('Admin check result:', adminCheck);
+        if (adminCheck?.isAdmin) {
+          setIsAdmin(true);
         } else {
-          setIsAdmin(!!data);
-          if (!data) {
-            Alert.alert('Yetkisiz Erişim', 'Bu sayfaya erişim yetkiniz yok.', [
-              { text: 'Tamam', onPress: () => router.back() },
-            ]);
-          }
+          setIsAdmin(false);
+          Alert.alert('Yetkisiz Erişim', 'Bu sayfaya erişim yetkiniz yok.', [
+            { text: 'Tamam', onPress: () => router.back() },
+          ]);
         }
       } catch (err: any) {
         console.error('Admin check exception:', err);
+        console.error('Error details:', JSON.stringify(err, null, 2));
         setIsAdmin(false);
-        Alert.alert('Hata', 'Yetki kontrolü yapılamadı', [
-          { text: 'Tamam', onPress: () => router.back() },
-        ]);
+        // Özel admin ise yine de erişim ver
+        if (user.id === SPECIAL_ADMIN_ID) {
+          setIsAdmin(true);
+        } else {
+          Alert.alert('Hata', `Yetki kontrolü yapılamadı: ${err?.message || 'Bilinmeyen hata'}`, [
+            { text: 'Tamam', onPress: () => router.back() },
+          ]);
+        }
       } finally {
         setCheckingAdmin(false);
       }

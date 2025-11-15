@@ -6,6 +6,7 @@ import { MapPin } from 'lucide-react-native';
 interface AppLogoProps {
   size?: 'small' | 'medium' | 'large';
   showIcon?: boolean;
+  showText?: boolean;
   style?: any;
 }
 
@@ -15,17 +16,19 @@ const LOGO_SIZES = {
   large: { icon: 48, text: 40, spacing: SPACING.md },
 };
 
-export function AppLogo({ size = 'medium', showIcon = true, style }: AppLogoProps) {
+export function AppLogo({ size = 'medium', showIcon = true, showText = true, style }: AppLogoProps) {
   const sizes = LOGO_SIZES[size];
 
   return (
     <View style={[styles.container, style]}>
       {showIcon && (
-        <View style={[styles.iconContainer, { marginBottom: sizes.spacing }]}>
+        <View style={[styles.iconContainer, showText && { marginBottom: sizes.spacing }]}>
           <MapPin size={sizes.icon} color={COLORS.error} fill={COLORS.error} />
         </View>
       )}
-      <Text style={[styles.text, { fontSize: sizes.text }]}>MyTrabzon</Text>
+      {showText && (
+        <Text style={[styles.text, { fontSize: sizes.text }]}>MyTrabzon</Text>
+      )}
     </View>
   );
 }

@@ -14,6 +14,9 @@ import {
   Image,
   Modal,
   TextInput,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -297,16 +300,22 @@ export default function MatchVideoScreen() {
         animationType="slide"
         onRequestClose={() => setShowMessageModal(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Mesaj Gönder</Text>
             <TextInput
               style={styles.messageInput}
               placeholder="Kısa mesaj yaz..."
+              placeholderTextColor={COLORS.textLight}
               value={messageText}
               onChangeText={setMessageText}
               multiline
               maxLength={100}
+              textAlignVertical="top"
             />
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -325,7 +334,7 @@ export default function MatchVideoScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Şikayet Modal */}
@@ -335,34 +344,46 @@ export default function MatchVideoScreen() {
         animationType="slide"
         onRequestClose={() => setShowReportModal(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Şikayet Et</Text>
             <Text style={styles.modalSubtitle}>Neden şikayet ediyorsunuz?</Text>
             
-            {['inappropriate', 'harassment', 'spam', 'fake', 'other'].map((reason) => (
-              <TouchableOpacity
-                key={reason}
-                style={[
-                  styles.reportOption,
-                  reportReason === reason && styles.reportOptionSelected,
-                ]}
-                onPress={() => setReportReason(reason)}
-              >
-                <Text
+            <ScrollView
+              style={styles.modalScrollView}
+              contentContainerStyle={styles.modalScrollContent}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled={true}
+            >
+              {['inappropriate', 'harassment', 'spam', 'fake', 'other'].map((reason) => (
+                <TouchableOpacity
+                  key={reason}
                   style={[
-                    styles.reportOptionText,
-                    reportReason === reason && styles.reportOptionTextSelected,
+                    styles.reportOption,
+                    reportReason === reason && styles.reportOptionSelected,
                   ]}
+                  onPress={() => setReportReason(reason)}
                 >
-                  {reason === 'inappropriate' && 'Uygunsuz İçerik'}
-                  {reason === 'harassment' && 'Taciz'}
-                  {reason === 'spam' && 'Spam'}
-                  {reason === 'fake' && 'Sahte Hesap'}
-                  {reason === 'other' && 'Diğer'}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    style={[
+                      styles.reportOptionText,
+                      reportReason === reason && styles.reportOptionTextSelected,
+                    ]}
+                  >
+                    {reason === 'inappropriate' && 'Uygunsuz İçerik'}
+                    {reason === 'harassment' && 'Taciz'}
+                    {reason === 'spam' && 'Spam'}
+                    {reason === 'fake' && 'Sahte Hesap'}
+                    {reason === 'other' && 'Diğer'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -382,7 +403,7 @@ export default function MatchVideoScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -504,7 +525,15 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: SPACING.lg,
-    maxHeight: '80%',
+    maxHeight: '90%',
+    minHeight: 300,
+  },
+  modalScrollView: {
+    maxHeight: 300,
+    marginBottom: SPACING.md,
+  },
+  modalScrollContent: {
+    paddingBottom: SPACING.md,
   },
   modalTitle: {
     fontSize: FONT_SIZES.xl,
@@ -524,7 +553,9 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
     minHeight: 100,
+    maxHeight: 200,
     marginBottom: SPACING.md,
+    textAlignVertical: 'top' as const,
   },
   modalButtons: {
     flexDirection: 'row',

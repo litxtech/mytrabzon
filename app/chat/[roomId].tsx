@@ -12,15 +12,18 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Linking,
+  SafeAreaView,
 } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
 import { trpc } from '@/lib/trpc';
-import { Send, Paperclip, Smile, MoreVertical, ImageIcon, Plus, Heart, MessageCircle, Share2, Phone, Video, Users, Search, Check, X, UserMinus, Trash2, LogOut } from 'lucide-react-native';
+import { Send, Paperclip, Smile, MoreVertical, ImageIcon, Plus, Heart, MessageCircle, Share2, Phone, Video as VideoIcon, Users, Search, Check, X, UserMinus, Trash2, LogOut, Edit3 } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
+import { Video as ExpoVideo } from 'expo-av';
 import { Message, Post } from '@/types/database';
 import { DISTRICT_BADGES } from '@/constants/districts';
 
@@ -41,9 +44,36 @@ export default function ChatRoomScreen() {
   const [selectedMembersToAdd, setSelectedMembersToAdd] = useState<string[]>([]);
   const [showGroupOptionsModal, setShowGroupOptionsModal] = useState(false);
   const [showManageMembersModal, setShowManageMembersModal] = useState(false);
+  const [showMessageActions, setShowMessageActions] = useState(false);
+  const [isEditingMessage, setIsEditingMessage] = useState(false);
+  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [editMessageText, setEditMessageText] = useState('');
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const utils = trpc.useUtils();
+
+  const uploadChatMedia = useCallback(
+    async (blob: Blob, mimeType: string, fileName: string) => {
+      const { supabase } = await import('@/lib/supabase');
+      const { data: uploadData, error } = await supabase.storage
+        .from(CHAT_MEDIA_BUCKET)
+        .upload(fileName, blob, {
+          contentType: mimeType,
+          upsert: false,
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from(CHAT_MEDIA_BUCKET).getPublicUrl(uploadData.path);
+
+      return publicUrl;
+    },
+    []
+  );
 
   // Room bilgisini al - getRooms'dan filtrele
   const { data: roomsData, refetch: refetchRooms } = trpc.chat.getRooms.useQuery(
@@ -88,6 +118,34 @@ export default function ChatRoomScreen() {
 
   const { data: allUsersData } = trpc.user.getAllUsers.useQuery({
     search: addMembersSearch || undefined,
+  });
+
+  const deleteMessageMutation = trpc.chat.deleteMessage.useMutation({
+    onSuccess: () => {
+      if (roomId) {
+        loadMessages(roomId);
+      }
+      setShowMessageActions(false);
+      setSelectedMessage(null);
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Mesaj silinemedi');
+    },
+  });
+
+  const updateMessageMutation = trpc.chat.updateMessage.useMutation({
+    onSuccess: () => {
+      if (roomId) {
+        loadMessages(roomId);
+      }
+      setIsEditingMessage(false);
+      setShowMessageActions(false);
+      setSelectedMessage(null);
+      setEditMessageText('');
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Mesaj güncellenemedi');
+    },
   });
 
   const addMembersMutation = trpc.chat.addMembers.useMutation({
@@ -243,71 +301,42 @@ export default function ChatRoomScreen() {
         copyToCacheDirectory: true,
       });
 
-      if (result.canceled) return;
+      if (result.canceled || !result.assets?.length) return;
 
       const file = result.assets[0];
       const fileSizeMB = file.size ? file.size / (1024 * 1024) : 0;
 
-      // Dosya boyutu limiti: 10MB
-      if (fileSizeMB > 10) {
-        Alert.alert('Hata', 'Dosya boyutu 10MB\'dan büyük olamaz');
+      if (fileSizeMB > 20) {
+        Alert.alert('Hata', 'Dosya boyutu 20MB\'dan büyük olamaz');
         return;
       }
 
       setUploading(true);
 
-      // Dosyayı base64'e çevir
       const response = await fetch(file.uri);
       const blob = await response.blob();
-      const reader = new FileReader();
-      
-      reader.onloadend = async () => {
-        try {
-          // Supabase Storage'a yükle
-          const { supabase } = await import('@/lib/supabase');
-          const fileName = `chat/${user?.id}/${Date.now()}-${file.name}`;
-          
-          const { data: uploadData, error: uploadError } = await supabase.storage
-            .from(CHAT_MEDIA_BUCKET)
-            .upload(fileName, blob, {
-              contentType: file.mimeType || 'application/octet-stream',
-              upsert: false,
-            });
+      const sanitizedName = file.name || `dosya-${Date.now()}`;
+      const fileName = `chat/${user?.id}/${Date.now()}-${sanitizedName}`;
+      const publicUrl = await uploadChatMedia(blob, file.mimeType || 'application/octet-stream', fileName);
 
-          if (uploadError) {
-            throw uploadError;
-          }
+      sendMessageMutation.mutate({
+        roomId: roomId!,
+        content: messageText.trim() || sanitizedName,
+        mediaUrl: publicUrl,
+        mediaType: 'file',
+        replyTo: replyTo?.id,
+      });
 
-          const { data: { publicUrl } } = supabase.storage
-            .from(CHAT_MEDIA_BUCKET)
-            .getPublicUrl(uploadData.path);
-
-          // Mesajı gönder
-          sendMessageMutation.mutate({
-            roomId: roomId!,
-            content: messageText.trim() || file.name,
-            mediaUrl: publicUrl,
-            mediaType: 'file',
-            replyTo: replyTo?.id,
-          });
-
-          setMessageText('');
-          setReplyTo(null);
-        } catch (error: any) {
-          Alert.alert('Hata', `Dosya yüklenirken hata oluştu: ${error.message}`);
-        } finally {
-          setUploading(false);
-        }
-      };
-
-      reader.readAsDataURL(blob);
+      setMessageText('');
+      setReplyTo(null);
     } catch (error: any) {
       Alert.alert('Hata', `Belge seçilirken hata oluştu: ${error.message}`);
+    } finally {
       setUploading(false);
     }
   };
 
-  const handlePickImage = async () => {
+  const handlePickMedia = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
@@ -316,10 +345,11 @@ export default function ChatRoomScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        allowsEditing: false,
         quality: 0.8,
         allowsMultipleSelection: false,
+        videoMaxDuration: 60,
       });
 
       if (result.canceled || !result.assets[0]) return;
@@ -327,52 +357,35 @@ export default function ChatRoomScreen() {
       const asset = result.assets[0];
       const fileSizeMB = asset.fileSize ? asset.fileSize / (1024 * 1024) : 0;
 
-      // Resim boyutu limiti: 10MB
-      if (fileSizeMB > 10) {
-        Alert.alert('Hata', 'Resim boyutu 10MB\'dan büyük olamaz');
+      if (fileSizeMB > 30) {
+        Alert.alert('Hata', 'Medya boyutu 30MB\'dan büyük olamaz');
         return;
       }
 
       setUploading(true);
 
-      // Resmi yükle
-      const { supabase } = await import('@/lib/supabase');
-      const fileName = `chat/${user?.id}/${Date.now()}-image.jpg`;
-      
       const response = await fetch(asset.uri);
       const blob = await response.blob();
+      const isVideo = asset.type === 'video';
+      const extension =
+        asset.fileName?.split('.').pop() || (isVideo ? 'mp4' : 'jpg');
+      const mimeType = asset.mimeType || (isVideo ? 'video/mp4' : 'image/jpeg');
+      const fileName = `chat/${user?.id}/${Date.now()}.${extension}`;
+      const publicUrl = await uploadChatMedia(blob, mimeType, fileName);
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from(CHAT_MEDIA_BUCKET)
-        .upload(fileName, blob, {
-          contentType: 'image/jpeg',
-          upsert: false,
-        });
-
-      if (uploadError) {
-        Alert.alert('Hata', `Resim yüklenirken hata oluştu: ${uploadError.message}`);
-        setUploading(false);
-        return;
-      }
-
-      const { data: { publicUrl } } = supabase.storage
-        .from(CHAT_MEDIA_BUCKET)
-        .getPublicUrl(uploadData.path);
-
-      // Mesajı gönder
       sendMessageMutation.mutate({
         roomId: roomId!,
-        content: messageText.trim() || '📷',
+        content: messageText.trim() || (isVideo ? '🎬 Video' : '📷 Fotoğraf'),
         mediaUrl: publicUrl,
-        mediaType: 'image',
+        mediaType: isVideo ? 'video' : 'image',
         replyTo: replyTo?.id,
       });
 
       setMessageText('');
       setReplyTo(null);
-      setUploading(false);
     } catch (error: any) {
-      Alert.alert('Hata', `Resim seçilirken hata oluştu: ${error.message}`);
+      Alert.alert('Hata', `Medya seçilirken hata oluştu: ${error.message}`);
+    } finally {
       setUploading(false);
     }
   };
@@ -390,6 +403,41 @@ export default function ChatRoomScreen() {
       // Typing indicator timeout
     }, 3000);
   }, [roomId, sendTypingIndicator]);
+
+  const handleMessageLongPress = (message: Message) => {
+    if (message.user_id !== user?.id) return;
+    setSelectedMessage(message);
+    setShowMessageActions(true);
+  };
+
+  const handleDeleteMessage = () => {
+    if (!selectedMessage) return;
+    deleteMessageMutation.mutate({ messageId: selectedMessage.id });
+  };
+
+  const startEditingMessage = () => {
+    if (!selectedMessage) return;
+    setEditMessageText(selectedMessage.content);
+    setIsEditingMessage(true);
+    setShowMessageActions(false);
+  };
+
+  const handleUpdateMessage = () => {
+    if (!selectedMessage || !editMessageText.trim()) {
+      return;
+    }
+    updateMessageMutation.mutate({
+      messageId: selectedMessage.id,
+      content: editMessageText.trim(),
+    });
+  };
+
+  const closeMessageModals = () => {
+    setShowMessageActions(false);
+    setIsEditingMessage(false);
+    setSelectedMessage(null);
+    setEditMessageText('');
+  };
 
   const formatMessageTime = (dateString: string) => {
     const date = new Date(dateString);
@@ -418,33 +466,74 @@ export default function ChatRoomScreen() {
           </TouchableOpacity>
         )}
 
-        <View style={[styles.messageBubble, isOwn ? styles.ownMessage : styles.otherMessage]}>
-          {message.reply_to_message && (
-            <View style={styles.replyContainer}>
-              <Text style={styles.replyUser}>{message.reply_to_message.user?.full_name}</Text>
-              <Text style={styles.replyText} numberOfLines={1}>
-                {message.reply_to_message.content}
+        <TouchableOpacity
+          activeOpacity={isOwn ? 0.8 : 1}
+          onLongPress={() => handleMessageLongPress(message)}
+          delayLongPress={200}
+          disabled={!isOwn}
+          style={styles.messagePressArea}
+        >
+          <View style={[styles.messageBubble, isOwn ? styles.ownMessage : styles.otherMessage]}>
+            {message.reply_to_message && (
+              <View style={styles.replyContainer}>
+                <Text style={styles.replyUser}>{message.reply_to_message.user?.full_name}</Text>
+                <Text style={styles.replyText} numberOfLines={1}>
+                  {message.reply_to_message.content}
+                </Text>
+              </View>
+            )}
+
+            {!isOwn && message.user && (
+              <TouchableOpacity
+                onPress={() => router.push(`/profile/${message.user_id}` as any)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.senderName}>{message.user.full_name}</Text>
+              </TouchableOpacity>
+            )}
+
+            <Text style={[styles.messageText, isOwn && styles.ownMessageText]}>
+              {message.content}
+            </Text>
+
+            {message.media_url && message.media_type === 'image' && (
+              <TouchableOpacity
+                onPress={() => Linking.openURL(message.media_url!)}
+                activeOpacity={0.9}
+              >
+                <Image source={{ uri: message.media_url }} style={styles.messageImage} />
+              </TouchableOpacity>
+            )}
+
+            {message.media_url && message.media_type === 'video' && (
+              <ExpoVideo
+                source={{ uri: message.media_url }}
+                style={styles.messageVideo}
+                useNativeControls
+                resizeMode="cover"
+              />
+            )}
+
+            {message.media_url && message.media_type === 'file' && (
+              <TouchableOpacity
+                style={styles.fileAttachment}
+                onPress={() => Linking.openURL(message.media_url!)}
+              >
+                <Paperclip size={16} color={COLORS.white} />
+                <Text style={styles.fileAttachmentText}>Dosyayı Aç</Text>
+              </TouchableOpacity>
+            )}
+
+            <View style={styles.messageMetaRow}>
+              <Text style={[styles.messageTime, isOwn && styles.ownMessageTime]}>
+                {formatMessageTime(message.created_at)}
               </Text>
+              {message.is_edited && (
+                <Text style={styles.editedTag}>düzenlendi</Text>
+              )}
             </View>
-          )}
-
-          {!isOwn && message.user && (
-            <TouchableOpacity
-              onPress={() => router.push(`/profile/${message.user_id}` as any)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.senderName}>{message.user.full_name}</Text>
-            </TouchableOpacity>
-          )}
-
-          <Text style={[styles.messageText, isOwn && styles.ownMessageText]}>
-            {message.content}
-          </Text>
-
-          <Text style={[styles.messageTime, isOwn && styles.ownMessageTime]}>
-            {formatMessageTime(message.created_at)}
-          </Text>
-        </View>
+          </View>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -560,7 +649,7 @@ export default function ChatRoomScreen() {
   const roomTyping = typingIndicators[roomId || ''] || [];
 
   return (
-    <>
+    <SafeAreaView style={styles.safeArea}>
       <Stack.Screen
         options={{
           headerShown: true,
@@ -599,7 +688,7 @@ export default function ChatRoomScreen() {
                       } as any);
                     }}
                   >
-                    <Video size={22} color={COLORS.primary} />
+                    <VideoIcon size={22} color={COLORS.primary} />
                   </TouchableOpacity>
                 </>
               )}
@@ -621,130 +710,132 @@ export default function ChatRoomScreen() {
       />
 
       <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
       >
-        {/* Tab Bar - Sadece grup ise göster */}
-        {isGroup && (
-          <View style={styles.tabBar}>
-            <TouchableOpacity
-              style={[styles.tab, activeTab === 'messages' && styles.tabActive]}
-              onPress={() => setActiveTab('messages')}
-            >
-              <Text style={[styles.tabText, activeTab === 'messages' && styles.tabTextActive]}>
-                Mesajlar
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tab, activeTab === 'posts' && styles.tabActive]}
-              onPress={() => setActiveTab('posts')}
-            >
-              <Text style={[styles.tabText, activeTab === 'posts' && styles.tabTextActive]}>
-                Gönderiler
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {activeTab === 'messages' ? (
-          <FlatList
-            ref={flatListRef}
-            data={roomMessages}
-            keyExtractor={(item) => item.id}
-            renderItem={renderMessage}
-            inverted
-            contentContainerStyle={styles.messagesList}
-            ListFooterComponent={
-              roomTyping.length > 0 ? (
-                <View style={styles.typingContainer}>
-                  <Text style={styles.typingText}>
-                    {roomTyping.map(t => t.user_name).join(', ')} yazıyor...
-                  </Text>
-                </View>
-              ) : null
-            }
-          />
-        ) : (
-          <FlatList
-            data={groupPostsData?.posts || []}
-            renderItem={renderGroupPost}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.postsList}
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>Henüz gönderi yok</Text>
-                <Text style={styles.emptySubtext}>İlk paylaşımı yapan sen ol!</Text>
-              </View>
-            }
-          />
-        )}
-
-        {replyTo && (
-          <View style={styles.replyPreview}>
-            <View style={styles.replyPreviewContent}>
-              <Text style={styles.replyPreviewUser}>{replyTo.user?.full_name}</Text>
-              <Text style={styles.replyPreviewText} numberOfLines={1}>
-                {replyTo.content}
-              </Text>
+        <View style={styles.contentContainer}>
+          {/* Tab Bar - Sadece grup ise göster */}
+          {isGroup && (
+            <View style={styles.tabBar}>
+              <TouchableOpacity
+                style={[styles.tab, activeTab === 'messages' && styles.tabActive]}
+                onPress={() => setActiveTab('messages')}
+              >
+                <Text style={[styles.tabText, activeTab === 'messages' && styles.tabTextActive]}>
+                  Mesajlar
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tab, activeTab === 'posts' && styles.tabActive]}
+                onPress={() => setActiveTab('posts')}
+              >
+                <Text style={[styles.tabText, activeTab === 'posts' && styles.tabTextActive]}>
+                  Gönderiler
+                </Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={() => setReplyTo(null)} style={styles.replyPreviewClose}>
-              <Text style={styles.replyPreviewCloseText}>✕</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+          )}
 
-        {/* Input Container - Sadece mesajlar sekmesinde göster */}
-        {activeTab === 'messages' && (
-          <View style={styles.inputContainer}>
-            <TouchableOpacity 
-              style={styles.attachButton}
-              onPress={handlePickDocument}
-              disabled={uploading}
-            >
-              <Paperclip size={20} color={uploading ? COLORS.textLight : COLORS.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.attachButton}
-              onPress={handlePickImage}
-              disabled={uploading}
-            >
-              <ImageIcon size={20} color={uploading ? COLORS.textLight : COLORS.primary} />
-            </TouchableOpacity>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Mesaj yaz..."
-              placeholderTextColor={COLORS.textLight}
-              value={messageText}
-              onChangeText={(text) => {
-                setMessageText(text);
-                handleTyping();
-              }}
-              multiline
-              maxLength={1000}
+          {activeTab === 'messages' ? (
+            <FlatList
+              ref={flatListRef}
+              data={roomMessages}
+              keyExtractor={(item) => item.id}
+              renderItem={renderMessage}
+              inverted
+              contentContainerStyle={styles.messagesList}
+              ListFooterComponent={
+                roomTyping.length > 0 ? (
+                  <View style={styles.typingContainer}>
+                    <Text style={styles.typingText}>
+                      {roomTyping.map(t => t.user_name).join(', ')} yazıyor...
+                    </Text>
+                  </View>
+                ) : null
+              }
             />
+          ) : (
+            <FlatList
+              data={groupPostsData?.posts || []}
+              renderItem={renderGroupPost}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.postsList}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>Henüz gönderi yok</Text>
+                  <Text style={styles.emptySubtext}>İlk paylaşımı yapan sen ol!</Text>
+                </View>
+              }
+            />
+          )}
 
-            <TouchableOpacity style={styles.emojiButton}>
-              <Smile size={24} color={COLORS.textLight} />
-            </TouchableOpacity>
+          {replyTo && (
+            <View style={styles.replyPreview}>
+              <View style={styles.replyPreviewContent}>
+                <Text style={styles.replyPreviewUser}>{replyTo.user?.full_name}</Text>
+                <Text style={styles.replyPreviewText} numberOfLines={1}>
+                  {replyTo.content}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setReplyTo(null)} style={styles.replyPreviewClose}>
+                <Text style={styles.replyPreviewCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
-            <TouchableOpacity
-              style={[
-                styles.sendButton,
-                (!messageText.trim() || sendMessageMutation.isPending || uploading) && styles.sendButtonDisabled,
-              ]}
-              onPress={handleSendMessage}
-              disabled={!messageText.trim() || sendMessageMutation.isPending || uploading}
-            >
-              {(sendMessageMutation.isPending || uploading) ? (
-                <ActivityIndicator size="small" color={COLORS.white} />
-              ) : (
-                <Send size={18} color={COLORS.white} />
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
+          {/* Input Container - Sadece mesajlar sekmesinde göster - NORMAL FLOW'DA */}
+          {activeTab === 'messages' && (
+            <View style={styles.inputContainer}>
+              <TouchableOpacity 
+                style={styles.attachButton}
+                onPress={handlePickDocument}
+                disabled={uploading}
+              >
+                <Paperclip size={20} color={uploading ? COLORS.textLight : COLORS.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.attachButton}
+                onPress={handlePickMedia}
+                disabled={uploading}
+              >
+                <ImageIcon size={20} color={uploading ? COLORS.textLight : COLORS.primary} />
+              </TouchableOpacity>
+
+              <TextInput
+                style={styles.input}
+                placeholder="Mesaj yaz..."
+                placeholderTextColor={COLORS.textLight}
+                value={messageText}
+                onChangeText={(text) => {
+                  setMessageText(text);
+                  handleTyping();
+                }}
+                multiline
+                maxLength={1000}
+              />
+
+              <TouchableOpacity style={styles.emojiButton}>
+                <Smile size={24} color={COLORS.textLight} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.sendButton,
+                  (!messageText.trim() || sendMessageMutation.isPending || uploading) && styles.sendButtonDisabled,
+                ]}
+                onPress={handleSendMessage}
+                disabled={!messageText.trim() || sendMessageMutation.isPending || uploading}
+              >
+                {(sendMessageMutation.isPending || uploading) ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <Send size={18} color={COLORS.white} />
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
 
         {/* FAB - Gönderiler sekmesinde göster */}
         {activeTab === 'posts' && isGroup && (
@@ -756,6 +847,77 @@ export default function ChatRoomScreen() {
           </TouchableOpacity>
         )}
       </KeyboardAvoidingView>
+
+      {/* Message Actions */}
+      <Modal
+        visible={showMessageActions}
+        transparent
+        animationType="fade"
+        onRequestClose={closeMessageModals}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.messageActionSheet}>
+            <Text style={styles.modalTitle}>Mesaj işlemleri</Text>
+            <TouchableOpacity
+              style={styles.messageActionButton}
+              onPress={startEditingMessage}
+            >
+              <Edit3 size={18} color={COLORS.text} />
+              <Text style={styles.messageActionText}>Mesajı Düzenle</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.messageActionButton, styles.messageActionDanger]}
+              onPress={handleDeleteMessage}
+            >
+              <Trash2 size={18} color={COLORS.error} />
+              <Text style={[styles.messageActionText, styles.optionDangerText]}>Mesajı Sil</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.messageActionButton}
+              onPress={closeMessageModals}
+            >
+              <X size={18} color={COLORS.textLight} />
+              <Text style={styles.messageActionText}>İptal</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={isEditingMessage}
+        transparent
+        animationType="fade"
+        onRequestClose={closeMessageModals}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.messageEditModal}>
+            <Text style={styles.modalTitle}>Mesajı Düzenle</Text>
+            <TextInput
+              style={styles.messageEditInput}
+              multiline
+              value={editMessageText}
+              onChangeText={setEditMessageText}
+              maxLength={1000}
+            />
+            <View style={styles.messageEditActions}>
+              <TouchableOpacity style={styles.modalSecondaryButton} onPress={closeMessageModals}>
+                <Text style={styles.modalSecondaryText}>Vazgeç</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalPrimaryButton}
+                onPress={handleUpdateMessage}
+                disabled={updateMessageMutation.isPending || !editMessageText.trim()}
+              >
+                {updateMessageMutation.isPending ? (
+                  <ActivityIndicator color={COLORS.white} />
+                ) : (
+                  <Text style={styles.modalPrimaryText}>Kaydet</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Add Members Modal */}
       <Modal
@@ -1009,11 +1171,21 @@ export default function ChatRoomScreen() {
           </View>
         </View>
       </Modal>
-    </>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
+  contentContainer: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -1057,6 +1229,9 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     fontWeight: '600' as const,
   },
+  messagePressArea: {
+    flex: 1,
+  },
   messageBubble: {
     maxWidth: '75%',
     padding: SPACING.sm,
@@ -1082,6 +1257,41 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     lineHeight: 18,
   },
+  messageImage: {
+    width: 220,
+    height: 220,
+    borderRadius: 16,
+    marginTop: SPACING.sm,
+    backgroundColor: COLORS.background,
+  },
+  messageVideo: {
+    width: 240,
+    height: 220,
+    borderRadius: 16,
+    marginTop: SPACING.sm,
+    backgroundColor: COLORS.black,
+  },
+  fileAttachment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: 12,
+    marginTop: SPACING.sm,
+  },
+  fileAttachmentText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+  },
+  messageMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.xs,
+  },
   ownMessageText: {
     color: COLORS.white,
   },
@@ -1093,6 +1303,11 @@ const styles = StyleSheet.create({
   },
   ownMessageTime: {
     color: 'rgba(255, 255, 255, 0.7)',
+  },
+  editedTag: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+    fontStyle: 'italic',
   },
   replyContainer: {
     backgroundColor: 'rgba(0, 0, 0, 0.1)',
@@ -1153,14 +1368,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     backgroundColor: COLORS.white,
-    paddingHorizontal: SPACING.sm,
+    paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
+    gap: SPACING.sm,
   },
   attachButton: {
     padding: SPACING.xs,
-    marginRight: SPACING.xs,
   },
   input: {
     flex: 1,
@@ -1171,6 +1386,7 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.text,
     maxHeight: 100,
+    textAlignVertical: 'top' as const,
   },
   emojiButton: {
     padding: SPACING.sm,
@@ -1297,16 +1513,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   fab: {
-    position: 'absolute',
+    position: 'absolute' as const,
     right: SPACING.lg,
     bottom: SPACING.lg,
     width: 56,
     height: 56,
     borderRadius: 28,
     backgroundColor: COLORS.secondary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 4,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    elevation: 20,
+    zIndex: 999,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
@@ -1421,6 +1638,73 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
+  },
+  messageActionSheet: {
+    width: '80%',
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  messageActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+  },
+  messageActionText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  messageActionDanger: {
+    borderTopWidth: 1,
+    borderColor: COLORS.border,
+    paddingTop: SPACING.sm,
+  },
+  messageEditModal: {
+    width: '85%',
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: SPACING.lg,
+  },
+  messageEditInput: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    padding: SPACING.md,
+    minHeight: 100,
+    marginTop: SPACING.md,
+    color: COLORS.text,
+    textAlignVertical: 'top' as const,
+  },
+  messageEditActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  modalSecondaryButton: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  modalSecondaryText: {
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  modalPrimaryButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.sm,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalPrimaryText: {
+    color: COLORS.white,
+    fontWeight: '700',
   },
   optionButton: {
     flexDirection: 'row',
