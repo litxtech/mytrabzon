@@ -285,6 +285,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_match_sessions_updated_at ON match_sessions;
 CREATE TRIGGER update_match_sessions_updated_at
   BEFORE UPDATE ON match_sessions
   FOR EACH ROW
@@ -301,6 +302,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS calculate_match_duration_trigger ON match_sessions;
 CREATE TRIGGER calculate_match_duration_trigger
   BEFORE UPDATE ON match_sessions
   FOR EACH ROW
