@@ -81,17 +81,27 @@ export function VideoPlayer({
 
   // autoPlay değiştiğinde video'yu başlat
   useEffect(() => {
-    if (autoPlay && videoRef.current) {
+    if (autoPlay && videoRef.current && !isLoading) {
       // Video yüklendikten sonra başlat
       const timer = setTimeout(() => {
-        if (videoRef.current && !isLoading) {
+        if (videoRef.current) {
           videoRef.current.playAsync().catch(console.error);
           setIsPlaying(true);
         }
-      }, 100);
+      }, 300);
       return () => clearTimeout(timer);
     }
   }, [autoPlay, isLoading]);
+
+  // Video yüklendiğinde otomatik başlat (previewMode için)
+  useEffect(() => {
+    if (previewMode && autoPlay && videoRef.current && !isLoading && !isPlaying) {
+      const timer = setTimeout(() => {
+        videoRef.current?.playAsync().catch(console.error);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [previewMode, autoPlay, isLoading, isPlaying]);
 
   useEffect(() => {
     return () => {
@@ -113,9 +123,18 @@ export function VideoPlayer({
       // İlk yüklemede autoPlay true ise başlat
       if (autoPlay && wasLoading && !status.isPlaying && !status.didJustFinish) {
         setTimeout(() => {
-          videoRef.current?.playAsync().catch(console.error);
-        }, 100);
+          videoRef.current?.playAsync().catch((err) => {
+            console.error('Video play error:', err);
+            // Hata durumunda tekrar dene
+            setTimeout(() => {
+              videoRef.current?.playAsync().catch(console.error);
+            }, 500);
+          });
+        }, 200);
       }
+    } else if (status.error) {
+      console.error('Video playback error:', status.error);
+      setIsLoading(false);
     }
   };
 
@@ -190,14 +209,20 @@ export function VideoPlayer({
         >
           <Video
             ref={videoRef}
-            source={{ uri: videoUrl }}
+            source={{ 
+              uri: videoUrl,
+              overrideFileExtensionAndroid: 'mp4',
+            }}
             style={styles.previewVideo}
             resizeMode={ResizeMode.COVER}
             isLooping
             isMuted={isMuted}
-            shouldPlay={isPlaying || autoPlay}
+            shouldPlay={autoPlay || isPlaying}
             onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
             useNativeControls={false}
+            usePoster={false}
+            posterSource={undefined}
+            progressUpdateIntervalMillis={100}
           />
           
           {isLoading && (
@@ -224,18 +249,20 @@ export function VideoPlayer({
             <TouchableOpacity
               style={styles.muteButton}
               onPress={toggleMute}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               {isMuted ? (
-                <VolumeX size={20} color={COLORS.white} />
+                <VolumeX size={18} color={COLORS.white} />
               ) : (
-                <Volume2 size={20} color={COLORS.white} />
+                <Volume2 size={18} color={COLORS.white} />
               )}
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.fullScreenButton}
               onPress={() => setShowFullScreen(true)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Maximize size={20} color={COLORS.white} />
+              <Maximize size={18} color={COLORS.white} />
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -325,6 +352,17 @@ function FullScreenVideoPlayer({
   const { width, height } = Dimensions.get('window');
 
   useEffect(() => {
+    // Tam ekran açıldığında video'yu otomatik başlat
+    if (videoRef.current) {
+      const timer = setTimeout(() => {
+        videoRef.current?.playAsync().catch(console.error);
+        setIsPlaying(true);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (controlsTimeout.current) {
         clearTimeout(controlsTimeout.current);
@@ -339,6 +377,16 @@ function FullScreenVideoPlayer({
       setIsMuted(status.isMuted);
       setDuration(status.durationMillis || 0);
       setPosition(status.positionMillis || 0);
+      
+      // İlk yüklemede otomatik başlat
+      if (!status.isPlaying && !status.didJustFinish && !isLoading) {
+        setTimeout(() => {
+          videoRef.current?.playAsync().catch(console.error);
+        }, 200);
+      }
+    } else if (status.error) {
+      console.error('Full screen video playback error:', status.error);
+      setIsLoading(false);
     }
   };
 
@@ -408,13 +456,18 @@ function FullScreenVideoPlayer({
       >
         <Video
           ref={videoRef}
-          source={{ uri: videoUrl }}
+          source={{ 
+            uri: videoUrl,
+            overrideFileExtensionAndroid: 'mp4',
+          }}
           style={[styles.fullScreenVideo, { width, height: height - insets.top - insets.bottom }]}
           resizeMode={ResizeMode.CONTAIN}
           isLooping
           isMuted={isMuted}
           shouldPlay={isPlaying}
           onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+          usePoster={false}
+          progressUpdateIntervalMillis={100}
         />
 
         {isLoading && (
@@ -467,11 +520,12 @@ function FullScreenVideoPlayer({
               <TouchableOpacity
                 style={styles.volumeButton}
                 onPress={toggleMute}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 {isMuted ? (
-                  <VolumeX size={24} color={COLORS.white} />
+                  <VolumeX size={22} color={COLORS.white} />
                 ) : (
-                  <Volume2 size={24} color={COLORS.white} />
+                  <Volume2 size={22} color={COLORS.white} />
                 )}
               </TouchableOpacity>
             </View>
@@ -542,12 +596,14 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
   },
   muteButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
   fullScreenButton: {
     width: 36,
@@ -666,12 +722,14 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
   },
   volumeButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
 
   // Sağ Taraf Aksiyon Butonları (TikTok tarzı)

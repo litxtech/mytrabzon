@@ -70,6 +70,23 @@ export default function FeedScreen() {
     }
   );
 
+  // Olay Var event'lerini getir - tüm kullanıcılara göster
+  const {
+    data: eventsData,
+    isLoading: eventsLoading,
+    refetch: refetchEvents,
+  } = trpc.event.getEvents.useQuery(
+    {
+      district: selectedDistrict === 'all' ? undefined : selectedDistrict,
+      limit: 20,
+      offset: 0,
+    },
+    {
+      staleTime: 30000,
+      gcTime: 300000,
+    }
+  );
+
   const likePostMutation = trpc.post.likePost.useMutation({
     onMutate: async ({ postId }) => {
       await utils.post.getPosts.cancel();
@@ -217,6 +234,115 @@ export default function FeedScreen() {
     ]);
   }, [deletePostMutation, router, user?.id]);
 
+  const renderEvent = useCallback((event: any) => {
+    const severityColors: Record<string, string> = {
+      CRITICAL: theme.colors.error,
+      HIGH: theme.colors.warning,
+      NORMAL: theme.colors.primary,
+      LOW: theme.colors.textLight,
+    };
+    const severityColor = severityColors[event.severity] || theme.colors.primary;
+    const firstMedia = event.media_urls && event.media_urls.length > 0 ? event.media_urls[0] : null;
+    const isVideo = firstMedia?.match(/\.(mp4|mov|avi|webm)$/i);
+
+    return (
+      <View style={[styles.postCard, { backgroundColor: theme.colors.card, borderColor: severityColor, borderLeftWidth: 4 }]}>
+        <View style={styles.postHeader}>
+          <TouchableOpacity
+            onPress={() => event.user_id && router.push(`/profile/${event.user_id}` as any)}
+            activeOpacity={0.7}
+          >
+            <Image
+              source={{
+                uri: event.user?.avatar_url || 'https://via.placeholder.com/40',
+              }}
+              style={styles.avatar}
+              contentFit="cover"
+              transition={200}
+              cachePolicy="memory-disk"
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.postHeaderInfo}
+            onPress={() => event.user_id && router.push(`/profile/${event.user_id}` as any)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.postAuthorContainer}>
+              <Text style={[styles.postAuthor, { color: theme.colors.text }]} numberOfLines={1} ellipsizeMode="tail">
+                {event.user?.full_name || 'Bilinmeyen'}
+              </Text>
+              <View style={[styles.eventBadge, { backgroundColor: severityColor + '20' }]}>
+                <AlertCircle size={14} color={severityColor} />
+                <Text style={[styles.eventBadgeText, { color: severityColor }]}>Olay Var</Text>
+              </View>
+            </View>
+            <View style={styles.postMeta}>
+              <Text style={[styles.postDistrict, { color: theme.colors.textLight }]}>
+                {event.district} • {formatTimeAgo(event.created_at || event.start_date)}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.eventContent}>
+          <Text style={[styles.eventTitle, { color: theme.colors.text }]}>{event.title}</Text>
+          {event.description && (
+            <Text style={[styles.postContent, { color: theme.colors.text }]} numberOfLines={5}>
+              {event.description}
+            </Text>
+          )}
+        </View>
+
+        {firstMedia && (
+          <>
+            {isVideo ? (
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedVideo(firstMedia);
+                  setVideoModalVisible(true);
+                }}
+                activeOpacity={0.9}
+                style={styles.videoContainer}
+              >
+                <VideoPlayer
+                  videoUrl={firstMedia}
+                  postId={event.id}
+                  isLiked={false}
+                  likeCount={0}
+                  commentCount={0}
+                  shareCount={0}
+                  onLike={() => {}}
+                  onComment={() => {}}
+                  onShare={() => {}}
+                  onTag={() => {}}
+                  autoPlay={true}
+                  previewMode={true}
+                />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedImage(firstMedia);
+                  setImageModalVisible(true);
+                }}
+                activeOpacity={0.9}
+                style={styles.imageContainer}
+              >
+                <Image
+                  source={{ uri: firstMedia }}
+                  style={styles.postImage}
+                  contentFit="cover"
+                  transition={200}
+                  cachePolicy="memory-disk"
+                />
+              </TouchableOpacity>
+            )}
+          </>
+        )}
+      </View>
+    );
+  }, [router, formatTimeAgo, theme, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible]);
+
   const renderPost = useCallback(({ item }: { item: Post }) => {
     const firstMedia = item.media && item.media.length > 0 ? item.media[0] : null;
     const isVideo = firstMedia?.type === 'video' || firstMedia?.path?.match(/\.(mp4|mov|avi|webm)$/i);
@@ -327,7 +453,7 @@ export default function FeedScreen() {
                   onTag={() => {
                     // Etiketleme fonksiyonu
                   }}
-                  autoPlay={false}
+                  autoPlay={true}
                   previewMode={true}
                 />
               </TouchableOpacity>
@@ -413,20 +539,36 @@ export default function FeedScreen() {
       {renderSortTabs}
       {renderDistrictFilter}
 
-      {isLoading ? (
+      {isLoading || eventsLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
       ) : (
         <FlatList
-          data={feedData?.posts || []}
-          renderItem={renderPost}
-          keyExtractor={(item) => item.id}
+          data={[
+            ...(eventsData?.events || []).map((event: any) => ({ type: 'event', ...event })),
+            ...(feedData?.posts || []).map((post: any) => ({ type: 'post', ...post })),
+          ].sort((a, b) => {
+            // Tarihe göre sırala (en yeni önce)
+            const aDate = new Date(a.created_at || a.start_date || 0).getTime();
+            const bDate = new Date(b.created_at || b.start_date || 0).getTime();
+            return bDate - aDate;
+          })}
+          renderItem={({ item }) => {
+            if (item.type === 'event') {
+              return renderEvent(item);
+            }
+            return renderPost({ item });
+          }}
+          keyExtractor={(item) => `${item.type}-${item.id}`}
           contentContainerStyle={styles.feedList}
           refreshControl={
             <RefreshControl 
               refreshing={false} 
-              onRefresh={refetch}
+              onRefresh={() => {
+                refetch();
+                refetchEvents();
+              }}
               tintColor={theme.colors.primary}
               colors={[theme.colors.primary]}
             />
@@ -515,22 +657,23 @@ export default function FeedScreen() {
           >
             <Text style={styles.modalCloseText}>✕</Text>
           </TouchableOpacity>
-          {selectedVideo && (
-            <VideoPlayer
-              videoUrl={selectedVideo}
-              postId=""
-              isLiked={false}
-              likeCount={0}
-              commentCount={0}
-              shareCount={0}
-              onLike={() => {}}
-              onComment={() => {}}
-              onShare={() => {}}
-              onTag={() => {}}
-              autoPlay={true}
-              previewMode={false}
-            />
-          )}
+                 {selectedVideo && (
+                   <VideoPlayer
+                     videoUrl={selectedVideo}
+                     postId=""
+                     isLiked={false}
+                     likeCount={0}
+                     commentCount={0}
+                     shareCount={0}
+                     onLike={() => {}}
+                     onComment={() => {}}
+                     onShare={() => {}}
+                     onTag={() => {}}
+                     autoPlay={true}
+                     previewMode={false}
+                     showControls={true}
+                   />
+                 )}
         </View>
       </Modal>
 
@@ -825,5 +968,26 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
+  },
+  eventContent: {
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.md,
+  },
+  eventTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700' as const,
+    marginBottom: SPACING.xs,
+  },
+  eventBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: 2,
+    borderRadius: 8,
+    gap: SPACING.xs / 2,
+  },
+  eventBadgeText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '700' as const,
   },
 });

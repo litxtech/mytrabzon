@@ -10,14 +10,19 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
-import { ArrowLeft, AlertCircle, ChevronDown } from 'lucide-react-native';
+import { ArrowLeft, AlertCircle, ChevronDown, Camera, Image as ImageIcon, X, Video } from 'lucide-react-native';
 import { TRABZON_DISTRICTS, GIRESUN_DISTRICTS, getDistrictsByCity } from '@/constants/districts';
 import { Footer } from '@/components/Footer';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 const EVENT_CATEGORIES = [
   { value: 'trafik', label: '🚗 Trafik Var' },
@@ -48,9 +53,13 @@ const SEVERITY_OPTIONS = [
 export default function CreateEventScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [showCityPicker, setShowCityPicker] = useState(false);
   const [showDistrictPicker, setShowDistrictPicker] = useState(false);
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [selectedVideos, setSelectedVideos] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -73,6 +82,96 @@ export default function CreateEventScreen() {
     },
   });
 
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('İzin Gerekli', 'Galeri erişimi için izin vermeniz gerekiyor');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images', 'videos'],
+      allowsMultipleSelection: true,
+      quality: 0.8,
+      selectionLimit: 5,
+    });
+
+    if (!result.canceled && result.assets) {
+      const videos = result.assets.filter(asset => asset.type === 'video').map(asset => asset.uri);
+      const images = result.assets.filter(asset => asset.type !== 'video').map(asset => asset.uri);
+      setSelectedVideos((prev) => [...prev, ...videos].slice(0, 3));
+      setSelectedImages((prev) => [...prev, ...images].slice(0, 5));
+    }
+  };
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('İzin Gerekli', 'Kamera erişimi için izin vermeniz gerekiyor');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images', 'videos'],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      if (result.assets[0].type === 'video') {
+        setSelectedVideos((prev) => [...prev, result.assets[0].uri].slice(0, 3));
+      } else {
+        setSelectedImages((prev) => [...prev, result.assets[0].uri].slice(0, 5));
+      }
+    }
+  };
+
+  const removeImage = (index: number) => {
+    setSelectedImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const removeVideo = (index: number) => {
+    setSelectedVideos((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const uploadMedia = async (uri: string, type: 'image' | 'video'): Promise<string> => {
+    if (!user?.id) throw new Error('Kullanıcı bilgisi bulunamadı');
+
+    const fileExt = uri.split('.').pop()?.toLowerCase() || (type === 'video' ? 'mp4' : 'jpg');
+    const fileName = `${user.id}/events/${type}_${Date.now()}.${fileExt}`;
+    
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    
+    const base64Data = base64.replace(/^data:image\/\w+;base64,/, '');
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    const mimeType = type === 'video' 
+      ? 'video/mp4' 
+      : fileExt === 'png' 
+      ? 'image/png' 
+      : 'image/jpeg';
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('posts')
+      .upload(fileName, bytes, {
+        contentType: mimeType,
+        upsert: false,
+      });
+
+    if (uploadError) throw new Error(uploadError.message);
+
+    const { data: urlData } = supabase.storage
+      .from('posts')
+      .getPublicUrl(uploadData.path);
+
+    return urlData.publicUrl;
+  };
+
   const handleSubmit = async () => {
     if (!formData.title || !formData.category || !formData.district) {
       Alert.alert('Hata', 'Lütfen başlık, kategori ve ilçe seçin');
@@ -80,7 +179,22 @@ export default function CreateEventScreen() {
     }
 
     setLoading(true);
+    setUploading(true);
+
     try {
+      let mediaUrls: string[] = [];
+
+      // Medya yükle
+      const allMedia = [
+        ...selectedImages.map(uri => ({ uri, type: 'image' as const })),
+        ...selectedVideos.map(uri => ({ uri, type: 'video' as const })),
+      ];
+
+      if (allMedia.length > 0) {
+        const uploadPromises = allMedia.map(media => uploadMedia(media.uri, media.type));
+        mediaUrls = await Promise.all(uploadPromises);
+      }
+
       await createEventMutation.mutateAsync({
         title: formData.title,
         description: formData.description,
@@ -90,11 +204,14 @@ export default function CreateEventScreen() {
         city: formData.city,
         latitude: formData.latitude,
         longitude: formData.longitude,
+        media_urls: mediaUrls.length > 0 ? mediaUrls : undefined,
       });
     } catch (error) {
       console.error('Create event error:', error);
+      Alert.alert('Hata', error instanceof Error ? error.message : 'Olay oluşturulamadı');
     } finally {
       setLoading(false);
+      setUploading(false);
     }
   };
 
@@ -323,13 +440,77 @@ export default function CreateEventScreen() {
           )}
         </View>
 
+        {/* Medya Ekleme */}
+        <View style={styles.section}>
+          <Text style={styles.label}>Fotoğraf/Video Ekle (Opsiyonel)</Text>
+          <View style={styles.mediaButtons}>
+            <TouchableOpacity
+              style={styles.mediaButton}
+              onPress={pickImage}
+              disabled={loading || uploading}
+            >
+              <ImageIcon size={20} color={COLORS.primary} />
+              <Text style={styles.mediaButtonText}>Galeriden Seç</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.mediaButton}
+              onPress={takePhoto}
+              disabled={loading || uploading}
+            >
+              <Camera size={20} color={COLORS.primary} />
+              <Text style={styles.mediaButtonText}>Kamera</Text>
+            </TouchableOpacity>
+          </View>
+
+          {selectedImages.length > 0 && (
+            <View style={styles.mediaContainer}>
+              {selectedImages.map((uri, index) => (
+                <View key={`img-${index}`} style={styles.mediaWrapper}>
+                  <Image source={{ uri }} style={styles.mediaPreview} />
+                  <TouchableOpacity
+                    onPress={() => removeImage(index)}
+                    style={styles.removeMediaButton}
+                  >
+                    <X size={16} color={COLORS.white} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {selectedVideos.length > 0 && (
+            <View style={styles.mediaContainer}>
+              {selectedVideos.map((uri, index) => (
+                <View key={`vid-${index}`} style={styles.mediaWrapper}>
+                  <View style={styles.videoPreview}>
+                    <Video size={24} color={COLORS.white} />
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => removeVideo(index)}
+                    style={styles.removeMediaButton}
+                  >
+                    <X size={16} color={COLORS.white} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {uploading && (
+            <View style={styles.uploadingContainer}>
+              <ActivityIndicator size="small" color={COLORS.primary} />
+              <Text style={styles.uploadingText}>Medya yükleniyor...</Text>
+            </View>
+          )}
+        </View>
+
         {/* Gönder Butonu */}
         <TouchableOpacity
-          style={[styles.submitButton, loading && styles.submitButtonDisabled]}
+          style={[styles.submitButton, (loading || uploading) && styles.submitButtonDisabled]}
           onPress={handleSubmit}
-          disabled={loading}
+          disabled={loading || uploading}
         >
-          {loading ? (
+          {loading || uploading ? (
             <ActivityIndicator color={COLORS.white} />
           ) : (
             <Text style={styles.submitButtonText}>Olayı Paylaş</Text>
@@ -541,6 +722,76 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.md,
     fontWeight: '700',
+  },
+  mediaButtons: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  mediaButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    padding: SPACING.md,
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  mediaButtonText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  mediaContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  mediaWrapper: {
+    width: 100,
+    height: 100,
+    borderRadius: 12,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  mediaPreview: {
+    width: '100%',
+    height: '100%',
+  },
+  videoPreview: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  removeMediaButton: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  uploadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+    padding: SPACING.sm,
+    backgroundColor: COLORS.primary + '10',
+    borderRadius: 8,
+  },
+  uploadingText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
   },
 });
 
