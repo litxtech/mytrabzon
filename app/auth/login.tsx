@@ -452,7 +452,38 @@ export default function LoginScreen() {
         throw new Error('Apple identity token alınamadı');
       }
 
+      // Identity token'ı decode et ve aud claim'ini kontrol et
+      try {
+        const tokenParts = credential.identityToken.split('.');
+        if (tokenParts.length === 3) {
+          // Base64 decode (React Native için)
+          const base64 = tokenParts[1].replace(/-/g, '+').replace(/_/g, '/');
+          const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+          const decoded = atob(padded);
+          const payload = JSON.parse(decoded);
+          
+          console.log('Apple identity token payload:', {
+            aud: payload.aud,
+            sub: payload.sub,
+            iss: payload.iss,
+            exp: payload.exp,
+          });
+          
+          // aud claim'i Service ID olmalı: com.litxtech.mytrabzon.login
+          if (payload.aud && payload.aud !== 'com.litxtech.mytrabzon.login') {
+            console.warn('⚠️ Token audience mismatch!');
+            console.warn('Expected: com.litxtech.mytrabzon.login');
+            console.warn('Got:', payload.aud);
+            console.warn('Supabase Dashboard → Authentication → Providers → Apple → Service ID (Client ID) alanına "' + payload.aud + '" yazılmalı');
+          }
+        }
+      } catch (decodeError) {
+        console.warn('Could not decode identity token:', decodeError);
+      }
+
       // Supabase'e identity token ile giriş yap
+      // Not: Supabase'de Apple provider yapılandırmasında Service ID (Client ID) olarak
+      // "com.litxtech.mytrabzon.login" ayarlanmış olmalı
       const { data, error } = await supabase.auth.signInWithIdToken({
         provider: 'apple',
         token: credential.identityToken,
