@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, 
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MessageCircle, Users, MapPin, AlertCircle, Inbox, UsersRound, Plus, Trash2, CheckSquare, Square } from 'lucide-react-native';
@@ -14,6 +15,7 @@ type GroupCategory = 'genel' | 'yardim' | 'etkinlik' | 'is' | 'egitim';
 
 export default function ChatScreen() {
   const { user } = useAuth();
+  const { theme } = useTheme();
   const { rooms, loading, loadRooms, onlineUsers } = useChat();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
@@ -177,14 +179,14 @@ export default function ChatScreen() {
 
   if (!user) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Sohbet</Text>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+        <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+          <Text style={[styles.headerTitle, { color: theme.colors.primary }]}>Sohbet</Text>
         </View>
         <View style={styles.emptyContainer}>
-          <AlertCircle size={48} color={COLORS.textLight} />
-          <Text style={styles.emptyText}>Giriş Yapmalısınız</Text>
-          <Text style={styles.emptySubtext}>Sohbet özelliğini kullanmak için giriş yapın</Text>
+          <AlertCircle size={48} color={theme.colors.textLight} />
+          <Text style={[styles.emptyText, { color: theme.colors.text }]}>Giriş Yapmalısınız</Text>
+          <Text style={[styles.emptySubtext, { color: theme.colors.textLight }]}>Sohbet özelliğini kullanmak için giriş yapın</Text>
         </View>
       </SafeAreaView>
     );
@@ -192,13 +194,13 @@ export default function ChatScreen() {
 
   if (loading && rooms.length === 0) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Sohbet</Text>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+        <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+          <Text style={[styles.headerTitle, { color: theme.colors.primary }]}>Sohbet</Text>
         </View>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Yükleniyor...</Text>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={[styles.loadingText, { color: theme.colors.text }]}>Yükleniyor...</Text>
         </View>
       </SafeAreaView>
     );
@@ -206,16 +208,16 @@ export default function ChatScreen() {
 
   if (error) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Sohbet</Text>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+        <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+          <Text style={[styles.headerTitle, { color: theme.colors.primary }]}>Sohbet</Text>
         </View>
         <View style={styles.emptyContainer}>
-          <AlertCircle size={48} color={COLORS.error} />
-          <Text style={styles.emptyText}>Hata Oluştu</Text>
-          <Text style={styles.emptySubtext}>{error}</Text>
+          <AlertCircle size={48} color={theme.colors.error} />
+          <Text style={[styles.emptyText, { color: theme.colors.text }]}>Hata Oluştu</Text>
+          <Text style={[styles.emptySubtext, { color: theme.colors.textLight }]}>{error}</Text>
           <TouchableOpacity 
-            style={styles.retryButton} 
+            style={[styles.retryButton, { backgroundColor: theme.colors.primary }]} 
             onPress={onRefresh}
           >
             <Text style={styles.retryButtonText}>Tekrar Dene</Text>
@@ -226,23 +228,23 @@ export default function ChatScreen() {
   }
 
   const renderTabBar = () => (
-    <View style={styles.tabBar}>
+    <View style={[styles.tabBar, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
       <TouchableOpacity
-        style={[styles.tab, activeTab === 'inbox' && styles.activeTab]}
+        style={[styles.tab, { backgroundColor: theme.colors.surface }, activeTab === 'inbox' && { backgroundColor: theme.colors.primary }]}
         onPress={() => setActiveTab('inbox')}
       >
-        <Inbox size={20} color={activeTab === 'inbox' ? COLORS.primary : COLORS.textLight} />
-        <Text style={[styles.tabText, activeTab === 'inbox' && styles.activeTabText]}>Gelen Kutusu</Text>
+        <Inbox size={20} color={activeTab === 'inbox' ? COLORS.white : theme.colors.textLight} />
+        <Text style={[styles.tabText, { color: activeTab === 'inbox' ? COLORS.white : theme.colors.text }]}>Gelen Kutusu</Text>
       </TouchableOpacity>
       <TouchableOpacity
-        style={[styles.tab, activeTab === 'groups' && styles.activeTab]}
+        style={[styles.tab, { backgroundColor: theme.colors.surface }, activeTab === 'groups' && { backgroundColor: theme.colors.primary }]}
         onPress={() => {
           setActiveTab('groups');
           if (!selectedCategory) setSelectedCategory('genel');
         }}
       >
-        <UsersRound size={20} color={activeTab === 'groups' ? COLORS.primary : COLORS.textLight} />
-        <Text style={[styles.tabText, activeTab === 'groups' && styles.activeTabText]}>Gruplar</Text>
+        <UsersRound size={20} color={activeTab === 'groups' ? COLORS.white : theme.colors.textLight} />
+        <Text style={[styles.tabText, { color: activeTab === 'groups' ? COLORS.white : theme.colors.text }]}>Gruplar</Text>
       </TouchableOpacity>
     </View>
   );
@@ -278,11 +280,12 @@ export default function ChatScreen() {
             >
               <Icon
                 size={18}
-                color={selectedCategory === key ? COLORS.white : COLORS.textLight}
+                color={selectedCategory === key ? COLORS.white : theme.colors.textLight}
               />
               <Text
                 style={[
                   styles.categoryButtonText,
+                  { color: selectedCategory === key ? COLORS.white : theme.colors.text },
                   selectedCategory === key && styles.selectedCategoryButtonText,
                 ]}
               >
@@ -363,9 +366,9 @@ export default function ChatScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Sohbet</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+      <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+        <Text style={[styles.headerTitle, { color: theme.colors.primary }]}>Sohbet</Text>
         <View style={styles.headerButtons}>
           {!selectionMode && activeTab === 'inbox' && (
             <>
@@ -437,7 +440,11 @@ export default function ChatScreen() {
           
           return (
             <TouchableOpacity
-              style={[styles.chatItem, isSelected && styles.chatItemSelected]}
+              style={[
+                styles.chatItem,
+                { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border },
+                isSelected && { backgroundColor: theme.colors.surface }
+              ]}
               onPress={() => {
                 if (selectionMode) {
                   toggleRoomSelection(room.id);
@@ -455,9 +462,9 @@ export default function ChatScreen() {
               {selectionMode && (
                 <View style={styles.checkboxContainer}>
                   {isSelected ? (
-                    <CheckSquare size={24} color={COLORS.primary} />
+                    <CheckSquare size={24} color={theme.colors.primary} />
                   ) : (
-                    <Square size={24} color={COLORS.textLight} />
+                    <Square size={24} color={theme.colors.textLight} />
                   )}
                 </View>
               )}

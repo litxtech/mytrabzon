@@ -2,10 +2,12 @@ import { Tabs, useRouter } from "expo-router";
 import { Home, MessageCircle, Bell, User, GraduationCap, Trophy, Heart } from "lucide-react-native";
 import React, { useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { COLORS } from "@/constants/theme";
 
 export default function TabLayout() {
   const { profile, loading } = useAuth();
+  const { theme } = useTheme();
   const router = useRouter();
 
   useEffect(() => {
@@ -21,11 +23,12 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textLight,
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: theme.colors.textLight,
         headerShown: false,
         tabBarStyle: {
-          borderTopColor: COLORS.border,
+          backgroundColor: theme.colors.card,
+          borderTopColor: theme.colors.border,
         },
       }}
     >

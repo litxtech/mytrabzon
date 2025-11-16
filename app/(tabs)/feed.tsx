@@ -313,7 +313,7 @@ export default function FeedScreen() {
                 onTag={() => {
                   // Etiketleme fonksiyonu
                 }}
-                autoPlay={true}
+                autoPlay={false}
                 previewMode={true}
               />
             ) : (

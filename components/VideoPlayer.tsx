@@ -68,7 +68,7 @@ export function VideoPlayer({
 }: VideoPlayerProps) {
   const { theme } = useTheme();
   const videoRef = useRef<Video>(null);
-  const [isPlaying, setIsPlaying] = useState(autoPlay);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(previewMode); // Önizlemede sessiz başlar
   const [showFullScreen, setShowFullScreen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -78,6 +78,20 @@ export function VideoPlayer({
   const lastTap = useRef<number>(0);
   const controlsTimeout = useRef<NodeJS.Timeout | null>(null);
   const insets = useSafeAreaInsets();
+
+  // autoPlay değiştiğinde video'yu başlat
+  useEffect(() => {
+    if (autoPlay && videoRef.current) {
+      // Video yüklendikten sonra başlat
+      const timer = setTimeout(() => {
+        if (videoRef.current && !isLoading) {
+          videoRef.current.playAsync().catch(console.error);
+          setIsPlaying(true);
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [autoPlay, isLoading]);
 
   useEffect(() => {
     return () => {
@@ -89,11 +103,19 @@ export function VideoPlayer({
 
   const handlePlaybackStatusUpdate = (status: AVPlaybackStatus) => {
     if (status.isLoaded) {
+      const wasLoading = isLoading;
       setIsLoading(false);
       setIsPlaying(status.isPlaying);
       setIsMuted(status.isMuted);
       setDuration(status.durationMillis || 0);
       setPosition(status.positionMillis || 0);
+      
+      // İlk yüklemede autoPlay true ise başlat
+      if (autoPlay && wasLoading && !status.isPlaying && !status.didJustFinish) {
+        setTimeout(() => {
+          videoRef.current?.playAsync().catch(console.error);
+        }, 100);
+      }
     }
   };
 
@@ -124,10 +146,16 @@ export function VideoPlayer({
     lastTap.current = now;
   };
 
-  const handleSingleTap = () => {
+  const handleSingleTap = async () => {
     if (previewMode) {
-      // Önizleme modunda tek tıklama = tam ekran aç
-      setShowFullScreen(true);
+      // Önizleme modunda tek tıklama = oynat/durdur veya tam ekran aç
+      if (!isPlaying && !isLoading) {
+        // Video durmuşsa oynat
+        await togglePlayPause();
+      } else {
+        // Video oynuyorsa tam ekran aç
+        setShowFullScreen(true);
+      }
     } else {
       // Tam ekranda tek tıklama = kontrolleri göster/gizle
       setShowControlsOverlay(!showControlsOverlay);
@@ -167,8 +195,9 @@ export function VideoPlayer({
             resizeMode={ResizeMode.COVER}
             isLooping
             isMuted={isMuted}
-            shouldPlay={autoPlay}
+            shouldPlay={isPlaying || autoPlay}
             onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+            useNativeControls={false}
           />
           
           {isLoading && (
@@ -177,11 +206,14 @@ export function VideoPlayer({
             </View>
           )}
 
-          {!isPlaying && !isLoading && (
+          {(!isPlaying || isLoading) && (
             <View style={styles.playOverlay}>
               <TouchableOpacity
                 style={styles.playButton}
-                onPress={togglePlayPause}
+                onPress={async () => {
+                  if (isLoading) return;
+                  await togglePlayPause();
+                }}
               >
                 <Play size={40} color={COLORS.white} fill={COLORS.white} />
               </TouchableOpacity>
