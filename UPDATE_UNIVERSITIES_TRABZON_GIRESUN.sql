@@ -53,39 +53,39 @@ ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.de
 
 -- Trabzon Üniversitesi - Ana Yerleşke (Akçaabat)
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Eğitim Fakültesi', 'EGT_TRABZON', 'Trabzon Üniversitesi Eğitim Fakültesi - Akçaabat Ana Yerleşke')
+('Trabzon Üniversitesi Eğitim Fakültesi', 'EGT_TRABZON', 'Trabzon Üniversitesi Eğitim Fakültesi - Akçaabat Ana Yerleşke')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('İlahiyat Fakültesi', 'ILAH_TRABZON', 'Trabzon Üniversitesi İlahiyat Fakültesi - Akçaabat Ana Yerleşke')
+('Trabzon Üniversitesi İlahiyat Fakültesi', 'ILAH_TRABZON', 'Trabzon Üniversitesi İlahiyat Fakültesi - Akçaabat Ana Yerleşke')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Güzel Sanatlar ve Tasarım Fakültesi', 'GSF_TRABZON', 'Trabzon Üniversitesi Güzel Sanatlar ve Tasarım Fakültesi - Akçaabat Ana Yerleşke')
+('Trabzon Üniversitesi Güzel Sanatlar ve Tasarım Fakültesi', 'GSF_TRABZON', 'Trabzon Üniversitesi Güzel Sanatlar ve Tasarım Fakültesi - Akçaabat Ana Yerleşke')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('İletişim Fakültesi', 'ILET_TRABZON', 'Trabzon Üniversitesi İletişim Fakültesi - Akçaabat Ana Yerleşke')
+('Trabzon Üniversitesi İletişim Fakültesi', 'ILET_TRABZON', 'Trabzon Üniversitesi İletişim Fakültesi - Akçaabat Ana Yerleşke')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Spor Bilimleri Fakültesi', 'SPOR_TRABZON', 'Trabzon Üniversitesi Spor Bilimleri Fakültesi - Akçaabat Ana Yerleşke')
+('Trabzon Üniversitesi Spor Bilimleri Fakültesi', 'SPOR_TRABZON', 'Trabzon Üniversitesi Spor Bilimleri Fakültesi - Akçaabat Ana Yerleşke')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Bilgisayar ve Bilişim Bilimleri Fakültesi', 'BILG_TRABZON', 'Trabzon Üniversitesi Bilgisayar ve Bilişim Bilimleri Fakültesi - Akçaabat Ana Yerleşke')
+('Trabzon Üniversitesi Bilgisayar ve Bilişim Bilimleri Fakültesi', 'BILG_TRABZON', 'Trabzon Üniversitesi Bilgisayar ve Bilişim Bilimleri Fakültesi - Akçaabat Ana Yerleşke')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Turizm ve Otelcilik Meslek Yüksekokulu', 'TUR_MYO_TRABZON', 'Trabzon Üniversitesi Turizm ve Otelcilik Meslek Yüksekokulu - Akçaabat Ana Yerleşke')
+('Trabzon Üniversitesi Turizm ve Otelcilik Meslek Yüksekokulu', 'TUR_MYO_TRABZON', 'Trabzon Üniversitesi Turizm ve Otelcilik Meslek Yüksekokulu - Akçaabat Ana Yerleşke')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Lisansüstü Eğitim Enstitüsü', 'LISANS_TRABZON', 'Trabzon Üniversitesi Lisansüstü Eğitim Enstitüsü - Akçaabat Ana Yerleşke')
+('Trabzon Üniversitesi Lisansüstü Eğitim Enstitüsü', 'LISANS_TRABZON', 'Trabzon Üniversitesi Lisansüstü Eğitim Enstitüsü - Akçaabat Ana Yerleşke')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Devlet Konservatuvarı', 'KONS_TRABZON', 'Trabzon Üniversitesi Devlet Konservatuvarı - Akçaabat Ana Yerleşke')
+('Trabzon Üniversitesi Devlet Konservatuvarı', 'KONS_TRABZON', 'Trabzon Üniversitesi Devlet Konservatuvarı - Akçaabat Ana Yerleşke')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 -- Trabzon Üniversitesi - İlçe Meslek Yüksekokulları
@@ -134,123 +134,123 @@ ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.de
 
 -- Giresun Üniversitesi Fakülteler
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Eğitim Fakültesi', 'EGT_GIRESUN', 'Giresun Üniversitesi Eğitim Fakültesi')
+('Giresun Üniversitesi Eğitim Fakültesi', 'EGT_GIRESUN', 'Giresun Üniversitesi Eğitim Fakültesi')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Fen Edebiyat Fakültesi', 'FEN_GIRESUN', 'Giresun Üniversitesi Fen Edebiyat Fakültesi')
+('Giresun Üniversitesi Fen Edebiyat Fakültesi', 'FEN_GIRESUN', 'Giresun Üniversitesi Fen Edebiyat Fakültesi')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('İktisadi ve İdari Bilimler Fakültesi', 'IIBF_GIRESUN', 'Giresun Üniversitesi İktisadi ve İdari Bilimler Fakültesi')
+('Giresun Üniversitesi İktisadi ve İdari Bilimler Fakültesi', 'IIBF_GIRESUN', 'Giresun Üniversitesi İktisadi ve İdari Bilimler Fakültesi')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('İslami İlimler Fakültesi', 'ILAH_GIRESUN', 'Giresun Üniversitesi İslami İlimler Fakültesi')
+('Giresun Üniversitesi İslami İlimler Fakültesi', 'ILAH_GIRESUN', 'Giresun Üniversitesi İslami İlimler Fakültesi')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Mühendislik Fakültesi', 'MUH_GIRESUN', 'Giresun Üniversitesi Mühendislik Fakültesi')
+('Giresun Üniversitesi Mühendislik Fakültesi', 'MUH_GIRESUN', 'Giresun Üniversitesi Mühendislik Fakültesi')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Sağlık Bilimleri Fakültesi', 'SAGLIK_GIRESUN', 'Giresun Üniversitesi Sağlık Bilimleri Fakültesi')
+('Giresun Üniversitesi Sağlık Bilimleri Fakültesi', 'SAGLIK_GIRESUN', 'Giresun Üniversitesi Sağlık Bilimleri Fakültesi')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Spor Bilimleri Fakültesi', 'SPOR_GIRESUN', 'Giresun Üniversitesi Spor Bilimleri Fakültesi')
+('Giresun Üniversitesi Spor Bilimleri Fakültesi', 'SPOR_GIRESUN', 'Giresun Üniversitesi Spor Bilimleri Fakültesi')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Tıp Fakültesi', 'TIP_GIRESUN', 'Giresun Üniversitesi Tıp Fakültesi')
+('Giresun Üniversitesi Tıp Fakültesi', 'TIP_GIRESUN', 'Giresun Üniversitesi Tıp Fakültesi')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Diş Hekimliği Fakültesi', 'DIS_GIRESUN', 'Giresun Üniversitesi Diş Hekimliği Fakültesi')
+('Giresun Üniversitesi Diş Hekimliği Fakültesi', 'DIS_GIRESUN', 'Giresun Üniversitesi Diş Hekimliği Fakültesi')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Güzel Sanatlar Fakültesi', 'GSF_GIRESUN', 'Giresun Üniversitesi Güzel Sanatlar Fakültesi')
+('Giresun Üniversitesi Güzel Sanatlar Fakültesi', 'GSF_GIRESUN', 'Giresun Üniversitesi Güzel Sanatlar Fakültesi')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Denizcilik Fakültesi', 'DENIZ_GIRESUN', 'Giresun Üniversitesi Denizcilik Fakültesi')
+('Giresun Üniversitesi Denizcilik Fakültesi', 'DENIZ_GIRESUN', 'Giresun Üniversitesi Denizcilik Fakültesi')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 -- Giresun Üniversitesi Yüksekokullar
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Sağlık Yüksekokulu', 'SAGLIK_YOK_GIRESUN', 'Giresun Üniversitesi Sağlık Yüksekokulu')
+('Giresun Üniversitesi Sağlık Yüksekokulu', 'SAGLIK_YOK_GIRESUN', 'Giresun Üniversitesi Sağlık Yüksekokulu')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Şebinkarahisar Uygulamalı Bilimler Yüksekokulu', 'SEBINK_YOK', 'Giresun Üniversitesi Şebinkarahisar Uygulamalı Bilimler Yüksekokulu')
+('Giresun Üniversitesi Şebinkarahisar Uygulamalı Bilimler Yüksekokulu', 'SEBINK_YOK', 'Giresun Üniversitesi Şebinkarahisar Uygulamalı Bilimler Yüksekokulu')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Görele Güzel Sanatlar Fakültesi', 'GORELE_GSF', 'Giresun Üniversitesi Görele Güzel Sanatlar Fakültesi (eski yüksekokul yapısından geldi)')
+('Giresun Üniversitesi Görele Güzel Sanatlar Fakültesi', 'GORELE_GSF', 'Giresun Üniversitesi Görele Güzel Sanatlar Fakültesi (eski yüksekokul yapısından geldi)')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 -- Giresun Üniversitesi Meslek Yüksekokulları
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Giresun Meslek Yüksekokulu', 'GIRESUN_MYO', 'Giresun Üniversitesi Giresun Meslek Yüksekokulu')
+('Giresun Üniversitesi Giresun Meslek Yüksekokulu', 'GIRESUN_MYO', 'Giresun Üniversitesi Giresun Meslek Yüksekokulu')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Espiye Meslek Yüksekokulu', 'ESPIYE_MYO', 'Giresun Üniversitesi Espiye Meslek Yüksekokulu')
+('Giresun Üniversitesi Espiye Meslek Yüksekokulu', 'ESPIYE_MYO', 'Giresun Üniversitesi Espiye Meslek Yüksekokulu')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Tirebolu Mehmet Bayrak Meslek Yüksekokulu', 'TIREBOLU_MYO', 'Giresun Üniversitesi Tirebolu Mehmet Bayrak Meslek Yüksekokulu')
+('Giresun Üniversitesi Tirebolu Mehmet Bayrak Meslek Yüksekokulu', 'TIREBOLU_MYO', 'Giresun Üniversitesi Tirebolu Mehmet Bayrak Meslek Yüksekokulu')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Dereli Meslek Yüksekokulu', 'DERELI_MYO', 'Giresun Üniversitesi Dereli Meslek Yüksekokulu')
+('Giresun Üniversitesi Dereli Meslek Yüksekokulu', 'DERELI_MYO', 'Giresun Üniversitesi Dereli Meslek Yüksekokulu')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Alucra Turan Bulutçu Meslek Yüksekokulu', 'ALUCRA_MYO', 'Giresun Üniversitesi Alucra Turan Bulutçu Meslek Yüksekokulu')
+('Giresun Üniversitesi Alucra Turan Bulutçu Meslek Yüksekokulu', 'ALUCRA_MYO', 'Giresun Üniversitesi Alucra Turan Bulutçu Meslek Yüksekokulu')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Şebinkarahisar Meslek Yüksekokulu', 'SEBINK_MYO', 'Giresun Üniversitesi Şebinkarahisar Meslek Yüksekokulu')
+('Giresun Üniversitesi Şebinkarahisar Meslek Yüksekokulu', 'SEBINK_MYO', 'Giresun Üniversitesi Şebinkarahisar Meslek Yüksekokulu')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Eynesil Kamil Nalbant Meslek Yüksekokulu', 'EYNESIL_MYO', 'Giresun Üniversitesi Eynesil Kamil Nalbant Meslek Yüksekokulu')
+('Giresun Üniversitesi Eynesil Kamil Nalbant Meslek Yüksekokulu', 'EYNESIL_MYO', 'Giresun Üniversitesi Eynesil Kamil Nalbant Meslek Yüksekokulu')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Keşap Meslek Yüksekokulu', 'KESAP_MYO', 'Giresun Üniversitesi Keşap Meslek Yüksekokulu')
+('Giresun Üniversitesi Keşap Meslek Yüksekokulu', 'KESAP_MYO', 'Giresun Üniversitesi Keşap Meslek Yüksekokulu')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Piraziz Meslek Yüksekokulu', 'PIRAZIZ_MYO', 'Giresun Üniversitesi Piraziz Meslek Yüksekokulu')
+('Giresun Üniversitesi Piraziz Meslek Yüksekokulu', 'PIRAZIZ_MYO', 'Giresun Üniversitesi Piraziz Meslek Yüksekokulu')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Bulancak Meslek Yüksekokulu', 'BULANCAK_MYO', 'Giresun Üniversitesi Bulancak Meslek Yüksekokulu')
+('Giresun Üniversitesi Bulancak Meslek Yüksekokulu', 'BULANCAK_MYO', 'Giresun Üniversitesi Bulancak Meslek Yüksekokulu')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 -- Giresun Üniversitesi Enstitüler
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Lisansüstü Eğitim Enstitüsü', 'LISANS_GIRESUN', 'Giresun Üniversitesi Lisansüstü Eğitim Enstitüsü')
+('Giresun Üniversitesi Lisansüstü Eğitim Enstitüsü', 'LISANS_GIRESUN', 'Giresun Üniversitesi Lisansüstü Eğitim Enstitüsü')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Sağlık Bilimleri Enstitüsü', 'SAGLIK_ENST_GIRESUN', 'Giresun Üniversitesi Sağlık Bilimleri Enstitüsü')
+('Giresun Üniversitesi Sağlık Bilimleri Enstitüsü', 'SAGLIK_ENST_GIRESUN', 'Giresun Üniversitesi Sağlık Bilimleri Enstitüsü')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Sosyal Bilimler Enstitüsü', 'SOSYAL_ENST_GIRESUN', 'Giresun Üniversitesi Sosyal Bilimler Enstitüsü')
+('Giresun Üniversitesi Sosyal Bilimler Enstitüsü', 'SOSYAL_ENST_GIRESUN', 'Giresun Üniversitesi Sosyal Bilimler Enstitüsü')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Fen Bilimleri Enstitüsü', 'FEN_ENST_GIRESUN', 'Giresun Üniversitesi Fen Bilimleri Enstitüsü')
+('Giresun Üniversitesi Fen Bilimleri Enstitüsü', 'FEN_ENST_GIRESUN', 'Giresun Üniversitesi Fen Bilimleri Enstitüsü')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 -- Giresun Üniversitesi Konservatuvar
 INSERT INTO ktu_faculties (name, code, description) VALUES
-('Devlet Konservatuvarı', 'KONS_GIRESUN', 'Giresun Üniversitesi Devlet Konservatuvarı')
+('Giresun Üniversitesi Devlet Konservatuvarı', 'KONS_GIRESUN', 'Giresun Üniversitesi Devlet Konservatuvarı')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 -- ===================================================================
