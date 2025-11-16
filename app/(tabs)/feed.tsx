@@ -433,8 +433,8 @@ export default function FeedScreen() {
             {isVideo ? (
               <TouchableOpacity
                 onPress={() => {
-                  setSelectedVideo(firstMedia.path);
-                  setVideoModalVisible(true);
+                  // Video feed'e yönlendir
+                  router.push(`/video-feed?postId=${item.id}` as any);
                 }}
                 activeOpacity={0.9}
                 style={styles.videoContainer}

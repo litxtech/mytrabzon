@@ -11,6 +11,7 @@ import {
   FlatList,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { Video, ResizeMode } from 'expo-av';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
@@ -92,7 +93,7 @@ export default function UserProfileScreen() {
   );
 
   // Takipçi ve takip sayılarını getir
-  const { data: followStats } = trpc.user.getFollowStats.useQuery(
+  const { data: followStats, refetch: refetchFollowStats } = trpc.user.getFollowStats.useQuery(
     { user_id: id! },
     { enabled: !!id }
   );
@@ -101,12 +102,14 @@ export default function UserProfileScreen() {
   const followMutation = trpc.user.follow.useMutation({
     onSuccess: () => {
       refetchFollowStatus();
+      refetchFollowStats(); // Takipçi sayısını güncelle
     },
   });
 
   const unfollowMutation = trpc.user.unfollow.useMutation({
     onSuccess: () => {
       refetchFollowStatus();
+      refetchFollowStats(); // Takipçi sayısını güncelle
     },
   });
 
@@ -302,17 +305,36 @@ export default function UserProfileScreen() {
               data={postsData.posts}
               renderItem={({ item }) => {
                 const firstMedia = item.media && item.media.length > 0 ? item.media[0] : null;
+                const isVideo = firstMedia && (firstMedia.type === 'video' || firstMedia.path?.match(/\.(mp4|mov|avi|webm)$/i));
                 return (
                   <TouchableOpacity
                     style={styles.postCard}
-                    onPress={() => router.push(`/post/${item.id}` as any)}
+                    onPress={() => {
+                      if (isVideo) {
+                        router.push(`/video-feed?postId=${item.id}` as any);
+                      } else {
+                        router.push(`/post/${item.id}` as any);
+                      }
+                    }}
                   >
                     {firstMedia ? (
-                      <Image
-                        source={{ uri: firstMedia.path }}
-                        style={styles.postImage}
-                        resizeMode="cover"
-                      />
+                      isVideo ? (
+                        <Video
+                          source={{ uri: firstMedia.path, overrideFileExtensionAndroid: 'mp4' }}
+                          style={styles.postImage}
+                          resizeMode={ResizeMode.COVER}
+                          isLooping
+                          isMuted
+                          shouldPlay={true}
+                          useNativeControls={false}
+                        />
+                      ) : (
+                        <Image
+                          source={{ uri: firstMedia.path }}
+                          style={styles.postImage}
+                          resizeMode="cover"
+                        />
+                      )
                     ) : (
                       <View style={[styles.postImage, styles.postPlaceholder]}>
                         <View style={styles.postTextContainer}>
@@ -330,6 +352,11 @@ export default function UserProfileScreen() {
                         <Text style={styles.postStatText}>{item.comments_count || 0}</Text>
                       </View>
                     </View>
+                    {isVideo && (
+                      <View style={styles.videoBadge}>
+                        <Text style={styles.videoBadgeText}>▶</Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
                 );
               }}

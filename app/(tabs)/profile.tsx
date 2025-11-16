@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Share, Platform, FlatList, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
+import { Video, ResizeMode } from 'expo-av';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -22,24 +23,66 @@ type QuickAction = {
   tone?: 'danger' | 'success';
 };
 
-// Post Grid Item Component (Instagram benzeri overlay ile)
+// Post Grid Item Component (Instagram benzeri overlay ile) - Video desteği ile
 function PostGridItem({ post, firstMedia, router }: { post: any; firstMedia: any; router: any }) {
   const [isPressed, setIsPressed] = useState(false);
+  const [isVideo, setIsVideo] = useState(false);
+  const videoRef = React.useRef<any>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  React.useEffect(() => {
+    if (firstMedia) {
+      const isVideoFile = firstMedia.type === 'video' || firstMedia.path?.match(/\.(mp4|mov|avi|webm)$/i);
+      setIsVideo(isVideoFile);
+    }
+  }, [firstMedia]);
+
+  // Video otomatik oynatma
+  React.useEffect(() => {
+    if (isVideo && videoRef.current && !isPressed) {
+      videoRef.current?.playAsync?.().catch(console.error);
+      setIsPlaying(true);
+    } else if (isVideo && videoRef.current && isPressed) {
+      videoRef.current?.pauseAsync?.().catch(console.error);
+      setIsPlaying(false);
+    }
+  }, [isVideo, isPressed]);
+
+  const handlePress = () => {
+    if (isVideo) {
+      router.push(`/video-feed?postId=${post.id}` as any);
+    } else {
+      router.push(`/post/${post.id}` as any);
+    }
+  };
 
   return (
     <TouchableOpacity
       style={styles.postGridItem}
-      onPress={() => router.push(`/post/${post.id}` as any)}
+      onPress={handlePress}
       onPressIn={() => setIsPressed(true)}
       onPressOut={() => setIsPressed(false)}
       activeOpacity={1}
     >
       {firstMedia ? (
-        <Image
-          source={{ uri: firstMedia.path }}
-          style={styles.postGridImage}
-          resizeMode="cover"
-        />
+        isVideo ? (
+          <Video
+            ref={videoRef}
+            source={{ uri: firstMedia.path, overrideFileExtensionAndroid: 'mp4' }}
+            style={styles.postGridImage}
+            resizeMode={ResizeMode.COVER}
+            isLooping
+            isMuted
+            shouldPlay={isPlaying}
+            useNativeControls={false}
+          />
+        ) : (
+          <Image
+            source={{ uri: firstMedia.path }}
+            style={styles.postGridImage}
+            resizeMode="cover"
+          />
+        )
       ) : (
         <View style={[styles.postGridImage, styles.postGridPlaceholder]}>
           <Text style={styles.postGridText} numberOfLines={3}>
@@ -59,6 +102,11 @@ function PostGridItem({ post, firstMedia, router }: { post: any; firstMedia: any
       {post.media && post.media.length > 1 && (
         <View style={styles.postGridBadge}>
           <Text style={styles.postGridBadgeText}>+{post.media.length - 1}</Text>
+        </View>
+      )}
+      {isVideo && (
+        <View style={styles.videoBadge}>
+          <Text style={styles.videoBadgeText}>▶</Text>
         </View>
       )}
     </TouchableOpacity>
@@ -282,14 +330,23 @@ export default function ProfileScreen() {
   // İstatistikleri hesapla
   const totalPosts = postsData?.posts?.length || 0;
   
-  // Takipçi ve takip sayılarını getir
-  const { data: followStats } = trpc.user.getFollowStats.useQuery(
+  // Takipçi ve takip sayılarını getir - gerçek zamanlı güncelleme için refetch
+  const { data: followStats, refetch: refetchFollowStats } = trpc.user.getFollowStats.useQuery(
     { user_id: user?.id || '' },
     { enabled: !!user?.id }
   );
   
   const followersCount = followStats?.followers_count || 0;
   const followingCount = followStats?.following_count || 0;
+
+  // Takip/takipçi sayılarını periyodik olarak güncelle (her 5 saniyede bir)
+  useEffect(() => {
+    if (!user?.id) return;
+    const interval = setInterval(() => {
+      refetchFollowStats();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [user?.id, refetchFollowStats]);
 
   const handleLogout = async () => {
     await signOut();
@@ -1358,5 +1415,19 @@ const styles = StyleSheet.create({
   matchItemDistrict: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
+  },
+  videoBadge: {
+    position: 'absolute' as const,
+    top: SPACING.xs,
+    left: SPACING.xs,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 12,
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: 2,
+  },
+  videoBadgeText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '600' as const,
   },
 });
