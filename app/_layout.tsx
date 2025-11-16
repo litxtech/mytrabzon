@@ -148,14 +148,59 @@ export default function RootLayout() {
             }
           }
 
-          // Callback (OAuth)
+          // Callback (OAuth) - Deep link formatı: mytrabzon://auth/callback?access_token=xxx&refresh_token=xxx
           if (url.includes('callback')) {
-            console.log('OAuth callback received:', url);
+            console.log('OAuth callback received (deep link):', url);
             const accessToken = params.access_token;
             const refreshToken = params.refresh_token;
+            const code = params.code; // OAuth code (eğer varsa)
 
-            console.log('Tokens received:', { hasAccessToken: !!accessToken, hasRefreshToken: !!refreshToken });
+            console.log('Tokens received:', { 
+              hasAccessToken: !!accessToken, 
+              hasRefreshToken: !!refreshToken,
+              hasCode: !!code 
+            });
 
+            // Eğer code varsa, exchangeCodeForSession kullan
+            if (code && !accessToken) {
+              console.log('Exchanging code for session...');
+              try {
+                const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+                if (exchangeError) {
+                  console.error('Code exchange error:', exchangeError);
+                  // Code exchange başarısız olursa, redirect_to'ya yönlendir (token'lar orada olabilir)
+                  if (redirectTo && (redirectTo.startsWith('mytrabzon://') || redirectTo.startsWith('litxtech://'))) {
+                    await handleDeepLink(redirectTo);
+                    return;
+                  }
+                  return;
+                }
+                if (data.session) {
+                  console.log('Session created from code exchange');
+                  const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', data.session.user.id)
+                    .single();
+
+                  if (profile && profile.full_name) {
+                    router.replace('/(tabs)/feed');
+                  } else {
+                    router.replace('/auth/onboarding');
+                  }
+                  return;
+                }
+              } catch (err) {
+                console.error('Code exchange error:', err);
+                // Hata durumunda redirect_to'ya yönlendir
+                if (redirectTo && (redirectTo.startsWith('mytrabzon://') || redirectTo.startsWith('litxtech://'))) {
+                  await handleDeepLink(redirectTo);
+                  return;
+                }
+              }
+            }
+
+            // Token'lar varsa session'ı set et
             if (accessToken && refreshToken) {
               const { error: sessionError } = await supabase.auth.setSession({
                 access_token: accessToken,
@@ -197,7 +242,23 @@ export default function RootLayout() {
               }
               return;
             } else {
-              console.log('Missing tokens in callback URL');
+              console.log('Missing tokens in callback URL - checking for session...');
+              // Token yoksa mevcut session'ı kontrol et
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session?.user) {
+                const { data: profile } = await supabase
+                  .from('profiles')
+                  .select('*')
+                  .eq('id', session.user.id)
+                  .single();
+
+                if (profile && profile.full_name) {
+                  router.replace('/(tabs)/feed');
+                } else {
+                  router.replace('/auth/onboarding');
+                }
+                return;
+              }
             }
           }
 
@@ -208,14 +269,67 @@ export default function RootLayout() {
           }
         }
 
-        // Supabase web URL'inden deep link'e yönlendirme
-        if (url.includes('supabase.co') && url.includes('redirect_to=')) {
-          const redirectMatch = url.match(/redirect_to=([^&]+)/);
-          if (redirectMatch) {
-            const redirectUrl = decodeURIComponent(redirectMatch[1]);
-            console.log('Redirecting to:', redirectUrl);
-            if (redirectUrl.startsWith('mytrabzon://') || redirectUrl.startsWith('litxtech://')) {
-              await handleDeepLink(redirectUrl);
+        // Supabase callback URL'ini işle - token'ları çıkar ve deep link'e yönlendir
+        if (url.includes('supabase.co') && (url.includes('/auth/v1/callback') || url.includes('redirect_to='))) {
+          console.log('Supabase callback URL detected:', url);
+          
+          // URL'den token'ları ve redirect_to'yu çıkar
+          const urlObj = new URL(url);
+          const accessToken = urlObj.searchParams.get('access_token');
+          const refreshToken = urlObj.searchParams.get('refresh_token');
+          const redirectTo = urlObj.searchParams.get('redirect_to');
+          
+          console.log('Tokens from Supabase callback:', { 
+            hasAccessToken: !!accessToken, 
+            hasRefreshToken: !!refreshToken,
+            redirectTo 
+          });
+          
+          // Eğer token'lar varsa, session'ı set et ve redirect_to'ya yönlendir
+          if (accessToken && refreshToken) {
+            const { error: sessionError } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            
+            if (sessionError) {
+              console.error('Session set error from Supabase callback:', sessionError);
+            } else {
+              console.log('Session set successfully from Supabase callback');
+              
+              // redirect_to varsa oraya yönlendir
+              if (redirectTo && (redirectTo.startsWith('mytrabzon://') || redirectTo.startsWith('litxtech://'))) {
+                // Token'ları redirect URL'e ekle
+                const separator = redirectTo.includes('?') ? '&' : '?';
+                const redirectUrlWithTokens = `${redirectTo}${separator}access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}`;
+                console.log('Redirecting to deep link with tokens:', redirectUrlWithTokens);
+                await handleDeepLink(redirectUrlWithTokens);
+                return;
+              }
+              
+              // redirect_to yoksa session kontrolü yap
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session?.user) {
+                const { data: profile } = await supabase
+                  .from('profiles')
+                  .select('*')
+                  .eq('id', session.user.id)
+                  .single();
+                
+                if (profile && profile.full_name) {
+                  router.replace('/(tabs)/feed');
+                } else {
+                  router.replace('/auth/onboarding');
+                }
+                return;
+              }
+            }
+          } else if (redirectTo) {
+            // Token yok ama redirect_to var - redirect_to'ya yönlendir
+            const decodedRedirect = decodeURIComponent(redirectTo);
+            console.log('Redirecting to:', decodedRedirect);
+            if (decodedRedirect.startsWith('mytrabzon://') || decodedRedirect.startsWith('litxtech://')) {
+              await handleDeepLink(decodedRedirect);
               return;
             }
           }
