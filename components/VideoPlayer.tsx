@@ -464,6 +464,44 @@ function FullScreenVideoPlayer({
     return count.toString();
   };
 
+  const handleCloseComments = () => {
+    Animated.spring(commentSheetY, {
+      toValue: height,
+      useNativeDriver: true,
+      tension: 50,
+      friction: 7,
+    }).start(() => {
+      setShowComments(false);
+    });
+  };
+
+  // Yorum paneli için pan responder (aşağı çekme)
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => showComments,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return showComments && Math.abs(gestureState.dy) > 10;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) {
+          commentSheetY.setValue(height * 0.5 + gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 100) {
+          handleCloseComments();
+        } else {
+          Animated.spring(commentSheetY, {
+            toValue: height * 0.5,
+            useNativeDriver: true,
+            tension: 50,
+            friction: 7,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
   return (
     <View style={[styles.fullScreenContainer, { paddingTop: insets.top }]}>
       <Pressable
