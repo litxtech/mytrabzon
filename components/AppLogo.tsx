@@ -16,7 +16,7 @@ const LOGO_SIZES = {
   large: { icon: 48, text: 40, spacing: SPACING.md },
 };
 
-export function AppLogo({ size = 'medium', showIcon = true, showText = true, style }: AppLogoProps) {
+export function AppLogo({ size = 'medium', showIcon = true, showText = false, style }: AppLogoProps) {
   const sizes = LOGO_SIZES[size];
 
   return (
