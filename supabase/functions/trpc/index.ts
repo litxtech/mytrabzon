@@ -6213,6 +6213,195 @@ const appRouter = createTRPCRouter({
 
         return { success: true };
       }),
+
+    // KYC Yönetimi
+    getKycRequests: protectedProcedure
+      .input(
+        z.object({
+          status: z.enum(['pending', 'approved', 'rejected']).optional(),
+          limit: z.number().min(1).max(100).default(50),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        if (user.id !== SPECIAL_ADMIN_ID) {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("role, id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+        }
+        
+        let query = supabase
+          .from("kyc_requests")
+          .select(`
+            *,
+            user:profiles!kyc_requests_user_id_fkey(id, full_name, avatar_url, username, email),
+            documents:kyc_documents(*)
+          `, { count: "exact" });
+        
+        if (input.status) {
+          query = query.eq("status", input.status);
+        }
+        
+        query = query
+          .order("created_at", { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+        
+        const { data, error, count } = await query;
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        return {
+          requests: data || [],
+          total: count || 0,
+        };
+      }),
+
+    approveKyc: protectedProcedure
+      .input(z.object({ kycId: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        let adminUserId: string;
+        if (user.id === SPECIAL_ADMIN_ID) {
+          const { data: adminUserRecord } = await supabase
+            .from("admin_users")
+            .select("id")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          adminUserId = adminUserRecord?.id || user.id;
+        } else {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+          adminUserId = adminUser.id;
+        }
+        
+        // KYC request'i güncelle
+        const { data: kycRequest, error: fetchError } = await supabase
+          .from("kyc_requests")
+          .select("user_id")
+          .eq("id", input.kycId)
+          .single();
+        
+        if (fetchError || !kycRequest) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'KYC başvurusu bulunamadı' });
+        }
+        
+        const { data, error } = await supabase
+          .from("kyc_requests")
+          .update({
+            status: 'approved',
+            reviewed_at: new Date().toISOString(),
+            reviewed_by: adminUserId,
+          })
+          .eq("id", input.kycId)
+          .select()
+          .single();
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        // Profile'ı güncelle (trigger otomatik yapacak ama emin olmak için)
+        await supabase
+          .from("profiles")
+          .update({ is_verified: true })
+          .eq("id", kycRequest.user_id);
+        
+        return data;
+      }),
+
+    rejectKyc: protectedProcedure
+      .input(
+        z.object({
+          kycId: z.string().uuid(),
+          reviewNotes: z.string().min(1),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        let adminUserId: string;
+        if (user.id === SPECIAL_ADMIN_ID) {
+          const { data: adminUserRecord } = await supabase
+            .from("admin_users")
+            .select("id")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          adminUserId = adminUserRecord?.id || user.id;
+        } else {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+          adminUserId = adminUser.id;
+        }
+        
+        // KYC request'i güncelle
+        const { data: kycRequest, error: fetchError } = await supabase
+          .from("kyc_requests")
+          .select("user_id")
+          .eq("id", input.kycId)
+          .single();
+        
+        if (fetchError || !kycRequest) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'KYC başvurusu bulunamadı' });
+        }
+        
+        const { data, error } = await supabase
+          .from("kyc_requests")
+          .update({
+            status: 'rejected',
+            reviewed_at: new Date().toISOString(),
+            reviewed_by: adminUserId,
+            review_notes: input.reviewNotes,
+          })
+          .eq("id", input.kycId)
+          .select()
+          .single();
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        // Profile'ı güncelle (trigger otomatik yapacak ama emin olmak için)
+        await supabase
+          .from("profiles")
+          .update({ is_verified: false })
+          .eq("id", kycRequest.user_id);
+        
+        return data;
+      }),
   }),
 });
 
