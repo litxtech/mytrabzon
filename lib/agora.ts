@@ -23,7 +23,7 @@ try {
 
 export const AGORA_APP_ID = Constants.expoConfig?.extra?.agoraAppId || 
   process.env.EXPO_PUBLIC_AGORA_APP_ID || 
-  'd1e34b20cd2b4da69418f360039d254d';
+  'd1e34b20cd2b4da69418f3';
 
 export const AGORA_CERTIFICATE = Constants.expoConfig?.extra?.agoraCertificate || 
   process.env.EXPO_PUBLIC_AGORA_CERTIFICATE || 

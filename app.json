@@ -114,8 +114,8 @@
       "eas": {
         "projectId": "368ac56e-da84-480e-b163-f04077df7fa6"
       },
-      "agoraAppId": process.env.EXPO_PUBLIC_AGORA_APP_ID || "d1e34b20cd2b4da69418f360039d254d",
-      "agoraCertificate": process.env.EXPO_PUBLIC_AGORA_CERTIFICATE || "d0c65c85891f40c680764c5cf0523433"
+      "agoraAppId": "d1e34b20cd2b4da69418f360039d254d",
+      "agoraCertificate": "d0c65c85891f40c680764c5cf0523433"
     },
     "cli": {
       "appVersionSource": "local"

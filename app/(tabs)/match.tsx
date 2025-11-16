@@ -15,7 +15,7 @@ import {
   ScrollView,
   Modal,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Camera, Video, VideoOff, Mic, MicOff, X, Sparkles, Shield, Heart } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -112,16 +112,35 @@ export default function MatchScreen() {
       setIsMatching(false);
       stopPolling();
       
-      // Eşleşme bulundu - onay modalı göster
-      setFoundSession(checkMatchQuery.data.session);
-      setShowMatchFoundModal(true);
-      
-      // 30 saniye sonra otomatik başlat
-      matchFoundTimeout.current = setTimeout(() => {
-        handleAcceptMatch();
-      }, 30000);
+      // Eşleşme bulundu - direkt görüntülü görüşme ekranına yönlendir (modal kaldırıldı)
+      const session = checkMatchQuery.data.session;
+      router.push(`/match/video/${session.id}` as any);
     }
-  }, [checkMatchQuery.data, handleAcceptMatch]);
+  }, [checkMatchQuery.data, router]);
+
+  // Sayfa focus/blur kontrolü - sayfadan çıkılırsa eşleşmeyi iptal et
+  useFocusEffect(
+    useCallback(() => {
+      // Sayfa focus olduğunda - eşleşme devam ediyorsa polling'i başlat
+      if (matchStatus === 'searching' && !pollingIntervalRef.current) {
+        startPolling();
+      }
+      
+      return () => {
+        // Sayfa blur olduğunda (sayfadan çıkıldığında) - eşleşmeyi iptal et
+        if (matchStatus === 'searching') {
+          stopPolling();
+          leaveQueueMutation.mutate();
+          setIsMatching(false);
+          setMatchStatus('idle');
+        }
+        if (matchFoundTimeout.current) {
+          clearTimeout(matchFoundTimeout.current);
+          matchFoundTimeout.current = null;
+        }
+      };
+    }, [matchStatus])
+  );
 
   useEffect(() => {
     return () => {
@@ -129,8 +148,12 @@ export default function MatchScreen() {
       if (matchFoundTimeout.current) {
         clearTimeout(matchFoundTimeout.current);
       }
+      // Component unmount olduğunda da eşleşmeyi iptal et
+      if (matchStatus === 'searching') {
+        leaveQueueMutation.mutate();
+      }
     };
-  }, []);
+  }, [matchStatus]);
 
   useEffect(() => {
     Animated.loop(
@@ -347,51 +370,6 @@ export default function MatchScreen() {
         <Footer />
       </ScrollView>
 
-      {/* Eşleşme Bulundu Modalı */}
-      <Modal
-        visible={showMatchFoundModal}
-        transparent
-        animationType="fade"
-        onRequestClose={handleRejectMatch}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.colors.card }]}>
-            <View style={styles.modalHeader}>
-              <Sparkles size={48} color={theme.colors.primary} />
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Eşleşme Bulundu!</Text>
-              <Text style={[styles.modalSubtitle, { color: theme.colors.textLight }]}>
-                Karşı taraf seni bekliyor
-              </Text>
-            </View>
-
-            <View style={[styles.modalInfo, { backgroundColor: theme.colors.surface }]}>
-              <Text style={[styles.modalInfoText, { color: theme.colors.text }]}>
-                Görüntülü görüşmeye başlamak için hazır mısın?
-              </Text>
-              <Text style={[styles.modalWarning, { color: theme.colors.warning }]}>
-                30 saniye içinde otomatik başlayacak
-              </Text>
-            </View>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButtonReject, { backgroundColor: theme.colors.surface, borderColor: theme.colors.error }]}
-                onPress={handleRejectMatch}
-              >
-                <X size={20} color={theme.colors.error} />
-                <Text style={[styles.modalButtonRejectText, { color: theme.colors.error }]}>Vazgeç</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButtonAccept, { backgroundColor: theme.colors.primary }]}
-                onPress={handleAcceptMatch}
-              >
-                <Video size={20} color={COLORS.white} />
-                <Text style={styles.modalButtonAcceptText}>Başla</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </LinearGradient>
   );
 }
