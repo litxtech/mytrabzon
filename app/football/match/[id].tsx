@@ -24,9 +24,9 @@ export default function MatchDetailScreen() {
   const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data: match, isLoading, refetch } = trpc.football.getMatch.useQuery(
+  const { data: match, isLoading, refetch } = (trpc as any).football.getMatchDetails.useQuery(
     { match_id: id! },
-    { enabled: !!id && !!user }
+    { enabled: !!id }
   );
 
   const createReservationMutation = trpc.football.createReservation.useMutation({
@@ -150,21 +150,21 @@ export default function MatchDetailScreen() {
           <View style={styles.infoRow}>
             <Calendar size={20} color={COLORS.primary} />
             <Text style={styles.infoText}>
-              {new Date(match.match_date).toLocaleDateString('tr-TR', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-              })}
+              {match.match_date 
+                ? new Date(match.match_date).toLocaleDateString('tr-TR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                  })
+                : 'Tarih belirtilmemiş'}
             </Text>
           </View>
           <View style={styles.infoRow}>
             <Clock size={20} color={COLORS.primary} />
             <Text style={styles.infoText}>
-              {new Date(match.match_date).toLocaleTimeString('tr-TR', { 
-                hour: '2-digit', 
-                minute: '2-digit',
-                timeZone: 'Europe/Istanbul',
-              })}
+              {match.start_time 
+                ? match.start_time.substring(0, 5) // HH:MM formatında göster
+                : 'Saat belirtilmemiş'}
             </Text>
           </View>
           <View style={styles.infoRow}>
