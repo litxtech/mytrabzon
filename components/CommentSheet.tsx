@@ -91,10 +91,10 @@ export function CommentSheet({ postId }: CommentSheetProps) {
         )}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={[styles.emptyText, { color: theme.colors.textLight }]}>
+            <Text style={[styles.emptyText, { color: 'rgba(255, 255, 255, 0.8)' }]}>
               Henüz yorum yok
             </Text>
-            <Text style={[styles.emptySubtext, { color: theme.colors.textLight }]}>
+            <Text style={[styles.emptySubtext, { color: 'rgba(255, 255, 255, 0.6)' }]}>
               İlk yorumu sen yap!
             </Text>
           </View>
@@ -117,9 +117,9 @@ export function CommentSheet({ postId }: CommentSheetProps) {
           contentFit="cover"
         />
         <TextInput
-          style={[styles.input, { backgroundColor: theme.colors.card, color: theme.colors.text }]}
+          style={[styles.input, { backgroundColor: 'rgba(255, 255, 255, 0.2)', color: COLORS.white }]}
           placeholder="Yorum yaz..."
-          placeholderTextColor={theme.colors.textLight}
+          placeholderTextColor="rgba(255, 255, 255, 0.6)"
           value={commentText}
           onChangeText={setCommentText}
           multiline

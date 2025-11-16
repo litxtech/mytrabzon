@@ -608,6 +608,35 @@ function FullScreenVideoPlayer({
           )}
         </View>
       </Pressable>
+
+      {/* Yorum Paneli (Bottom Sheet) - Şeffaf, video izlenirken */}
+      {showComments && (
+        <Animated.View
+          style={[
+            styles.commentSheet,
+            {
+              transform: [{ translateY: commentSheetY }],
+              backgroundColor: 'rgba(0, 0, 0, 0.7)', // Şeffaf - video görünür
+            },
+          ]}
+          {...panResponder.panHandlers}
+        >
+          {/* Drag Handle */}
+          <View style={styles.dragHandleContainer}>
+            <View style={[styles.dragHandle, { backgroundColor: COLORS.white }]} />
+          </View>
+          
+          <View style={[styles.commentSheetHeader, { borderBottomColor: theme.colors.border + '40' }]}>
+            <Text style={[styles.commentSheetTitle, { color: COLORS.white }]}>
+              Yorumlar ({commentCount || 0})
+            </Text>
+            <TouchableOpacity onPress={handleCloseComments}>
+              <X size={24} color={COLORS.white} />
+            </TouchableOpacity>
+          </View>
+          <CommentSheet postId={postId} />
+        </Animated.View>
+      )}
     </View>
   );
 }
