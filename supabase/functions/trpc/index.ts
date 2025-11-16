@@ -448,6 +448,207 @@ const appRouter = createTRPCRouter({
 
         return { success: true, message: "Account deletion cancelled successfully" };
       }),
+
+    // Takip et
+    follow: protectedProcedure
+      .input(z.object({ following_id: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Giriş yapmanız gerekiyor' });
+
+        if (user.id === input.following_id) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Kendinizi takip edemezsiniz' });
+        }
+
+        // Kullanıcının var olup olmadığını kontrol et
+        const { data: targetUser, error: userError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', input.following_id)
+          .maybeSingle();
+
+        if (userError || !targetUser) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Kullanıcı bulunamadı' });
+        }
+
+        // Zaten takip ediliyor mu kontrol et
+        const { data: existingFollow } = await supabase
+          .from('follows')
+          .select('id')
+          .eq('follower_id', user.id)
+          .eq('following_id', input.following_id)
+          .maybeSingle();
+
+        if (existingFollow) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Bu kullanıcıyı zaten takip ediyorsunuz' });
+        }
+
+        // Takip kaydı oluştur
+        const { data: follow, error: followError } = await supabase
+          .from('follows')
+          .insert({
+            follower_id: user.id,
+            following_id: input.following_id,
+          })
+          .select()
+          .single();
+
+        if (followError) {
+          console.error('Follow error:', followError);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Takip işlemi başarısız oldu' });
+        }
+
+        return { success: true, follow };
+      }),
+
+    // Takipten çık
+    unfollow: protectedProcedure
+      .input(z.object({ following_id: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Giriş yapmanız gerekiyor' });
+
+        // Takip kaydını sil
+        const { error: unfollowError } = await supabase
+          .from('follows')
+          .delete()
+          .eq('follower_id', user.id)
+          .eq('following_id', input.following_id);
+
+        if (unfollowError) {
+          console.error('Unfollow error:', unfollowError);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Takipten çıkma işlemi başarısız oldu' });
+        }
+
+        return { success: true };
+      }),
+
+    // Takip durumunu kontrol et
+    checkFollowStatus: protectedProcedure
+      .input(z.object({ user_id: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+
+        if (!user) {
+          return { is_following: false };
+        }
+
+        // Takip durumunu kontrol et
+        const { data: follow, error } = await supabase
+          .from('follows')
+          .select('id')
+          .eq('follower_id', user.id)
+          .eq('following_id', input.user_id)
+          .maybeSingle();
+
+        if (error) {
+          console.error('Check follow status error:', error);
+          return { is_following: false };
+        }
+
+        return { is_following: !!follow };
+      }),
+
+    // Takipçileri getir
+    getFollowers: protectedProcedure
+      .input(z.object({ 
+        user_id: z.string().uuid(),
+        limit: z.number().min(1).max(100).default(50),
+        offset: z.number().min(0).default(0),
+      }))
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+
+        const { data: follows, error } = await supabase
+          .from('follows')
+          .select('follower_id, created_at, follower:profiles!follows_follower_id_fkey(id, full_name, username, avatar_url, verified, supporter_badge, supporter_badge_visible, supporter_badge_color)')
+          .eq('following_id', input.user_id)
+          .order('created_at', { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+
+        if (error) {
+          console.error('Get followers error:', error);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Takipçiler yüklenirken hata oluştu' });
+        }
+
+        const followers = (follows || []).map((f: any) => ({
+          id: f.follower?.id || f.follower_id,
+          full_name: f.follower?.full_name || 'İsimsiz',
+          username: f.follower?.username || null,
+          avatar_url: f.follower?.avatar_url || null,
+          verified: f.follower?.verified || false,
+          supporter_badge: f.follower?.supporter_badge || null,
+          supporter_badge_visible: f.follower?.supporter_badge_visible || false,
+          supporter_badge_color: f.follower?.supporter_badge_color || null,
+          created_at: f.created_at,
+        }));
+
+        return { followers };
+      }),
+
+    // Takip edilenleri getir
+    getFollowing: protectedProcedure
+      .input(z.object({ 
+        user_id: z.string().uuid(),
+        limit: z.number().min(1).max(100).default(50),
+        offset: z.number().min(0).default(0),
+      }))
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+
+        const { data: follows, error } = await supabase
+          .from('follows')
+          .select('following_id, created_at, following:profiles!follows_following_id_fkey(id, full_name, username, avatar_url, verified, supporter_badge, supporter_badge_visible, supporter_badge_color)')
+          .eq('follower_id', input.user_id)
+          .order('created_at', { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+
+        if (error) {
+          console.error('Get following error:', error);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Takip edilenler yüklenirken hata oluştu' });
+        }
+
+        const following = (follows || []).map((f: any) => ({
+          id: f.following?.id || f.following_id,
+          full_name: f.following?.full_name || 'İsimsiz',
+          username: f.following?.username || null,
+          avatar_url: f.following?.avatar_url || null,
+          verified: f.following?.verified || false,
+          supporter_badge: f.following?.supporter_badge || null,
+          supporter_badge_visible: f.following?.supporter_badge_visible || false,
+          supporter_badge_color: f.following?.supporter_badge_color || null,
+          created_at: f.created_at,
+        }));
+
+        return { following };
+      }),
+
+    // Takip istatistiklerini getir
+    getFollowStats: protectedProcedure
+      .input(z.object({ user_id: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+
+        const { data: followersCount, error: followersError } = await supabase
+          .from('follows')
+          .select('id', { count: 'exact', head: true })
+          .eq('following_id', input.user_id);
+
+        const { data: followingCount, error: followingError } = await supabase
+          .from('follows')
+          .select('id', { count: 'exact', head: true })
+          .eq('follower_id', input.user_id);
+
+        if (followersError || followingError) {
+          console.error('Get follow stats error:', followersError || followingError);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Takip istatistikleri yüklenirken hata oluştu' });
+        }
+
+        return {
+          followers_count: followersCount || 0,
+          following_count: followingCount || 0,
+        };
+      }),
   }),
 
   post: createTRPCRouter({
