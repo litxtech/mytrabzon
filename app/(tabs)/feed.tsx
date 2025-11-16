@@ -24,6 +24,7 @@ import { AppLogo } from '@/components/AppLogo';
 import { SupporterBadge } from '@/components/SupporterBadge';
 import { formatTimeAgo } from '@/lib/time-utils';
 import { Footer } from '@/components/Footer';
+import { VideoPlayer } from '@/components/VideoPlayer';
 
 type SortType = 'new' | 'hot' | 'trending';
 
@@ -190,12 +191,10 @@ export default function FeedScreen() {
 
   const renderPost = useCallback(({ item }: { item: Post }) => {
     const firstMedia = item.media && item.media.length > 0 ? item.media[0] : null;
+    const isVideo = firstMedia?.type === 'video' || firstMedia?.path?.match(/\.(mp4|mov|avi|webm)$/i);
 
     return (
-      <TouchableOpacity
-        style={styles.postCard}
-        onPress={() => router.push(`/post/${item.id}` as any)}
-      >
+      <View style={styles.postCard}>
         <View style={styles.postHeader}>
           <TouchableOpacity
             onPress={() => item.author_id && router.push(`/profile/${item.author_id}` as any)}
@@ -260,7 +259,11 @@ export default function FeedScreen() {
           )}
         </View>
 
-        <View style={styles.postContentContainer}>
+        <TouchableOpacity
+          style={styles.postContentContainer}
+          onPress={() => router.push(`/post/${item.id}` as any)}
+          activeOpacity={0.9}
+        >
           <Text 
             style={styles.postContent}
             numberOfLines={10}
@@ -268,16 +271,44 @@ export default function FeedScreen() {
           >
             {item.content}
           </Text>
-        </View>
+        </TouchableOpacity>
 
         {firstMedia && (
-          <Image
-            source={{ uri: firstMedia.path }}
-            style={styles.postImage}
-            contentFit="cover"
-            transition={200}
-            cachePolicy="memory-disk"
-          />
+          <>
+            {isVideo ? (
+              <VideoPlayer
+                videoUrl={firstMedia.path}
+                postId={item.id}
+                isLiked={item.is_liked}
+                likeCount={item.like_count}
+                commentCount={item.comment_count}
+                shareCount={item.share_count}
+                onLike={() => handleLike(item.id)}
+                onComment={() => router.push(`/post/${item.id}` as any)}
+                onShare={() => {
+                  // Paylaşma fonksiyonu
+                }}
+                onTag={() => {
+                  // Etiketleme fonksiyonu
+                }}
+                autoPlay={false}
+                previewMode={true}
+              />
+            ) : (
+              <TouchableOpacity
+                onPress={() => router.push(`/post/${item.id}` as any)}
+                activeOpacity={0.9}
+              >
+                <Image
+                  source={{ uri: firstMedia.path }}
+                  style={styles.postImage}
+                  contentFit="cover"
+                  transition={200}
+                  cachePolicy="memory-disk"
+                />
+              </TouchableOpacity>
+            )}
+          </>
         )}
 
         {item.media && item.media.length > 1 && (
@@ -305,12 +336,17 @@ export default function FeedScreen() {
             <MessageCircle size={20} color={COLORS.textLight} />
             <Text style={styles.actionText}>{formatCount(item.comment_count)}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => {
+              // Paylaşma fonksiyonu
+            }}
+          >
             <Share2 size={20} color={COLORS.textLight} />
             <Text style={styles.actionText}>{formatCount(item.share_count)}</Text>
           </TouchableOpacity>
         </View>
-      </TouchableOpacity>
+      </View>
     );
   }, [handleLike, router, formatCount, user?.id, handlePostOptions]);
 
