@@ -36,11 +36,16 @@ export default function MatchScreen() {
 
   const joinQueueMutation = trpc.match.joinQueue.useMutation({
     onSuccess: (data) => {
-      if (data.matched) {
+      if (data.matched && data.session?.id) {
         setMatchStatus('matched');
         setIsMatching(false);
         // Görüntülü görüşme ekranına yönlendir
         router.push(`/match/video/${data.session.id}` as any);
+      } else if (data.matched && !data.session?.id) {
+        // Eşleşme var ama session yok - hata
+        setIsMatching(false);
+        setMatchStatus('idle');
+        Alert.alert('Hata', 'Eşleşme oturumu oluşturulamadı');
       } else {
         setMatchStatus('searching');
         // Polling başlat
@@ -86,7 +91,7 @@ export default function MatchScreen() {
   };
 
   useEffect(() => {
-    if (checkMatchQuery.data?.matched && checkMatchQuery.data.session) {
+    if (checkMatchQuery.data?.matched && checkMatchQuery.data.session?.id) {
       setMatchStatus('matched');
       setIsMatching(false);
       stopPolling();

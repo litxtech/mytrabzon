@@ -4040,11 +4040,18 @@ const appRouter = createTRPCRouter({
 
         if (matchId) {
           // Eşleşme bulundu
-          const { data: session } = await supabase
+          const { data: session, error: sessionError } = await supabase
             .from('match_sessions')
             .select('*, user1:profiles!match_sessions_user1_id_fkey(id, full_name, avatar_url, gender), user2:profiles!match_sessions_user2_id_fkey(id, full_name, avatar_url, gender)')
             .eq('id', matchId)
-            .single();
+            .maybeSingle();
+
+          if (sessionError || !session) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'Eşleşme oturumu oluşturulamadı',
+            });
+          }
 
           if (ENFORCE_MATCH_LIMIT) {
             await supabase.rpc('increment_daily_match_limit', { p_user_id: user.id });
