@@ -538,42 +538,47 @@ const styles = StyleSheet.create({
   postHeaderInfo: {
     flex: 1,
     flexShrink: 1,
+    minWidth: 0,
   },
   postAuthorContainer: {
-    flex: 1,
-    flexShrink: 1,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: SPACING.xs,
+    flexShrink: 1,
+    minWidth: 0,
   },
   postAuthor: {
     fontSize: FONT_SIZES.md,
     fontWeight: '600' as const,
     color: COLORS.text,
+    flexShrink: 1,
   },
   postUsernameContainer: {
-    flex: 1,
     flexShrink: 1,
     marginTop: 2,
+    minWidth: 0,
   },
   postUsername: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
+    flexShrink: 1,
   },
   postMeta: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     marginTop: 2,
-    flex: 1,
     flexShrink: 1,
+    minWidth: 0,
   },
   postDistrictContainer: {
-    flex: 1,
     flexShrink: 1,
+    minWidth: 0,
   },
   postDistrict: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
+    flexShrink: 1,
+    numberOfLines: 1,
   },
   postTimeContainer: {
     flexShrink: 0,
@@ -583,23 +588,21 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
   },
   postContentContainer: {
-    flex: 1,
-    flexShrink: 1,
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.md,
+    width: '100%',
   },
   postContent: {
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
     lineHeight: 20,
-    flexShrink: 1,
-    flexWrap: 'wrap',
+    width: '100%',
   },
   postImage: {
     width: '100%',
-    aspectRatio: 16 / 9, // Responsive aspect ratio
-    maxHeight: 400,
-    minHeight: 200,
+    height: undefined,
+    aspectRatio: 1,
+    maxHeight: 500,
   },
   mediaCountBadge: {
     position: 'absolute' as const,
@@ -620,15 +623,18 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     padding: SPACING.md,
     gap: SPACING.lg,
+    width: '100%',
   },
   actionButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: SPACING.xs,
+    minWidth: 50,
   },
   actionText: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
+    flexShrink: 0,
   },
   loadingContainer: {
     flex: 1,
