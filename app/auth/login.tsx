@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView, ScrollView, Alert } from 'react-native';
-import { useRouter, Link } from 'expo-router';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView, ScrollView, Alert, Linking } from 'react-native';
+import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Mail, Lock } from 'lucide-react-native';
+import { trpc } from '@/lib/trpc';
 
 type AuthMode = 'login' | 'register' | 'magic' | 'forgot';
 
@@ -15,6 +16,22 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
   const router = useRouter();
+  
+  // Policy'leri çek
+  const { data: policies } = (trpc as any).admin.getPolicies.useQuery();
+  
+  const handlePolicyPress = (policyType: 'terms' | 'privacy') => {
+    if (policies) {
+      const policy = policies.find((p: any) => p.policy_type === policyType && p.is_active);
+      if (policy) {
+        router.push(`/admin/policy-view/${policy.id}` as any);
+      } else {
+        Alert.alert('Bilgi', 'Politika bulunamadı');
+      }
+    } else {
+      Alert.alert('Bilgi', 'Politikalar yükleniyor, lütfen tekrar deneyin');
+    }
+  };
 
   const checkProfileAndNavigate = useCallback(async (userId: string) => {
     const { data: profile } = await supabase
@@ -251,6 +268,16 @@ export default function LoginScreen() {
         return; // Web'de yönlendirme yapıldı
       }
 
+      // Mobilde OAuth URL'ini aç
+      if (Platform.OS !== 'web' && data.url) {
+        const canOpen = await Linking.canOpenURL(data.url);
+        if (canOpen) {
+          await Linking.openURL(data.url);
+        } else {
+          throw new Error('OAuth URL açılamadı');
+        }
+      }
+
       // Mobilde OAuth callback'i beklemek için session kontrolü yap
       // onAuthStateChange listener otomatik olarak yönlendirecek
       // Timeout ekle - eğer 60 saniye içinde callback gelmezse hata göster
@@ -294,6 +321,16 @@ export default function LoginScreen() {
       if (Platform.OS === 'web' && data.url) {
         window.location.href = data.url;
         return; // Web'de yönlendirme yapıldı
+      }
+
+      // Mobilde OAuth URL'ini aç
+      if (Platform.OS !== 'web' && data.url) {
+        const canOpen = await Linking.canOpenURL(data.url);
+        if (canOpen) {
+          await Linking.openURL(data.url);
+        } else {
+          throw new Error('OAuth URL açılamadı');
+        }
       }
 
       // Mobilde OAuth callback'i beklemek için session kontrolü yap
@@ -450,19 +487,31 @@ export default function LoginScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.twitterButton, loading && styles.buttonDisabled]}
+          style={[styles.twitterButton, (loading || oauthLoading) && styles.buttonDisabled]}
           onPress={handleTwitterLogin}
-          disabled={loading}
+          disabled={loading || oauthLoading}
         >
-          <Text style={styles.twitterButtonText}>𝕏 ile Giriş Yap</Text>
+          {oauthLoading ? (
+            <ActivityIndicator color={COLORS.white} />
+          ) : (
+            <Text style={styles.twitterButtonText}>
+              𝕏 ile {mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
+            </Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.googleButton, loading && styles.buttonDisabled]}
+          style={[styles.googleButton, (loading || oauthLoading) && styles.buttonDisabled]}
           onPress={handleGoogleLogin}
-          disabled={loading}
+          disabled={loading || oauthLoading}
         >
-          <Text style={styles.googleButtonText}>🔐 Google ile Giriş Yap</Text>
+          {oauthLoading ? (
+            <ActivityIndicator color={COLORS.white} />
+          ) : (
+            <Text style={styles.googleButtonText}>
+              🔐 Google ile {mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
+            </Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -493,7 +542,9 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
-            <Text style={styles.subtitle}>Trabzon&apos;un Dijital Sesi</Text>
+            <Text style={styles.subtitle} numberOfLines={2} adjustsFontSizeToFit>
+              Trabzon&apos;un Dijital Sesi
+            </Text>
           </View>
 
           {renderForm()}
@@ -501,14 +552,33 @@ export default function LoginScreen() {
           <View style={styles.footer}>
             <Text style={styles.footerText}>Developed by</Text>
             <Text style={styles.companyName}>LITXTECH LLC</Text>
-            <View style={styles.footerLinks}>
-              <Link href="https://www.litxtech.com" style={styles.footerLink}>
-                <Text style={styles.footerLinkText}>www.litxtech.com</Text>
-              </Link>
+            <TouchableOpacity 
+              onPress={() => Linking.openURL('https://www.litxtech.com')}
+              style={styles.footerLinks}
+            >
+              <Text style={styles.footerLinkText}>www.litxtech.com</Text>
+            </TouchableOpacity>
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>veya</Text>
+              <View style={styles.dividerLine} />
             </View>
             <Text style={styles.terms}>
-              Devam ederek <Text style={styles.termsLink}>Kullanım Koşulları</Text> ve{' '}
-              <Text style={styles.termsLink}>Gizlilik Politikası</Text>&apos;nı kabul etmiş olursunuz
+              Devam ederek{' '}
+              <Text 
+                style={styles.termsLink}
+                onPress={() => handlePolicyPress('terms')}
+              >
+                Kullanım Koşulları
+              </Text>
+              {' '}ve{' '}
+              <Text 
+                style={styles.termsLink}
+                onPress={() => handlePolicyPress('privacy')}
+              >
+                Gizlilik Politikası
+              </Text>
+              &apos;nı kabul etmiş olursunuz
             </Text>
           </View>
         </ScrollView>
