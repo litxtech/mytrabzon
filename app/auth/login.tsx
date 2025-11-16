@@ -328,8 +328,7 @@ export default function LoginScreen() {
         provider: 'twitter',
         options: {
           redirectTo: redirectUrl,
-          skipBrowserRedirect: false, // Mobilde false - Supabase callback'i açılmalı
-          // Query parameters - Supabase'in callback URL'ine eklenir
+          skipBrowserRedirect: true, // Mobilde true - Supabase callback URL'ini açmaz, direkt deep link'e yönlendirir
         },
       });
 
