@@ -5008,8 +5008,17 @@ const appRouter = createTRPCRouter({
         // Şimdilik test için boş token döndürüyoruz (Agora test mode'da token olmadan çalışabilir)
         // Gerçek token generation için Agora RTC Token Builder kullanılmalı
         
-        const AGORA_APP_ID = Deno.env.get('AGORA_APP_ID') || 'd1e34b20cd2b4da69418f360039d254d';
-        const AGORA_CERTIFICATE = Deno.env.get('AGORA_CERTIFICATE') || 'd0c65c85891f40c680764c5cf0523433';
+        // Agora credentials - Supabase Edge Function secrets'tan al
+        const AGORA_APP_ID = Deno.env.get('AGORA_APP_ID') || Deno.env.get('EXPO_PUBLIC_AGORA_APP_ID') || 'd1e34b20cd2b4da69418f360039d254d';
+        const AGORA_CERTIFICATE = Deno.env.get('AGORA_CERTIFICATE') || Deno.env.get('EXPO_PUBLIC_AGORA_CERTIFICATE') || 'd0c65c85891f40c680764c5cf0523433';
+        
+        // Agora bilgileri kontrolü
+        if (!AGORA_APP_ID || AGORA_APP_ID === 'your_agora_app_id_here') {
+          console.warn('AGORA_APP_ID not configured, using default test value');
+        }
+        if (!AGORA_CERTIFICATE || AGORA_CERTIFICATE === 'your_agora_certificate_here') {
+          console.warn('AGORA_CERTIFICATE not configured, using default test value');
+        }
         
         // Token generation için basit bir implementasyon
         // Production'da Agora'nın resmi token server'ı kullanılmalı
