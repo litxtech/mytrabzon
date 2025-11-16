@@ -36,7 +36,7 @@ export default function MatchScreen() {
   const [micReady, setMicReady] = useState(true);
   const pulseAnim = useRef(new Animated.Value(0)).current;
 
-  const joinQueueMutation = trpc.match.joinQueue.useMutation({
+  const joinQueueMutation = (trpc as any).match.joinQueue.useMutation({
     onSuccess: (data: any) => {
       if (data.matched && data.session?.id) {
         setMatchStatus('matched');
