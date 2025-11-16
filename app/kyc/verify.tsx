@@ -123,8 +123,8 @@ export default function KycVerifyScreen() {
       let fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
       if (fileExt === 'jpg') fileExt = 'jpeg';
       
+      // Dosya yolu: sadece bucket içindeki path (bucket adı dahil değil)
       const fileName = `${user.id}/${type}_${Date.now()}.${fileExt}`;
-      const filePath = `kyc-documents/${fileName}`;
       
       // MIME type'ı belirle
       const mimeType = fileExt === 'jpeg' || fileExt === 'jpg' 
@@ -146,10 +146,10 @@ export default function KycVerifyScreen() {
         bytes[i] = binaryString.charCodeAt(i);
       }
       
-      // Supabase Storage'a yükle
+      // Supabase Storage'a yükle - filePath bucket adını içermemeli
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('kyc-documents')
-        .upload(filePath, bytes, {
+        .upload(fileName, bytes, {
           contentType: mimeType,
           upsert: false,
         });
@@ -163,10 +163,15 @@ export default function KycVerifyScreen() {
         throw new Error('Yükleme verisi alınamadı');
       }
       
-      // Public URL al
+      // Public URL al (bucket private olduğu için signed URL kullanılmalı, ama şimdilik public URL deneyelim)
       const { data: urlData } = supabase.storage
         .from('kyc-documents')
         .getPublicUrl(uploadData.path);
+      
+      // Eğer public URL çalışmazsa, signed URL kullan
+      // const { data: signedUrlData } = await supabase.storage
+      //   .from('kyc-documents')
+      //   .createSignedUrl(uploadData.path, 3600); // 1 saat geçerli
       
       if (!urlData?.publicUrl) {
         throw new Error('Public URL oluşturulamadı');
