@@ -3234,19 +3234,27 @@ const appRouter = createTRPCRouter({
         }
 
         // Match oluştur
+        // Frontend'den gelen tarih ISO formatında (örneğin: "2025-01-15T15:00:00.000Z" - UTC)
+        // Frontend Türkiye saatinde (UTC+3) oluşturup UTC'ye çeviriyor, bu yüzden backend'de Türkiye saatine geri çevirmeliyiz
         const matchDateTime = new Date(input.match_date);
         
-        // Tarih ve saati ayrı ayrı al (YYYY-MM-DD ve HH:MM:SS formatında)
-        // Frontend'den gelen tarih Türkiye saatinde (UTC+3), bu yüzden local time kullanıyoruz
-        const year = matchDateTime.getFullYear();
-        const month = String(matchDateTime.getMonth() + 1).padStart(2, '0');
-        const day = String(matchDateTime.getDate()).padStart(2, '0');
-        const hours = String(matchDateTime.getHours()).padStart(2, '0');
-        const minutes = String(matchDateTime.getMinutes()).padStart(2, '0');
-        const seconds = String(matchDateTime.getSeconds()).padStart(2, '0');
+        // Türkiye saatine göre tarih ve saati al
+        const turkeyYear = matchDateTime.toLocaleString('en-US', { timeZone: 'Europe/Istanbul', year: 'numeric' });
+        const turkeyMonth = matchDateTime.toLocaleString('en-US', { timeZone: 'Europe/Istanbul', month: '2-digit' });
+        const turkeyDay = matchDateTime.toLocaleString('en-US', { timeZone: 'Europe/Istanbul', day: '2-digit' });
+        const turkeyHour = matchDateTime.toLocaleString('en-US', { timeZone: 'Europe/Istanbul', hour: '2-digit', hour12: false });
+        const turkeyMinute = matchDateTime.toLocaleString('en-US', { timeZone: 'Europe/Istanbul', minute: '2-digit' });
+        const turkeySecond = matchDateTime.toLocaleString('en-US', { timeZone: 'Europe/Istanbul', second: '2-digit' });
         
-        const matchDate = `${year}-${month}-${day}`; // YYYY-MM-DD
-        const matchTime = `${hours}:${minutes}:${seconds}`; // HH:MM:SS
+        const matchDate = `${turkeyYear}-${turkeyMonth}-${turkeyDay}`; // YYYY-MM-DD
+        const matchTime = `${turkeyHour.padStart(2, '0')}:${turkeyMinute.padStart(2, '0')}:${turkeySecond.padStart(2, '0')}`; // HH:MM:SS
+        
+        console.log('Creating match:', { 
+          inputDate: input.match_date, 
+          matchDate, 
+          matchTime,
+          parsedUTC: matchDateTime.toISOString()
+        });
         
         const { data, error } = await supabase
           .from('matches')

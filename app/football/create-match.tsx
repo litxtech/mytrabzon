@@ -40,13 +40,16 @@ export default function CreateMatchScreen() {
   const utils = trpc.useUtils();
   
   const createMatch = trpc.football.createMatch.useMutation({
-    onSuccess: () => {
-      // Query cache'i invalidate et ki yeni maç görünsün
-      (utils as any).football.getTodayMatches.invalidate();
+    onSuccess: async () => {
+      // Query cache'i invalidate et ve refetch yap ki yeni maç görünsün
+      await (utils as any).football.getTodayMatches.invalidate();
+      // Hemen refetch yap
+      await (utils as any).football.getTodayMatches.refetch();
       Alert.alert('Başarılı', 'Maç başarıyla oluşturuldu!');
       router.replace('/(tabs)/football');
     },
     onError: (error: any) => {
+      console.error('Create match error:', error);
       Alert.alert('Hata', error.message || 'Maç oluşturulamadı');
     },
   });

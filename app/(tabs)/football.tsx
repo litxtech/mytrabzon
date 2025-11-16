@@ -35,7 +35,12 @@ export default function FootballScreen() {
   // Bugünün maçlarını getir - kullanıcının şehrine göre
   const { data: todayMatches, isLoading, refetch } = (trpc as any).football.getTodayMatches.useQuery(
     { city: (userProfile?.city as 'Trabzon' | 'Giresun') || 'Trabzon' },
-    { enabled: !!user }
+    { 
+      enabled: !!user,
+      staleTime: 30 * 1000, // 30 saniye
+      refetchOnMount: true, // Her mount'ta refetch yap
+      refetchOnWindowFocus: true, // Pencere focus olduğunda refetch yap
+    }
   );
 
   const visibleMatches = useMemo(() => {
