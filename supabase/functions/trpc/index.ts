@@ -4116,16 +4116,29 @@ const appRouter = createTRPCRouter({
 
         if (matchId) {
           // Eşleşme bulundu
+          console.log('Match found, matchId:', matchId);
+          
           const { data: session, error: sessionError } = await supabase
             .from('match_sessions')
             .select('*, user1:profiles!match_sessions_user1_id_fkey(id, full_name, avatar_url, gender), user2:profiles!match_sessions_user2_id_fkey(id, full_name, avatar_url, gender)')
             .eq('id', matchId)
             .maybeSingle();
 
-          if (sessionError || !session) {
+          console.log('Session query result:', { session, sessionError });
+
+          if (sessionError) {
+            console.error('Session error:', sessionError);
             throw new TRPCError({
               code: 'INTERNAL_SERVER_ERROR',
-              message: 'Eşleşme oturumu oluşturulamadı',
+              message: `Eşleşme oturumu sorgulanamadı: ${sessionError.message}`,
+            });
+          }
+
+          if (!session) {
+            console.error('Session not found for matchId:', matchId);
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'Eşleşme oturumu bulunamadı',
             });
           }
 
