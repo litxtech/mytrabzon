@@ -13,7 +13,6 @@ import {
   Alert,
   Animated,
   ScrollView,
-  Modal,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -62,7 +61,7 @@ export default function MatchScreen() {
     },
   });
 
-  const leaveQueueMutation = trpc.match.leaveQueue.useMutation({
+  const leaveQueueMutation = (trpc as any).match.leaveQueue.useMutation({
     onSuccess: () => {
       setIsMatching(false);
       setMatchStatus('idle');
@@ -70,7 +69,7 @@ export default function MatchScreen() {
     },
   });
 
-  const checkMatchQuery = trpc.match.checkMatch.useQuery({}, {
+  const checkMatchQuery = (trpc as any).match.checkMatch.useQuery({}, {
     enabled: matchStatus === 'searching',
     refetchInterval: 2000, // 2 saniyede bir kontrol et
   });
@@ -123,7 +122,7 @@ export default function MatchScreen() {
           setMatchStatus('idle');
         }
       };
-    }, [matchStatus])
+    }, [matchStatus, startPolling, stopPolling, leaveQueueMutation])
   );
 
   useEffect(() => {
@@ -134,7 +133,7 @@ export default function MatchScreen() {
         leaveQueueMutation.mutate();
       }
     };
-  }, [matchStatus]);
+  }, [matchStatus, stopPolling, leaveQueueMutation]);
 
   useEffect(() => {
     Animated.loop(
@@ -199,8 +198,8 @@ export default function MatchScreen() {
   };
 
   const gradientColors = theme.mode === 'dark' 
-    ? [theme.colors.background, theme.colors.surface]
-    : ['#F6F9FF', '#EEF2FF'];
+    ? [theme.colors.background, theme.colors.surface] as const
+    : ['#F6F9FF', '#EEF2FF'] as const;
 
   return (
     <LinearGradient
