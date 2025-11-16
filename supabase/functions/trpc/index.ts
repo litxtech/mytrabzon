@@ -3203,12 +3203,14 @@ const appRouter = createTRPCRouter({
         const { supabase, user } = ctx;
         if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
 
-        // Önce field'ı bul veya oluştur
+        // Field'ı bul veya oluştur - kullanıcı serbest yazıyor, her zaman yeni field oluştur
         let fieldId: string;
+        
+        // Önce aynı isimde field var mı kontrol et
         const { data: existingField } = await supabase
           .from('football_fields')
           .select('id')
-          .eq('name', input.field_name)
+          .eq('name', input.field_name.trim())
           .eq('city', input.city)
           .eq('district', input.district)
           .single();
@@ -3216,11 +3218,11 @@ const appRouter = createTRPCRouter({
         if (existingField) {
           fieldId = existingField.id;
         } else {
-          // Yeni field oluştur
+          // Yeni field oluştur - kullanıcının yazdığı isimle
           const { data: newField, error: fieldError } = await supabase
             .from('football_fields')
             .insert({
-              name: input.field_name,
+              name: input.field_name.trim(),
               city: input.city,
               district: input.district,
               owner_id: user.id,
@@ -3229,7 +3231,10 @@ const appRouter = createTRPCRouter({
             .select()
             .single();
 
-          if (fieldError) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: fieldError.message });
+          if (fieldError) {
+            console.error('Field creation error:', fieldError);
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: fieldError.message });
+          }
           fieldId = newField.id;
         }
 

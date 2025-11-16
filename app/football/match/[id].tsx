@@ -30,33 +30,49 @@ export default function MatchDetailScreen() {
   );
 
   const createReservationMutation = trpc.football.createReservation.useMutation({
-    onSuccess: async () => {
-      Alert.alert(
-        'Başarılı', 
-        'Rezervasyon yapıldı! Organizatöre bildirim gönderildi. Mesaj göndermek ister misiniz?',
-        [
-          { text: 'Hayır', style: 'cancel', onPress: () => refetch() },
-          {
-            text: 'Mesaj Gönder',
-            onPress: async () => {
-              try {
-                const createRoomMutation = trpc.chat.createRoom.useMutation();
-                const room = await createRoomMutation.mutateAsync({
-                  type: 'direct',
-                  memberIds: [match!.organizer_id],
-                });
+    onSuccess: async (data: any) => {
+      // Rezervasyon yapıldı, otomatik chat oluştur ve mesaj gönder
+      try {
+        const createRoomMutation = trpc.chat.createRoom.useMutation();
+        const room = await createRoomMutation.mutateAsync({
+          type: 'direct',
+          memberIds: [match!.organizer_id],
+        });
+        
+        // İlk mesajı gönder
+        const sendMessageMutation = trpc.chat.sendMessage.useMutation();
+        await sendMessageMutation.mutateAsync({
+          roomId: room.id,
+          content: `Merhaba! ${match!.field?.name || 'Halı saha'} için ${match!.match_date} tarihinde ${match!.start_time?.substring(0, 5)} saatinde rezervasyon yaptım. Detayları konuşalım mı?`,
+        });
+        
+        Alert.alert(
+          'Başarılı', 
+          'Rezervasyon yapıldı ve organizatöre mesaj gönderildi!',
+          [
+            {
+              text: 'Mesajlara Git',
+              onPress: () => {
                 router.push(`/chat/${room.id}` as any);
-              } catch (error: any) {
-                console.error('Chat oluşturma hatası:', error);
-                Alert.alert('Hata', 'Chat oluşturulamadı');
-              }
-              refetch();
+              },
             },
-          },
-        ]
-      );
+            {
+              text: 'Tamam',
+              onPress: () => refetch(),
+            },
+          ]
+        );
+      } catch (error: any) {
+        console.error('Chat oluşturma hatası:', error);
+        Alert.alert(
+          'Rezervasyon Yapıldı',
+          'Rezervasyon başarıyla oluşturuldu. Chat oluşturulamadı, daha sonra mesaj gönderebilirsiniz.',
+          [{ text: 'Tamam', onPress: () => refetch() }]
+        );
+      }
     },
     onError: (error: any) => {
+      console.error('Rezervasyon hatası:', error);
       Alert.alert('Hata', error.message || 'Rezervasyon yapılamadı');
     },
   });
@@ -170,12 +186,23 @@ export default function MatchDetailScreen() {
           <View style={styles.infoRow}>
             <MapPin size={20} color={COLORS.primary} />
             <Text style={styles.infoText}>
-              {match.field?.name} ({match.field?.district})
+              {match.field?.name || 'Halı Saha Belirtilmemiş'} ({match.field?.district || match.district})
             </Text>
           </View>
           <View style={styles.infoRow}>
             <Users size={20} color={COLORS.primary} />
-            <Text style={styles.infoText}>Durum: {match.status}</Text>
+            <Text style={styles.infoText}>Organizatör: {match.organizer?.full_name || 'Bilinmeyen'}</Text>
+          </View>
+          {match.organizer_id && match.organizer_id !== user?.id && (
+            <TouchableOpacity
+              style={styles.organizerButton}
+              onPress={() => router.push(`/profile/${match.organizer_id}` as any)}
+            >
+              <Text style={styles.organizerButtonText}>Organizatörün Profilini Gör</Text>
+            </TouchableOpacity>
+          )}
+          <View style={styles.infoRow}>
+            <Text style={styles.infoText}>Durum: {match.status === 'looking_for_opponent' ? 'Rakip Aranıyor' : match.status === 'looking_for_players' ? 'Oyuncu Aranıyor' : match.status}</Text>
           </View>
         </View>
 

@@ -26,7 +26,7 @@ export default function CreateMatchScreen() {
   const [showDistrictPicker, setShowDistrictPicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [formData, setFormData] = useState({
-    field_name: '',
+    field_name: '', // Kullanıcı serbest yazacak
     city: 'Trabzon' as 'Trabzon' | 'Giresun',
     district: '',
     match_date: '',
@@ -169,14 +169,17 @@ export default function CreateMatchScreen() {
         <Text style={styles.title}>Yeni Maç Oluştur</Text>
 
         <View style={styles.formGroup}>
-          <Text style={styles.label}>Halı Saha İsmi *</Text>
+          <Text style={styles.label}>Halı Saha İsmi veya Adres *</Text>
           <TextInput
             style={styles.input}
-            placeholder="Halı saha ismini yazın"
+            placeholder="Örn: Merkez Halı Saha, Atatürk Parkı, Mahalle Sahası..."
             value={formData.field_name}
             onChangeText={(text) => setFormData({ ...formData, field_name: text })}
             autoCapitalize="words"
+            multiline={false}
+            maxLength={100}
           />
+          <Text style={styles.hintText}>Halı saha ismini veya adresini serbest şekilde yazabilirsiniz</Text>
         </View>
 
         <View style={styles.formGroup}>
