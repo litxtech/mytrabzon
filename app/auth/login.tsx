@@ -787,6 +787,22 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     textAlign: 'center' as const,
   },
+  appleButton: {
+    backgroundColor: '#000000',
+    paddingVertical: SPACING.md,
+    borderRadius: 12,
+    alignItems: 'center' as const,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  appleButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600' as const,
+    flexWrap: 'wrap',
+    textAlign: 'center' as const,
+  },
   magicLinkButton: {
     backgroundColor: '#9B59B6',
     paddingVertical: SPACING.md,
