@@ -22,10 +22,12 @@
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.litxtech.mytrabzon",
       "versionCode": 28,
+      "playStoreUrl": "https://play.google.com/store/apps/details?id=com.litxtech.mytrabzon",
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
@@ -63,6 +65,8 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.litxtech.mytrabzon",
       "buildNumber": "28",
+      "icon": "./assets/images/icon.png",
+      "appStoreUrl": "https://apps.apple.com/app/mytrabzon/id1234567890",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photos",
         "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to access your camera",
@@ -126,6 +130,8 @@
     "description": "Trabzon'un dijital sesi. Sosyal medya, etkinlikler, halı saha maçları ve daha fazlası.",
     "primaryColor": "#DC2626",
     "privacyPolicy": "https://www.litxtech.com/privacy-policy",
-    "termsOfService": "https://www.litxtech.com/terms-of-service"
+    "termsOfService": "https://www.litxtech.com/terms-of-service",
+    "icon": "./assets/images/icon.png",
+    "owner": "litxtech"
   }
 }

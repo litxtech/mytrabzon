@@ -1,75 +1,69 @@
 #!/usr/bin/env node
 
 /**
- * Otomatik Sürüm Artırma Script'i
- * Her başarılı deploy'da sürümü otomatik artırır
+ * Otomatik Sürüm Artış Scripti
+ * Her çalıştırıldığında version numarasını artırır (1.0.1 -> 1.0.2)
+ * Hem app.json hem de package.json'ı günceller
+ * Android versionCode ve iOS buildNumber'ı da artırır
  */
 
 const fs = require('fs');
 const path = require('path');
 
-const VERSION_TYPE = process.argv[2] || 'patch'; // patch, minor, major
+const APP_JSON_PATH = path.join(__dirname, '..', 'app.json');
+const PACKAGE_JSON_PATH = path.join(__dirname, '..', 'package.json');
 
-function bumpVersion(version, type) {
-  const parts = version.split('.').map(Number);
-  
-  switch (type) {
-    case 'major':
-      parts[0]++;
-      parts[1] = 0;
-      parts[2] = 0;
-      break;
-    case 'minor':
-      parts[1]++;
-      parts[2] = 0;
-      break;
-    case 'patch':
-    default:
-      parts[2]++;
-      break;
+function bumpVersion() {
+  try {
+    // app.json'ı oku
+    const appJson = JSON.parse(fs.readFileSync(APP_JSON_PATH, 'utf8'));
+    const packageJson = JSON.parse(fs.readFileSync(PACKAGE_JSON_PATH, 'utf8'));
+
+    // Mevcut version'ı al
+    const currentVersion = appJson.expo.version;
+    const [major, minor, patch] = currentVersion.split('.').map(Number);
+
+    // Patch version'ı artır (1.0.1 -> 1.0.2)
+    const newVersion = `${major}.${minor}.${patch + 1}`;
+
+    // Build number'ları artır
+    const currentAndroidVersionCode = appJson.expo.android.versionCode || 1;
+    const currentIosBuildNumber = parseInt(appJson.expo.ios.buildNumber || '1', 10);
+
+    const newAndroidVersionCode = currentAndroidVersionCode + 1;
+    const newIosBuildNumber = (currentIosBuildNumber + 1).toString();
+
+    // app.json'ı güncelle
+    appJson.expo.version = newVersion;
+    appJson.expo.android.versionCode = newAndroidVersionCode;
+    appJson.expo.ios.buildNumber = newIosBuildNumber;
+
+    // package.json'ı güncelle
+    packageJson.version = newVersion;
+
+    // Dosyaları kaydet
+    fs.writeFileSync(APP_JSON_PATH, JSON.stringify(appJson, null, 2) + '\n', 'utf8');
+    fs.writeFileSync(PACKAGE_JSON_PATH, JSON.stringify(packageJson, null, 2) + '\n', 'utf8');
+
+    console.log('✅ Sürüm başarıyla artırıldı!');
+    console.log(`📱 Version: ${currentVersion} -> ${newVersion}`);
+    console.log(`🤖 Android versionCode: ${currentAndroidVersionCode} -> ${newAndroidVersionCode}`);
+    console.log(`🍎 iOS buildNumber: ${currentIosBuildNumber} -> ${newIosBuildNumber}`);
+
+    return {
+      version: newVersion,
+      androidVersionCode: newAndroidVersionCode,
+      iosBuildNumber: newIosBuildNumber,
+    };
+  } catch (error) {
+    console.error('❌ Hata:', error.message);
+    process.exit(1);
   }
-  
-  return parts.join('.');
 }
 
-function bumpBuildNumber(buildNumber) {
-  return (parseInt(buildNumber) || 1) + 1;
+// Script doğrudan çalıştırılıyorsa
+if (require.main === module) {
+  bumpVersion();
 }
 
-// app.json dosyasını oku
-const appJsonPath = path.join(__dirname, '..', 'app.json');
-const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
-
-// package.json dosyasını oku
-const packageJsonPath = path.join(__dirname, '..', 'package.json');
-const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-
-// Mevcut sürümleri al
-const currentVersion = appJson.expo.version;
-const newVersion = bumpVersion(currentVersion, VERSION_TYPE);
-
-// iOS build number artır
-const currentIosBuild = appJson.expo.ios?.buildNumber || '1';
-const newIosBuild = bumpBuildNumber(currentIosBuild).toString();
-
-// Android version code artır
-const currentAndroidCode = appJson.expo.android?.versionCode || 1;
-const newAndroidCode = bumpBuildNumber(currentAndroidCode);
-
-// Sürümleri güncelle
-appJson.expo.version = newVersion;
-appJson.expo.ios = appJson.expo.ios || {};
-appJson.expo.ios.buildNumber = newIosBuild;
-appJson.expo.android = appJson.expo.android || {};
-appJson.expo.android.versionCode = newAndroidCode;
-
-packageJson.version = newVersion;
-
-// Dosyaları kaydet
-fs.writeFileSync(appJsonPath, JSON.stringify(appJson, null, 2) + '\n');
-fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
-
-console.log('✅ Sürüm güncellendi:');
-console.log(`   Version: ${currentVersion} → ${newVersion}`);
-console.log(`   iOS Build: ${currentIosBuild} → ${newIosBuild}`);
-console.log(`   Android Code: ${currentAndroidCode} → ${newAndroidCode}`);
+module.exports = { bumpVersion };
