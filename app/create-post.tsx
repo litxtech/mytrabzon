@@ -16,10 +16,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { DISTRICT_BADGES } from '@/constants/districts';
 import { District } from '@/types/database';
-import { X, Image as ImageIcon, Camera, MapPin } from 'lucide-react-native';
+import { X, Image as ImageIcon, Camera, MapPin, Video as VideoIcon } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Footer } from '@/components/Footer';
+import { Video } from 'expo-av';
 
 export default function CreatePostScreen() {
   const router = useRouter();
@@ -27,6 +28,7 @@ export default function CreatePostScreen() {
   const { profile } = useAuth();
   const [content, setContent] = useState('');
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [selectedVideos, setSelectedVideos] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const isEditMode = !!edit;
   const isGroupPost = !!room_id;
@@ -67,8 +69,12 @@ export default function CreatePostScreen() {
     });
 
     if (!result.canceled && result.assets) {
-      const newImages = result.assets.map((asset) => asset.uri);
-      setSelectedImages((prev) => [...prev, ...newImages].slice(0, 5));
+      // Video ve image'ları ayır
+      const videos = result.assets.filter(asset => asset.type === 'video').map(asset => asset.uri);
+      const images = result.assets.filter(asset => asset.type !== 'video').map(asset => asset.uri);
+      
+      setSelectedVideos((prev) => [...prev, ...videos].slice(0, 3));
+      setSelectedImages((prev) => [...prev, ...images].slice(0, 5));
     }
   };
 
@@ -94,9 +100,13 @@ export default function CreatePostScreen() {
     setSelectedImages((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const removeVideo = (index: number) => {
+    setSelectedVideos((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = async () => {
-    if (!content.trim() && selectedImages.length === 0) {
-      Alert.alert('Hata', 'Lütfen bir içerik yazın veya resim ekleyin');
+    if (!content.trim() && selectedImages.length === 0 && selectedVideos.length === 0) {
+      Alert.alert('Hata', 'Lütfen bir içerik yazın veya medya ekleyin');
       return;
     }
 
@@ -110,19 +120,27 @@ export default function CreatePostScreen() {
     try {
       let mediaUrls: string[] = [];
 
-      if (selectedImages.length > 0) {
-        const uploadPromises = selectedImages.map(async (uri) => {
-          const base64 = await FileSystem.readAsStringAsync(uri, {
+      // Image ve video upload
+      const allMedia = [
+        ...selectedImages.map(uri => ({ uri, type: 'image' })),
+        ...selectedVideos.map(uri => ({ uri, type: 'video' })),
+      ];
+
+      if (allMedia.length > 0) {
+        const uploadPromises = allMedia.map(async (media) => {
+          const base64 = await FileSystem.readAsStringAsync(media.uri, {
             encoding: 'base64' as any,
           });
 
-          const fileType = uri.toLowerCase().endsWith('.png')
+          const isVideo = media.type === 'video';
+          const fileType = isVideo
+            ? 'video/mp4'
+            : media.uri.toLowerCase().endsWith('.png')
             ? 'image/png'
-            : uri.toLowerCase().endsWith('.jpg') || uri.toLowerCase().endsWith('.jpeg')
-            ? 'image/jpeg'
             : 'image/jpeg';
 
-          const fileName = `image-${Date.now()}.${fileType.split('/')[1]}`;
+          const extension = isVideo ? 'mp4' : fileType.split('/')[1];
+          const fileName = `${media.type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${extension}`;
 
           const result = await uploadMediaMutation.mutateAsync({
             base64Data: base64,
@@ -224,10 +242,37 @@ export default function CreatePostScreen() {
         {selectedImages.length > 0 && (
           <View style={styles.imagesContainer}>
             {selectedImages.map((uri, index) => (
-              <View key={index} style={styles.imageWrapper}>
+              <View key={`img-${index}`} style={styles.imageWrapper}>
                 <Image source={{ uri }} style={styles.selectedImage} />
                 <TouchableOpacity
                   onPress={() => removeImage(index)}
+                  style={styles.removeButton}
+                >
+                  <X size={18} color={COLORS.white} />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {selectedVideos.length > 0 && (
+          <View style={styles.videosContainer}>
+            {selectedVideos.map((uri, index) => (
+              <View key={`vid-${index}`} style={styles.videoWrapper}>
+                <Video
+                  source={{ uri }}
+                  style={styles.selectedVideo}
+                  resizeMode="cover"
+                  shouldPlay={false}
+                  isLooping
+                  isMuted
+                  useNativeControls
+                />
+                <View style={styles.videoOverlay}>
+                  <VideoIcon size={32} color={COLORS.white} />
+                </View>
+                <TouchableOpacity
+                  onPress={() => removeVideo(index)}
                   style={styles.removeButton}
                 >
                   <X size={18} color={COLORS.white} />
@@ -249,19 +294,19 @@ export default function CreatePostScreen() {
           <TouchableOpacity
             onPress={pickImage}
             style={styles.toolButton}
-            disabled={selectedImages.length >= 5}
+            disabled={selectedImages.length >= 5 && selectedVideos.length >= 3}
           >
             <ImageIcon
               size={24}
-              color={selectedImages.length >= 5 ? COLORS.textLight : COLORS.primary}
+              color={(selectedImages.length >= 5 && selectedVideos.length >= 3) ? COLORS.textLight : COLORS.primary}
             />
             <Text
               style={[
                 styles.toolButtonText,
-                selectedImages.length >= 5 && styles.toolButtonTextDisabled,
+                (selectedImages.length >= 5 && selectedVideos.length >= 3) && styles.toolButtonTextDisabled,
               ]}
             >
-              Galeri ({selectedImages.length}/5)
+              Medya ({selectedImages.length + selectedVideos.length}/8)
             </Text>
           </TouchableOpacity>
 
