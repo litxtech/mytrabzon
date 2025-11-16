@@ -313,22 +313,24 @@ export default function LoginScreen() {
     try {
       console.log('Starting Twitter/X OAuth login...');
       
-      // iOS ve Android için doğru redirect URL formatı
+      // OAuth provider'lar https:// bekliyor, bu yüzden Supabase callback URL'ini kullan
+      // Deep link'i redirect_to parametresi olarak ekle
+      const deepLinkUrl = 'mytrabzon://auth/callback';
+      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
       const redirectUrl = Platform.select({
-        ios: 'mytrabzon://auth/callback',
-        android: 'mytrabzon://auth/callback',
         web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
-        default: 'mytrabzon://auth/callback',
+        default: `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`,
       });
 
       console.log('Redirect URL:', redirectUrl);
       console.log('Platform:', Platform.OS);
+      console.log('Deep link URL:', deepLinkUrl);
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'twitter',
         options: {
           redirectTo: redirectUrl,
-          skipBrowserRedirect: true, // Mobilde true - Supabase callback URL'ini açmaz, direkt deep link'e yönlendirir
+          skipBrowserRedirect: false, // false - Supabase callback URL'ini açsın, oradan deep link'e yönlendirsin
         },
       });
 
@@ -399,18 +401,22 @@ export default function LoginScreen() {
     try {
       console.log('Starting Apple OAuth login...');
       
-      // iOS için doğru redirect URL formatı
-      const redirectUrl = 'mytrabzon://auth/callback';
+      // OAuth provider'lar https:// bekliyor, bu yüzden Supabase callback URL'ini kullan
+      // Deep link'i redirect_to parametresi olarak ekle
+      const deepLinkUrl = 'mytrabzon://auth/callback';
+      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+      const redirectUrl = `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`;
 
       console.log('Apple redirect URL:', redirectUrl);
       console.log('Platform:', Platform.OS);
+      console.log('Deep link URL:', deepLinkUrl);
 
       // Supabase OAuth flow kullan (signInWithIdToken Expo Go'da çalışmıyor)
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
         options: {
           redirectTo: redirectUrl,
-          skipBrowserRedirect: true, // iOS'ta true - Supabase callback URL'ini açmaz, direkt deep link'e yönlendirir
+          skipBrowserRedirect: false, // false - Supabase callback URL'ini açsın, oradan deep link'e yönlendirsin
         },
       });
 
