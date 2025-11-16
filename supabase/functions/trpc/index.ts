@@ -5567,6 +5567,7 @@ const appRouter = createTRPCRouter({
         const { supabase, user } = ctx;
         if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
 
+        const now = new Date();
         const expiresAt = input.expires_at 
           ? new Date(input.expires_at)
           : new Date(Date.now() + 2 * 60 * 60 * 1000);
@@ -5585,6 +5586,7 @@ const appRouter = createTRPCRouter({
             longitude: input.longitude,
             media_urls: input.media_urls,
             audio_url: input.audio_url,
+            start_date: now.toISOString(),
             expires_at: expiresAt.toISOString(),
           })
           .select()
@@ -5866,7 +5868,7 @@ async function createNotificationsForEvent(
       event_id: event.id,
       type: 'EVENT',
       title: event.title,
-      body: event.description || `${event.category} - ${district}`,
+      message: event.description || `${event.category} - ${district}`,
       data: { event_id: event.id, severity, category: event.category },
       push_sent: false,
     }));
