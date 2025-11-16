@@ -72,7 +72,12 @@
         "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to access your camera",
         "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to access your microphone",
         "NSLocationWhenInUseUsageDescription": "Allow $(PRODUCT_NAME) to access your location to show nearby events and matches",
-        "NSLocationAlwaysUsageDescription": "Allow $(PRODUCT_NAME) to access your location for better recommendations"
+        "NSLocationAlwaysUsageDescription": "Allow $(PRODUCT_NAME) to access your location for better recommendations",
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": ["mytrabzon", "litxtech"]
+          }
+        ]
       },
       "config": {
         "usesNonExemptEncryption": false

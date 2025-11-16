@@ -313,18 +313,26 @@ export default function LoginScreen() {
     try {
       console.log('Starting Twitter/X OAuth login...');
       
+      // iOS ve Android için doğru redirect URL formatı
       const redirectUrl = Platform.select({
+        ios: 'mytrabzon://auth/callback',
+        android: 'mytrabzon://auth/callback',
         web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
         default: 'mytrabzon://auth/callback',
       });
 
       console.log('Redirect URL:', redirectUrl);
+      console.log('Platform:', Platform.OS);
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'twitter',
         options: {
           redirectTo: redirectUrl,
           skipBrowserRedirect: Platform.OS !== 'web',
+          // Query parameters ekle
+          queryParams: {
+            redirect_to: redirectUrl,
+          },
         },
       });
 
@@ -414,19 +422,22 @@ export default function LoginScreen() {
     try {
       console.log('Starting Apple OAuth login...');
       
-      const redirectUrl = Platform.select({
-        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
-        default: 'mytrabzon://auth/callback',
-      });
+      // iOS için doğru redirect URL formatı
+      const redirectUrl = 'mytrabzon://auth/callback';
 
       console.log('Apple redirect URL:', redirectUrl);
+      console.log('Platform:', Platform.OS);
 
       // Supabase OAuth flow kullan (signInWithIdToken Expo Go'da çalışmıyor)
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
         options: {
           redirectTo: redirectUrl,
-          skipBrowserRedirect: Platform.OS !== 'web',
+          skipBrowserRedirect: true, // iOS'ta her zaman true
+          // Query parameters ekle
+          queryParams: {
+            redirect_to: redirectUrl,
+          },
         },
       });
 
