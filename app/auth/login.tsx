@@ -412,38 +412,93 @@ export default function LoginScreen() {
     setLoading(true);
     setOauthLoading(true);
     try {
-      // Apple Authentication ile kimlik doğrulama
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
+      console.log('Starting Apple OAuth login...');
+      
+      const redirectUrl = Platform.select({
+        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
+        default: 'mytrabzon://auth/callback',
       });
 
-      if (!credential.identityToken) {
-        throw new Error('Apple kimlik token alınamadı');
-      }
+      console.log('Apple redirect URL:', redirectUrl);
 
-      // Supabase'e Apple ile giriş yap
-      const { data, error } = await supabase.auth.signInWithIdToken({
+      // Supabase OAuth flow kullan (signInWithIdToken Expo Go'da çalışmıyor)
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
-        token: credential.identityToken,
-        nonce: credential.nonce || undefined,
+        options: {
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: Platform.OS !== 'web',
+        },
       });
 
       if (error) {
+        console.error('Apple OAuth error:', error);
         throw error;
       }
 
-      // Kullanıcı bilgilerini kontrol et ve yönlendir
-      if (data.user) {
-        setOauthLoading(false);
-        setLoading(false);
-        await checkProfileAndNavigate(data.user.id);
+      console.log('Apple OAuth URL received:', data?.url ? 'Yes' : 'No');
+
+      // Web'de OAuth browser'da açılır
+      if (Platform.OS === 'web' && data.url) {
+        window.location.href = data.url;
+        return;
+      }
+
+      // Mobilde OAuth URL'ini aç
+      if (Platform.OS !== 'web' && data.url) {
+        const canOpen = await Linking.canOpenURL(data.url);
+        console.log('Can open Apple URL:', canOpen);
+        if (canOpen) {
+          await Linking.openURL(data.url);
+          console.log('Apple OAuth URL opened, waiting for callback...');
+          
+          // Session kontrolü için polling başlat
+          const checkSession = setInterval(async () => {
+            try {
+              const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+              if (sessionError) {
+                console.error('Session check error:', sessionError);
+                return;
+              }
+              
+              if (session?.user) {
+                console.log('Session found for user:', session.user.id);
+                clearInterval(checkSession);
+                setOauthLoading(false);
+                setLoading(false);
+                await checkProfileAndNavigate(session.user.id);
+              }
+            } catch (err) {
+              console.error('Error checking session:', err);
+            }
+          }, 2000);
+
+          // Timeout - 60 saniye sonra polling'i durdur
+          setTimeout(() => {
+            clearInterval(checkSession);
+            if (oauthLoading) {
+              console.log('Apple OAuth timeout - checking final session state');
+              supabase.auth.getSession().then(({ data: { session } }) => {
+                if (session?.user) {
+                  setOauthLoading(false);
+                  setLoading(false);
+                  checkProfileAndNavigate(session.user.id);
+                } else {
+                  setOauthLoading(false);
+                  setLoading(false);
+                  Alert.alert('Zaman Aşımı', 'Giriş işlemi zaman aşımına uğradı. Lütfen tekrar deneyin.');
+                }
+              });
+            }
+          }, 60000);
+        } else {
+          throw new Error('Apple OAuth URL açılamadı');
+        }
+      } else {
+        throw new Error('Apple OAuth URL alınamadı');
       }
     } catch (error: any) {
       // Kullanıcı iptal ettiyse hata gösterme
-      if (error.code === 'ERR_CANCELED') {
+      if (error.code === 'ERR_CANCELED' || error.message?.includes('canceled')) {
         console.log('Apple giriş iptal edildi');
       } else {
         console.error('Error during Apple login:', error);

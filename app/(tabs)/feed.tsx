@@ -66,8 +66,10 @@ export default function FeedScreen() {
       offset: 0,
     } as any,
     {
-      staleTime: 30000,
-      gcTime: 300000,
+      staleTime: 2 * 60 * 1000, // 2 dakika
+      gcTime: 10 * 60 * 1000, // 10 dakika
+      refetchOnMount: false, // Cache'den kullan
+      refetchOnWindowFocus: false,
     }
   );
 
@@ -83,8 +85,10 @@ export default function FeedScreen() {
       offset: 0,
     },
     {
-      staleTime: 30000,
-      gcTime: 300000,
+      staleTime: 2 * 60 * 1000, // 2 dakika
+      gcTime: 10 * 60 * 1000, // 10 dakika
+      refetchOnMount: false, // Cache'den kullan
+      refetchOnWindowFocus: false,
     }
   );
 
@@ -261,6 +265,8 @@ export default function FeedScreen() {
               contentFit="cover"
               transition={200}
               cachePolicy="memory-disk"
+              priority="normal"
+              placeholder={{ blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.' }}
             />
           </TouchableOpacity>
           <TouchableOpacity
@@ -335,6 +341,8 @@ export default function FeedScreen() {
                   contentFit="cover"
                   transition={200}
                   cachePolicy="memory-disk"
+                  priority="normal"
+                  placeholder={{ blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.' }}
                 />
               </TouchableOpacity>
             )}
@@ -363,6 +371,8 @@ export default function FeedScreen() {
               contentFit="cover"
               transition={200}
               cachePolicy="memory-disk"
+              priority="normal"
+              placeholder={{ blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.' }}
             />
           </TouchableOpacity>
           <TouchableOpacity
@@ -485,6 +495,8 @@ export default function FeedScreen() {
                   contentFit="cover"
                   transition={200}
                   cachePolicy="memory-disk"
+                  priority="normal"
+                  placeholder={{ blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.' }}
                 />
               </TouchableOpacity>
             )}
@@ -536,6 +548,20 @@ export default function FeedScreen() {
     );
   }, [handleLike, router, formatCount, user?.id, handlePostOptions, theme]);
 
+  // Feed data'yı birleştir ve sırala - useMemo ile optimize et
+  const combinedFeedData = useMemo(() => {
+    const combined = [
+      ...(eventsData?.events || []).map((event: any) => ({ type: 'event', ...event })),
+      ...(feedData?.posts || []).map((post: any) => ({ type: 'post', ...post })),
+    ];
+    // Tarihe göre sırala (en yeni önce)
+    return combined.sort((a, b) => {
+      const aDate = new Date(a.created_at || a.start_date || 0).getTime();
+      const bDate = new Date(b.created_at || b.start_date || 0).getTime();
+      return bDate - aDate;
+    });
+  }, [eventsData?.events, feedData?.posts]);
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background, paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.md) : 0 }]}>
       <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border, paddingTop: Math.max(insets.top, Platform.OS === 'android' ? SPACING.lg : SPACING.md) }]}>
@@ -558,15 +584,7 @@ export default function FeedScreen() {
         </View>
       ) : (
         <FlatList
-          data={[
-            ...(eventsData?.events || []).map((event: any) => ({ type: 'event', ...event })),
-            ...(feedData?.posts || []).map((post: any) => ({ type: 'post', ...post })),
-          ].sort((a, b) => {
-            // Tarihe göre sırala (en yeni önce)
-            const aDate = new Date(a.created_at || a.start_date || 0).getTime();
-            const bDate = new Date(b.created_at || b.start_date || 0).getTime();
-            return bDate - aDate;
-          })}
+          data={combinedFeedData}
           renderItem={({ item }) => {
             if (item.type === 'event') {
               return renderEvent(item);
@@ -586,11 +604,16 @@ export default function FeedScreen() {
               colors={[theme.colors.primary]}
             />
           }
-          removeClippedSubviews={true}
-          maxToRenderPerBatch={5}
-          updateCellsBatchingPeriod={100}
-          initialNumToRender={5}
-          windowSize={5}
+          removeClippedSubviews={Platform.OS === 'android'} // Android'de performans için
+          maxToRenderPerBatch={10} // Daha fazla item render et
+          updateCellsBatchingPeriod={50} // Daha hızlı batch update
+          initialNumToRender={10} // İlk yüklemede daha fazla item göster
+          windowSize={10} // Daha büyük window size
+          getItemLayout={(data, index) => ({
+            length: 400, // Ortalama item yüksekliği (tahmini)
+            offset: 400 * index,
+            index,
+          })} // getItemLayout ile daha hızlı scroll
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>

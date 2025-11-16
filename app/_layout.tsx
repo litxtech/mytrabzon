@@ -11,7 +11,23 @@ import { registerForPushNotifications, addNotificationResponseReceivedListener }
 import { supabase } from "@/lib/supabase";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 dakika - veri 5 dakika boyunca fresh kalır
+      gcTime: 10 * 60 * 1000, // 10 dakika - cache'de tutulma süresi (eski cacheTime)
+      refetchOnWindowFocus: false, // Pencere focus olduğunda otomatik refetch yapma
+      refetchOnMount: false, // Mount olduğunda otomatik refetch yapma (cache'den kullan)
+      refetchOnReconnect: true, // Bağlantı yenilendiğinde refetch yap
+      retry: 1, // Hata durumunda sadece 1 kez tekrar dene
+      retryDelay: 1000, // Retry arası 1 saniye bekle
+    },
+    mutations: {
+      retry: 1,
+      retryDelay: 1000,
+    },
+  },
+});
 
 function RootLayoutNav() {
   return (

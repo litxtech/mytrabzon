@@ -432,6 +432,16 @@ export default function ChatScreen() {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
+        removeClippedSubviews={Platform.OS === 'android'}
+        maxToRenderPerBatch={10}
+        updateCellsBatchingPeriod={50}
+        initialNumToRender={10}
+        windowSize={10}
+        getItemLayout={(data, index) => ({
+          length: 80, // Ortalama room item yüksekliği
+          offset: 80 * index,
+          index,
+        })}
         renderItem={({ item: room }) => {
           const IconComponent = getRoomIcon(room.type);
           const isOnline = isUserOnline(room);
