@@ -13,6 +13,7 @@ import {
   Alert,
   Animated,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,7 +33,10 @@ export default function MatchScreen() {
   const [matchStatus, setMatchStatus] = useState<'idle' | 'searching' | 'matched'>('idle');
   const [cameraReady, setCameraReady] = useState(true);
   const [micReady, setMicReady] = useState(true);
+  const [showMatchFoundModal, setShowMatchFoundModal] = useState(false);
+  const [foundSession, setFoundSession] = useState<any>(null);
   const pulseAnim = useRef(new Animated.Value(0)).current;
+  const matchFoundTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const joinQueueMutation = trpc.match.joinQueue.useMutation({
     onSuccess: (data) => {
@@ -95,13 +99,24 @@ export default function MatchScreen() {
       setMatchStatus('matched');
       setIsMatching(false);
       stopPolling();
-      router.push(`/match/video/${checkMatchQuery.data.session.id}` as any);
+      
+      // Eşleşme bulundu - onay modalı göster
+      setFoundSession(checkMatchQuery.data.session);
+      setShowMatchFoundModal(true);
+      
+      // 30 saniye sonra otomatik başlat
+      matchFoundTimeout.current = setTimeout(() => {
+        handleAcceptMatch();
+      }, 30000);
     }
   }, [checkMatchQuery.data, router]);
 
   useEffect(() => {
     return () => {
       stopPolling();
+      if (matchFoundTimeout.current) {
+        clearTimeout(matchFoundTimeout.current);
+      }
     };
   }, []);
 
@@ -148,6 +163,27 @@ export default function MatchScreen() {
     setMatchStatus('idle');
     leaveQueueMutation.mutate();
     stopPolling();
+  };
+
+  const handleAcceptMatch = () => {
+    if (matchFoundTimeout.current) {
+      clearTimeout(matchFoundTimeout.current);
+    }
+    setShowMatchFoundModal(false);
+    if (foundSession?.id) {
+      router.push(`/match/video/${foundSession.id}` as any);
+    }
+  };
+
+  const handleRejectMatch = () => {
+    if (matchFoundTimeout.current) {
+      clearTimeout(matchFoundTimeout.current);
+    }
+    setShowMatchFoundModal(false);
+    setFoundSession(null);
+    setMatchStatus('idle');
+    setIsMatching(false);
+    leaveQueueMutation.mutate();
   };
 
   const searching = matchStatus === 'searching';
@@ -301,6 +337,52 @@ export default function MatchScreen() {
         
         <Footer />
       </ScrollView>
+
+      {/* Eşleşme Bulundu Modalı */}
+      <Modal
+        visible={showMatchFoundModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleRejectMatch}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Sparkles size={48} color={COLORS.primary} />
+              <Text style={styles.modalTitle}>Eşleşme Bulundu!</Text>
+              <Text style={styles.modalSubtitle}>
+                Karşı taraf seni bekliyor
+              </Text>
+            </View>
+
+            <View style={styles.modalInfo}>
+              <Text style={styles.modalInfoText}>
+                Görüntülü görüşmeye başlamak için hazır mısın?
+              </Text>
+              <Text style={styles.modalWarning}>
+                30 saniye içinde otomatik başlayacak
+              </Text>
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalButtonReject}
+                onPress={handleRejectMatch}
+              >
+                <X size={20} color={COLORS.error} />
+                <Text style={styles.modalButtonRejectText}>Vazgeç</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalButtonAccept}
+                onPress={handleAcceptMatch}
+              >
+                <Video size={20} color={COLORS.white} />
+                <Text style={styles.modalButtonAcceptText}>Başla</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -514,6 +596,94 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: SPACING.xl,
+  },
+  modalContent: {
+    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    padding: SPACING.xl,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center' as const,
+  },
+  modalHeader: {
+    alignItems: 'center' as const,
+    marginBottom: SPACING.lg,
+  },
+  modalTitle: {
+    fontSize: FONT_SIZES.xxl,
+    fontWeight: '700' as const,
+    color: COLORS.text,
+    marginTop: SPACING.md,
+    textAlign: 'center' as const,
+  },
+  modalSubtitle: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textLight,
+    marginTop: SPACING.xs,
+    textAlign: 'center' as const,
+  },
+  modalInfo: {
+    backgroundColor: COLORS.background,
+    borderRadius: 16,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
+    width: '100%',
+  },
+  modalInfoText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    textAlign: 'center' as const,
+    marginBottom: SPACING.sm,
+  },
+  modalWarning: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.warning,
+    textAlign: 'center' as const,
+    fontWeight: '600' as const,
+  },
+  modalButtons: {
+    flexDirection: 'row' as const,
+    gap: SPACING.md,
+    width: '100%',
+  },
+  modalButtonReject: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: SPACING.xs,
+    paddingVertical: SPACING.md,
+    borderRadius: 16,
+    backgroundColor: COLORS.background,
+    borderWidth: 2,
+    borderColor: COLORS.error,
+  },
+  modalButtonRejectText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700' as const,
+    color: COLORS.error,
+  },
+  modalButtonAccept: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: SPACING.xs,
+    paddingVertical: SPACING.md,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary,
+  },
+  modalButtonAcceptText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700' as const,
+    color: COLORS.white,
   },
 });
 
