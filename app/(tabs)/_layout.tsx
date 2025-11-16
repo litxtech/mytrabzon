@@ -1,14 +1,31 @@
 import { Tabs, useRouter } from "expo-router";
 import { Home, MessageCircle, Bell, User, GraduationCap, Trophy, Heart } from "lucide-react-native";
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
-import { COLORS } from "@/constants/theme";
+import { useChat } from "@/contexts/ChatContext";
+import { trpc } from "@/lib/trpc";
+import { TabBarBadge } from "@/components/TabBarBadge";
 
 export default function TabLayout() {
   const { profile, loading } = useAuth();
   const { theme } = useTheme();
+  const { rooms } = useChat();
   const router = useRouter();
+
+  // Okunmamış mesaj sayısını hesapla
+  const unreadMessageCount = useMemo(() => {
+    return rooms.reduce((total, room) => total + (room.unread_count || 0), 0);
+  }, [rooms]);
+
+  // Okunmamış bildirim sayısı
+  const { data: unreadNotificationData } = trpc.notification.getUnreadCount.useQuery(
+    undefined,
+    {
+      refetchInterval: 30000, // 30 saniyede bir güncelle
+    }
+  );
+  const unreadNotificationCount = unreadNotificationData?.count || 0;
 
   useEffect(() => {
     if (!loading && !profile) {
@@ -64,14 +81,22 @@ export default function TabLayout() {
         name="chat"
         options={{
           title: "Sohbet",
-          tabBarIcon: ({ color }) => <MessageCircle size={24} color={color} />,
+          tabBarIcon: ({ color }) => (
+            <TabBarBadge count={unreadMessageCount}>
+              <MessageCircle size={24} color={color} />
+            </TabBarBadge>
+          ),
         }}
       />
       <Tabs.Screen
         name="notifications"
         options={{
           title: "Bildirimler",
-          tabBarIcon: ({ color }) => <Bell size={24} color={color} />,
+          tabBarIcon: ({ color }) => (
+            <TabBarBadge count={unreadNotificationCount}>
+              <Bell size={24} color={color} />
+            </TabBarBadge>
+          ),
         }}
       />
       <Tabs.Screen
