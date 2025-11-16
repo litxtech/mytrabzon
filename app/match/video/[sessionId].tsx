@@ -104,12 +104,12 @@ export default function MatchVideoScreen() {
       // Agora token al
       let token = '';
       try {
-        const tokenResult = await (trpc as any).match.generateAgoraToken.mutate({
+        const tokenResult = await (trpc as any).match.generateAgoraToken.mutateAsync({
           channel_name: channelName,
           uid: uid,
         });
-        token = tokenResult.token || '';
-      } catch (error) {
+        token = tokenResult?.token || '';
+      } catch (error: any) {
         console.error('Token generation error:', error);
         // Token olmadan devam et (test mode)
         token = '';
