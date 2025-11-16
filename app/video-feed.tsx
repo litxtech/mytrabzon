@@ -155,6 +155,12 @@ export default function VideoFeedScreen() {
           offset: SCREEN_HEIGHT * index,
           index,
         })}
+        onScrollToIndexFailed={(info) => {
+          const wait = new Promise(resolve => setTimeout(resolve, 500));
+          wait.then(() => {
+            flatListRef.current?.scrollToIndex({ index: info.index, animated: false });
+          });
+        }}
         ListFooterComponent={null}
       />
     </View>

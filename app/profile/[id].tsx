@@ -629,6 +629,20 @@ const styles = StyleSheet.create({
   postStatIcon: {
     marginLeft: SPACING.md,
   },
+  videoBadge: {
+    position: 'absolute',
+    top: SPACING.xs,
+    left: SPACING.xs,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 12,
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: 2,
+  },
+  videoBadgeText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '600',
+  },
   emptyContainer: {
     padding: SPACING.xl,
     alignItems: 'center',
