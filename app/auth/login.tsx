@@ -311,14 +311,71 @@ export default function LoginScreen() {
       // OAuth URL'ini uygulama içinde aç
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
 
-      console.log('WebBrowser result:', result.type);
+      console.log('WebBrowser result:', result);
+      console.log('WebBrowser result type:', result.type);
 
       if (result.type === 'success') {
-        // OAuth başarılı - callback URL deep link handler tarafından yakalanacak
-        // Deep link handler otomatik olarak session'ı set edecek
-        console.log('OAuth successful, waiting for deep link callback...');
+        // OAuth başarılı - callback URL'i kontrol et
+        // WebBrowser.openAuthSessionAsync result'ında url property'si olabilir
+        const callbackUrl = (result as any).url;
+        console.log('Callback URL from result:', callbackUrl);
         
-        // Session kontrolü yap (deep link handler çalışana kadar bekle)
+        if (callbackUrl && (callbackUrl.includes('access_token') || callbackUrl.includes('code'))) {
+          // Callback URL'inde token veya code var - direkt işle
+          console.log('Processing callback URL directly:', callbackUrl);
+          
+          try {
+            // URL'den token'ları veya code'u çıkar
+            const url = new URL(callbackUrl);
+            const accessToken = url.searchParams.get('access_token');
+            const refreshToken = url.searchParams.get('refresh_token');
+            const code = url.searchParams.get('code');
+
+            if (accessToken && refreshToken) {
+              // Token'lar varsa direkt session set et
+              console.log('Setting session with tokens from callback');
+              const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
+
+              if (sessionError) {
+                console.error('Session set error:', sessionError);
+                throw sessionError;
+              }
+
+              if (sessionData.session?.user) {
+                setOauthLoading(false);
+                setLoading(false);
+                await checkProfileAndNavigate(sessionData.session.user.id);
+                return;
+              }
+            } else if (code) {
+              // Code varsa exchange et
+              console.log('Exchanging code for session');
+              const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+              
+              if (exchangeError) {
+                console.error('Code exchange error:', exchangeError);
+                throw exchangeError;
+              }
+
+              if (exchangeData.session?.user) {
+                setOauthLoading(false);
+                setLoading(false);
+                await checkProfileAndNavigate(exchangeData.session.user.id);
+                return;
+              }
+            }
+          } catch (urlError) {
+            console.error('Error processing callback URL:', urlError);
+            // Hata durumunda deep link handler'a gönder
+            await Linking.openURL(callbackUrl);
+          }
+        }
+        
+        // Callback URL yok veya işlenemedi - deep link handler'ın çalışmasını bekle
+        console.log('Waiting for deep link callback...');
         let attempts = 0;
         const maxAttempts = 15; // 15 saniye bekle
         
@@ -400,14 +457,71 @@ export default function LoginScreen() {
       // OAuth URL'ini uygulama içinde aç
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
 
-      console.log('WebBrowser result:', result.type);
+      console.log('WebBrowser result:', result);
+      console.log('WebBrowser result type:', result.type);
 
       if (result.type === 'success') {
-        // OAuth başarılı - callback URL deep link handler tarafından yakalanacak
-        // Deep link handler otomatik olarak session'ı set edecek
-        console.log('OAuth successful, waiting for deep link callback...');
+        // OAuth başarılı - callback URL'i kontrol et
+        // WebBrowser.openAuthSessionAsync result'ında url property'si olabilir
+        const callbackUrl = (result as any).url;
+        console.log('Callback URL from result:', callbackUrl);
         
-        // Session kontrolü yap (deep link handler çalışana kadar bekle)
+        if (callbackUrl && (callbackUrl.includes('access_token') || callbackUrl.includes('code'))) {
+          // Callback URL'inde token veya code var - direkt işle
+          console.log('Processing callback URL directly:', callbackUrl);
+          
+          try {
+            // URL'den token'ları veya code'u çıkar
+            const url = new URL(callbackUrl);
+            const accessToken = url.searchParams.get('access_token');
+            const refreshToken = url.searchParams.get('refresh_token');
+            const code = url.searchParams.get('code');
+
+            if (accessToken && refreshToken) {
+              // Token'lar varsa direkt session set et
+              console.log('Setting session with tokens from callback');
+              const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
+
+              if (sessionError) {
+                console.error('Session set error:', sessionError);
+                throw sessionError;
+              }
+
+              if (sessionData.session?.user) {
+                setOauthLoading(false);
+                setLoading(false);
+                await checkProfileAndNavigate(sessionData.session.user.id);
+                return;
+              }
+            } else if (code) {
+              // Code varsa exchange et
+              console.log('Exchanging code for session');
+              const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+              
+              if (exchangeError) {
+                console.error('Code exchange error:', exchangeError);
+                throw exchangeError;
+              }
+
+              if (exchangeData.session?.user) {
+                setOauthLoading(false);
+                setLoading(false);
+                await checkProfileAndNavigate(exchangeData.session.user.id);
+                return;
+              }
+            }
+          } catch (urlError) {
+            console.error('Error processing callback URL:', urlError);
+            // Hata durumunda deep link handler'a gönder
+            await Linking.openURL(callbackUrl);
+          }
+        }
+        
+        // Callback URL yok veya işlenemedi - deep link handler'ın çalışmasını bekle
+        console.log('Waiting for deep link callback...');
         let attempts = 0;
         const maxAttempts = 15; // 15 saniye bekle
         
