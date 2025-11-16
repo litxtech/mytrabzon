@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Alert,
   Platform,
+  Dimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 
@@ -380,15 +381,11 @@ export default function FeedScreen() {
             <RefreshControl refreshing={false} onRefresh={refetch} />
           }
           removeClippedSubviews={true}
-          maxToRenderPerBatch={10}
-          updateCellsBatchingPeriod={50}
-          initialNumToRender={10}
-          windowSize={10}
-          getItemLayout={(data, index) => ({
-            length: 400, // Approximate post height
-            offset: 400 * index,
-            index,
-          })}
+          maxToRenderPerBatch={5}
+          updateCellsBatchingPeriod={100}
+          initialNumToRender={5}
+          windowSize={5}
+          showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>Henüz gönderi yok</Text>
@@ -519,11 +516,14 @@ const styles = StyleSheet.create({
     marginHorizontal: SPACING.md,
     marginVertical: SPACING.sm,
     borderRadius: 12,
+    width: Dimensions.get('window').width - (SPACING.md * 2),
+    overflow: 'hidden',
   },
   postHeader: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     padding: SPACING.md,
+    width: '100%',
   },
   postMenuButton: {
     padding: SPACING.xs,
