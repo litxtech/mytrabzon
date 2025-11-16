@@ -5,8 +5,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { MessageCircle, Users, MapPin, AlertCircle, Inbox, UsersRound, Plus } from 'lucide-react-native';
+import { MessageCircle, Users, MapPin, AlertCircle, Inbox, UsersRound, Plus, Trash2, CheckSquare, Square } from 'lucide-react-native';
 import { Footer } from '@/components/Footer';
+import { trpc } from '@/lib/trpc';
 
 type TabType = 'inbox' | 'groups';
 type GroupCategory = 'genel' | 'yardim' | 'etkinlik' | 'is' | 'egitim';
@@ -19,6 +20,23 @@ export default function ChatScreen() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('inbox');
   const [selectedCategory, setSelectedCategory] = useState<GroupCategory | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedRooms, setSelectedRooms] = useState<Set<string>>(new Set());
+  const utils = trpc.useUtils();
+
+  const leaveRoomMutation = trpc.chat.leaveRoom.useMutation({
+    onSuccess: () => {
+      loadRooms();
+      utils.chat.getRooms.invalidate();
+    },
+  });
+
+  const deleteRoomMutation = trpc.chat.deleteRoom.useMutation({
+    onSuccess: () => {
+      loadRooms();
+      utils.chat.getRooms.invalidate();
+    },
+  });
 
   useEffect(() => {
     const load = async () => {
@@ -290,21 +308,83 @@ export default function ChatScreen() {
     router.push('/chat/new-message' as any);
   };
 
+  const toggleSelectionMode = () => {
+    setSelectionMode(!selectionMode);
+    setSelectedRooms(new Set());
+  };
+
+  const toggleRoomSelection = (roomId: string) => {
+    const newSelected = new Set(selectedRooms);
+    if (newSelected.has(roomId)) {
+      newSelected.delete(roomId);
+    } else {
+      newSelected.add(roomId);
+    }
+    setSelectedRooms(newSelected);
+  };
+
+  const selectAllRooms = () => {
+    const allRoomIds = new Set(displayedRooms.map(room => room.id));
+    setSelectedRooms(allRoomIds);
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedRooms.size === 0) {
+      Alert.alert('Uyarı', 'Lütfen silinecek sohbetleri seçin');
+      return;
+    }
+
+    Alert.alert(
+      'Sohbetleri Sil',
+      `${selectedRooms.size} sohbeti silmek istediğinizden emin misiniz?`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: async () => {
+            for (const roomId of selectedRooms) {
+              const room = rooms.find(r => r.id === roomId);
+              if (room) {
+                if (room.type === 'group' && room.created_by === user?.id) {
+                  await deleteRoomMutation.mutateAsync({ roomId });
+                } else {
+                  await leaveRoomMutation.mutateAsync({ roomId });
+                }
+              }
+            }
+            setSelectedRooms(new Set());
+            setSelectionMode(false);
+            Alert.alert('Başarılı', 'Seçili sohbetler silindi');
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Sohbet</Text>
         <View style={styles.headerButtons}>
-          {activeTab === 'inbox' && (
-            <TouchableOpacity
-              style={styles.newMessageButton}
-              onPress={handleNewMessage}
-            >
-              <Plus size={20} color={COLORS.white} />
-              <Text style={styles.newMessageButtonText}>Yeni Mesaj</Text>
-            </TouchableOpacity>
+          {!selectionMode && activeTab === 'inbox' && (
+            <>
+              <TouchableOpacity
+                style={styles.selectButton}
+                onPress={toggleSelectionMode}
+              >
+                <CheckSquare size={20} color={COLORS.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.newMessageButton}
+                onPress={handleNewMessage}
+              >
+                <Plus size={20} color={COLORS.white} />
+                <Text style={styles.newMessageButtonText}>Yeni Mesaj</Text>
+              </TouchableOpacity>
+            </>
           )}
-          {activeTab === 'groups' && (
+          {!selectionMode && activeTab === 'groups' && (
             <TouchableOpacity
               style={styles.createGroupButton}
               onPress={handleCreateGroup}
@@ -312,6 +392,30 @@ export default function ChatScreen() {
               <Users size={20} color={COLORS.white} />
               <Text style={styles.createGroupButtonText}>Grup Oluştur</Text>
             </TouchableOpacity>
+          )}
+          {selectionMode && (
+            <>
+              <TouchableOpacity
+                style={styles.selectAllButton}
+                onPress={selectAllRooms}
+              >
+                <Text style={styles.selectAllButtonText}>Tümünü Seç</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={handleDeleteSelected}
+                disabled={selectedRooms.size === 0}
+              >
+                <Trash2 size={20} color={COLORS.white} />
+                <Text style={styles.deleteButtonText}>Sil ({selectedRooms.size})</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={toggleSelectionMode}
+              >
+                <Text style={styles.cancelButtonText}>İptal</Text>
+              </TouchableOpacity>
+            </>
           )}
         </View>
       </View>
@@ -329,12 +433,35 @@ export default function ChatScreen() {
           const IconComponent = getRoomIcon(room.type);
           const isOnline = isUserOnline(room);
           const avatar = getRoomAvatar(room);
+          const isSelected = selectedRooms.has(room.id);
           
           return (
             <TouchableOpacity
-              style={styles.chatItem}
-              onPress={() => router.push(`/chat/${room.id}`)}
+              style={[styles.chatItem, isSelected && styles.chatItemSelected]}
+              onPress={() => {
+                if (selectionMode) {
+                  toggleRoomSelection(room.id);
+                } else {
+                  router.push(`/chat/${room.id}`);
+                }
+              }}
+              onLongPress={() => {
+                if (!selectionMode) {
+                  setSelectionMode(true);
+                  toggleRoomSelection(room.id);
+                }
+              }}
             >
+              {selectionMode && (
+                <View style={styles.checkboxContainer}>
+                  {isSelected ? (
+                    <CheckSquare size={24} color={COLORS.primary} />
+                  ) : (
+                    <Square size={24} color={COLORS.textLight} />
+                  )}
+                </View>
+              )}
+              
               <View style={styles.avatarContainer}>
                 {avatar ? (
                   <Image source={{ uri: avatar }} style={styles.chatAvatar} />
@@ -650,5 +777,57 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.sm,
     fontWeight: '600' as const,
+  },
+  selectButton: {
+    padding: SPACING.sm,
+    borderRadius: 20,
+    backgroundColor: COLORS.background,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  selectAllButton: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 20,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  selectAllButtonText: {
+    color: COLORS.primary,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600' as const,
+  },
+  deleteButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: COLORS.error,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 20,
+    gap: SPACING.xs,
+  },
+  deleteButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600' as const,
+  },
+  cancelButton: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 20,
+    backgroundColor: COLORS.background,
+  },
+  cancelButtonText: {
+    color: COLORS.text,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600' as const,
+  },
+  checkboxContainer: {
+    marginRight: SPACING.sm,
+    justifyContent: 'center' as const,
+  },
+  chatItemSelected: {
+    backgroundColor: COLORS.primary + '10',
   },
 });
