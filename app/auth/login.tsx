@@ -326,10 +326,43 @@ export default function LoginScreen() {
           
           try {
             // URL'den token'ları veya code'u çıkar
-            const url = new URL(callbackUrl);
-            const accessToken = url.searchParams.get('access_token');
-            const refreshToken = url.searchParams.get('refresh_token');
-            const code = url.searchParams.get('code');
+            // Not: Supabase callback URL'i hash fragment (#) kullanıyor, query string (?) değil
+            let accessToken: string | null = null;
+            let refreshToken: string | null = null;
+            let code: string | null = null;
+            
+            // Hash fragment'i parse et (# ile başlayan kısım)
+            const hashIndex = callbackUrl.indexOf('#');
+            if (hashIndex !== -1) {
+              const hashPart = callbackUrl.substring(hashIndex + 1);
+              const hashParams = new URLSearchParams(hashPart);
+              accessToken = hashParams.get('access_token');
+              refreshToken = hashParams.get('refresh_token');
+              code = hashParams.get('code');
+            } else {
+              // Query string varsa onu kullan (? ile başlayan kısım)
+              try {
+                const url = new URL(callbackUrl);
+                accessToken = url.searchParams.get('access_token');
+                refreshToken = url.searchParams.get('refresh_token');
+                code = url.searchParams.get('code');
+              } catch (urlError) {
+                // URL parse hatası - manuel parse
+                const accessTokenMatch = callbackUrl.match(/[#&?]access_token=([^&]+)/);
+                const refreshTokenMatch = callbackUrl.match(/[#&?]refresh_token=([^&]+)/);
+                const codeMatch = callbackUrl.match(/[#&?]code=([^&]+)/);
+                
+                if (accessTokenMatch) accessToken = decodeURIComponent(accessTokenMatch[1]);
+                if (refreshTokenMatch) refreshToken = decodeURIComponent(refreshTokenMatch[1]);
+                if (codeMatch) code = decodeURIComponent(codeMatch[1]);
+              }
+            }
+            
+            console.log('Parsed tokens:', {
+              hasAccessToken: !!accessToken,
+              hasRefreshToken: !!refreshToken,
+              hasCode: !!code,
+            });
 
             if (accessToken && refreshToken) {
               // Token'lar varsa direkt session set et
@@ -367,7 +400,7 @@ export default function LoginScreen() {
                 return;
               }
             }
-          } catch (urlError) {
+          } catch (urlError: any) {
             console.error('Error processing callback URL:', urlError);
             // Hata durumunda deep link handler'a gönder
             await Linking.openURL(callbackUrl);
@@ -472,10 +505,43 @@ export default function LoginScreen() {
           
           try {
             // URL'den token'ları veya code'u çıkar
-            const url = new URL(callbackUrl);
-            const accessToken = url.searchParams.get('access_token');
-            const refreshToken = url.searchParams.get('refresh_token');
-            const code = url.searchParams.get('code');
+            // Not: Supabase callback URL'i hash fragment (#) kullanıyor, query string (?) değil
+            let accessToken: string | null = null;
+            let refreshToken: string | null = null;
+            let code: string | null = null;
+            
+            // Hash fragment'i parse et (# ile başlayan kısım)
+            const hashIndex = callbackUrl.indexOf('#');
+            if (hashIndex !== -1) {
+              const hashPart = callbackUrl.substring(hashIndex + 1);
+              const hashParams = new URLSearchParams(hashPart);
+              accessToken = hashParams.get('access_token');
+              refreshToken = hashParams.get('refresh_token');
+              code = hashParams.get('code');
+            } else {
+              // Query string varsa onu kullan (? ile başlayan kısım)
+              try {
+                const url = new URL(callbackUrl);
+                accessToken = url.searchParams.get('access_token');
+                refreshToken = url.searchParams.get('refresh_token');
+                code = url.searchParams.get('code');
+              } catch (urlError) {
+                // URL parse hatası - manuel parse
+                const accessTokenMatch = callbackUrl.match(/[#&?]access_token=([^&]+)/);
+                const refreshTokenMatch = callbackUrl.match(/[#&?]refresh_token=([^&]+)/);
+                const codeMatch = callbackUrl.match(/[#&?]code=([^&]+)/);
+                
+                if (accessTokenMatch) accessToken = decodeURIComponent(accessTokenMatch[1]);
+                if (refreshTokenMatch) refreshToken = decodeURIComponent(refreshTokenMatch[1]);
+                if (codeMatch) code = decodeURIComponent(codeMatch[1]);
+              }
+            }
+            
+            console.log('Parsed tokens:', {
+              hasAccessToken: !!accessToken,
+              hasRefreshToken: !!refreshToken,
+              hasCode: !!code,
+            });
 
             if (accessToken && refreshToken) {
               // Token'lar varsa direkt session set et
@@ -513,7 +579,7 @@ export default function LoginScreen() {
                 return;
               }
             }
-          } catch (urlError) {
+          } catch (urlError: any) {
             console.error('Error processing callback URL:', urlError);
             // Hata durumunda deep link handler'a gönder
             await Linking.openURL(callbackUrl);
