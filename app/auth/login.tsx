@@ -561,6 +561,22 @@ export default function LoginScreen() {
           )}
         </TouchableOpacity>
 
+        {Platform.OS === 'ios' && (
+          <TouchableOpacity
+            style={[styles.appleButton, (loading || oauthLoading) && styles.buttonDisabled]}
+            onPress={handleAppleLogin}
+            disabled={loading || oauthLoading}
+          >
+            {oauthLoading ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <Text style={styles.appleButtonText}>
+                🍎 Apple ile {mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           style={[styles.magicLinkButton, loading && styles.buttonDisabled]}
           onPress={() => setMode('magic')}
