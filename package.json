@@ -1,7 +1,7 @@
 {
   "name": "mytrabzon",
   "main": "expo-router/entry",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "scripts": {
     "start": "bunx rork start -p r41wi4vumk2g4wcqmseqt --tunnel",
     "start:android": "npx expo start --android --clear",
