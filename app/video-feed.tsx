@@ -59,10 +59,21 @@ export default function VideoFeedScreen() {
             return firstMedia && (firstMedia.type === 'video' || firstMedia.path?.match(/\.(mp4|mov|avi|webm)$/i));
           });
 
-          // Beğeni ve yorum sayısına göre sırala
+          // Beğeni ve yorum sayısına göre sırala - TikTok tarzı algoritma
           const sorted = videoPosts.sort((a: any, b: any) => {
-            const aScore = (a.like_count || 0) + (a.comment_count || 0) * 2; // Yorumlar 2x ağırlık
-            const bScore = (b.like_count || 0) + (b.comment_count || 0) * 2;
+            // TikTok benzeri skorlama: beğeni + yorum + zaman faktörü
+            const now = Date.now();
+            const aTime = new Date(a.created_at).getTime();
+            const bTime = new Date(b.created_at).getTime();
+            
+            // Zaman faktörü (son 24 saat içindeki içerikler daha yüksek skor)
+            const aTimeFactor = (now - aTime) < 86400000 ? 1.5 : 1; // 24 saat = 86400000ms
+            const bTimeFactor = (now - bTime) < 86400000 ? 1.5 : 1;
+            
+            // Skor hesaplama: beğeni + (yorum * 2) + zaman faktörü
+            const aScore = ((a.like_count || 0) + (a.comment_count || 0) * 2) * aTimeFactor;
+            const bScore = ((b.like_count || 0) + (b.comment_count || 0) * 2) * bTimeFactor;
+            
             return bScore - aScore;
           });
           

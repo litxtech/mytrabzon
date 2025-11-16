@@ -68,7 +68,7 @@ export function CommentSheet({ postId }: CommentSheetProps) {
         data={comments}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <View style={[styles.commentItem, { borderBottomColor: theme.colors.border }]}>
+          <View style={[styles.commentItem, { borderBottomColor: theme.colors.border + '40' }]}>
             <Image
               source={{ uri: item.author?.avatar_url || 'https://via.placeholder.com/32' }}
               style={styles.commentAvatar}
@@ -103,11 +103,11 @@ export function CommentSheet({ postId }: CommentSheetProps) {
         showsVerticalScrollIndicator={false}
       />
 
-      {/* Yorum Input */}
+      {/* Yorum Input - Şeffaf arka plan */}
       <View
         style={[
           styles.inputContainer,
-          { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border },
+          { backgroundColor: theme.colors.surface + 'E0', borderTopColor: theme.colors.border + '40' }, // %88 opacity
           { paddingBottom: Math.max(insets.bottom, SPACING.md) },
         ]}
       >
@@ -157,6 +157,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
     gap: SPACING.sm,
+    backgroundColor: 'transparent', // Şeffaf arka plan
   },
   commentAvatar: {
     width: 32,

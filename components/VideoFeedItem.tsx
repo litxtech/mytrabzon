@@ -74,7 +74,7 @@ export function VideoFeedItem({ post, isActive, index }: VideoFeedItemProps) {
   const handleComment = () => {
     setShowComments(true);
     Animated.spring(commentSheetY, {
-      toValue: SCREEN_HEIGHT * 0.4, // Ekranın %40'ı
+      toValue: SCREEN_HEIGHT * 0.35, // Ekranın %35'i - daha az yer kaplar, video daha görünür
       useNativeDriver: true,
       tension: 50,
       friction: 7,
@@ -101,7 +101,7 @@ export function VideoFeedItem({ post, isActive, index }: VideoFeedItemProps) {
       },
       onPanResponderMove: (_, gestureState) => {
         if (gestureState.dy > 0) {
-          commentSheetY.setValue(SCREEN_HEIGHT * 0.4 + gestureState.dy);
+          commentSheetY.setValue(SCREEN_HEIGHT * 0.35 + gestureState.dy);
         }
       },
       onPanResponderRelease: (_, gestureState) => {
@@ -109,7 +109,7 @@ export function VideoFeedItem({ post, isActive, index }: VideoFeedItemProps) {
           handleCloseComments();
         } else {
           Animated.spring(commentSheetY, {
-            toValue: SCREEN_HEIGHT * 0.4,
+            toValue: SCREEN_HEIGHT * 0.35,
             useNativeDriver: true,
             tension: 50,
             friction: 7,
@@ -188,18 +188,23 @@ export function VideoFeedItem({ post, isActive, index }: VideoFeedItemProps) {
         </View>
       </View>
 
-      {/* Yorum Paneli (Bottom Sheet) */}
+      {/* Yorum Paneli (Bottom Sheet) - Şeffaf */}
       {showComments && (
         <Animated.View
           style={[
             styles.commentSheet,
             {
               transform: [{ translateY: commentSheetY }],
-              backgroundColor: theme.colors.card,
+              backgroundColor: theme.colors.card + 'F0', // %94 opacity - şeffaf
             },
           ]}
           {...panResponder.panHandlers}
         >
+          {/* Drag Handle */}
+          <View style={styles.dragHandleContainer}>
+            <View style={[styles.dragHandle, { backgroundColor: theme.colors.textLight }]} />
+          </View>
+          
           <View style={[styles.commentSheetHeader, { borderBottomColor: theme.colors.border }]}>
             <Text style={[styles.commentSheetTitle, { color: theme.colors.text }]}>
               Yorumlar ({post.comment_count || 0})
@@ -284,6 +289,18 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 10,
+    backdropFilter: 'blur(10px)', // Web için blur efekti
+  },
+  dragHandleContainer: {
+    alignItems: 'center',
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.xs,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    opacity: 0.5,
   },
   commentSheetHeader: {
     flexDirection: 'row',
