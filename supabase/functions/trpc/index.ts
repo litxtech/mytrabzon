@@ -2026,7 +2026,7 @@ const appRouter = createTRPCRouter({
           email: z.string().email().optional(),
           documents: z.array(
             z.object({
-              type: z.enum(["id_front", "id_back", "selfie", "selfie_with_id"]),
+              type: z.enum(["id_front", "id_back", "selfie"]),
               fileUrl: z.string().url(),
             })
           ),
@@ -2048,17 +2048,6 @@ const appRouter = createTRPCRouter({
           throw new Error("Zaten bekleyen bir kimlik doğrulama başvurunuz var");
         }
         
-        const today = new Date();
-        const dateStr = today
-          .toLocaleDateString("tr-TR", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-          })
-          .replace(/\./g, "-");
-        const randomCode = Math.floor(1000 + Math.random() * 9000);
-        const verificationCode = `MYTRABZON - ${dateStr} - KOD: ${randomCode}`;
-        
         const { data: kycRequest, error: kycError } = await supabase
           .from("kyc_requests")
           .insert({
@@ -2070,8 +2059,6 @@ const appRouter = createTRPCRouter({
             country: input.country,
             city: input.city,
             email: input.email,
-            verification_code: verificationCode,
-            code_generated_at: new Date().toISOString(),
           })
           .select()
           .single();
@@ -2093,7 +2080,6 @@ const appRouter = createTRPCRouter({
         return {
           success: true,
           kycId: kycRequest.id,
-          verificationCode,
         };
       }),
 

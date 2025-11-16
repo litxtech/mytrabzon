@@ -20,14 +20,14 @@ import { trpc } from '../../lib/trpc';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
-type DocumentType = 'id_front' | 'id_back' | 'selfie' | 'selfie_with_id';
+type DocumentType = 'id_front' | 'id_back' | 'selfie';
 
 export default function KycVerifyScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   
-  const [step, setStep] = useState(1); // 1: Form, 2: ID Front, 3: ID Back, 4: Selfie, 5: Selfie with ID
+  const [step, setStep] = useState(1); // 1: Form, 2: ID Front, 3: ID Back, 4: Selfie
   const [loading, setLoading] = useState(false);
   
   // Form data
@@ -42,21 +42,6 @@ export default function KycVerifyScreen() {
   const [idFront, setIdFront] = useState<string | null>(null);
   const [idBack, setIdBack] = useState<string | null>(null);
   const [selfie, setSelfie] = useState<string | null>(null);
-  const [selfieWithId, setSelfieWithId] = useState<string | null>(null);
-  
-  // Verification code'u başta oluştur
-  const generateVerificationCode = () => {
-    const today = new Date();
-    const dateStr = today.toLocaleDateString('tr-TR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-    const randomCode = Math.floor(1000 + Math.random() * 9000);
-    return `MYTRABZON – ${dateStr} – KOD: ${randomCode}`;
-  };
-  
-  const [verificationCode] = useState(generateVerificationCode());
   
   // Mevcut KYC durumunu kontrol et (kullanıcıya gösterilmek için)
   const { data: existingKyc } = trpc.kyc.get.useQuery(undefined, { enabled: !!user?.id });
@@ -226,12 +211,6 @@ export default function KycVerifyScreen() {
         Alert.alert('Eksik', 'Lütfen selfie fotoğrafını çekin');
         return;
       }
-      setStep(5);
-    } else if (step === 5) {
-      if (!selfieWithId) {
-        Alert.alert('Eksik', 'Lütfen kimliğinizi elinizde tuttuğunuz fotoğrafı çekin');
-        return;
-      }
       handleSubmit();
     }
   };
@@ -243,7 +222,6 @@ export default function KycVerifyScreen() {
         { type: 'id_front' as DocumentType, fileUrl: idFront! },
         { type: 'id_back' as DocumentType, fileUrl: idBack! },
         { type: 'selfie' as DocumentType, fileUrl: selfie! },
-        { type: 'selfie_with_id' as DocumentType, fileUrl: selfieWithId! },
       ];
       
       await createKycMutation.mutateAsync({
@@ -339,8 +317,7 @@ export default function KycVerifyScreen() {
             onPress={() => {
               if (type === 'id_front') setIdFront(null);
               else if (type === 'id_back') setIdBack(null);
-              else if (type === 'selfie') setSelfie(null);
-              else if (type === 'selfie_with_id') setSelfieWithId(null);
+            else if (type === 'selfie') setSelfie(null);
             }}
           >
             <Text style={styles.changeButtonText}>Değiştir</Text>
@@ -367,15 +344,6 @@ export default function KycVerifyScreen() {
         </View>
       )}
       
-      {type === 'selfie_with_id' && (
-        <View style={styles.codeContainer}>
-          <Text style={styles.codeLabel}>ÖNEMLİ: Fotoğrafta bu kodu gösterin:</Text>
-          <Text style={styles.codeText}>{verificationCode}</Text>
-          <Text style={styles.codeHint}>
-            Kimliğinizi elinizde tutarken, bu kodu kimliğinizin yanında gösterin. Kod aynı gün geçerlidir.
-          </Text>
-        </View>
-      )}
     </View>
   );
   
@@ -449,7 +417,6 @@ export default function KycVerifyScreen() {
               setIdFront(null);
               setIdBack(null);
               setSelfie(null);
-              setSelfieWithId(null);
             }}
           >
             <Text style={styles.retryButtonText}>Tekrar Başvur</Text>
@@ -470,13 +437,12 @@ export default function KycVerifyScreen() {
           {step === 2 && 'Kimlik Ön Yüz'}
           {step === 3 && 'Kimlik Arka Yüz'}
           {step === 4 && 'Selfie Fotoğrafı'}
-          {step === 5 && 'Kimlik + Selfie'}
         </Text>
         <View style={styles.placeholder} />
       </View>
       
       <View style={styles.progressBar}>
-        <View style={[styles.progressFill, { width: `${(step / 5) * 100}%` }]} />
+        <View style={[styles.progressFill, { width: `${(step / 4) * 100}%` }]} />
       </View>
       
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
@@ -484,7 +450,6 @@ export default function KycVerifyScreen() {
         {step === 2 && renderImageUpload('id_front', 'Kimlik Ön Yüz', 'Kimliğinizin ön yüzünü düz bir zeminde fotoğraflayın', idFront)}
         {step === 3 && renderImageUpload('id_back', 'Kimlik Arka Yüz', 'Kimliğinizin arka yüzünü düz bir zeminde fotoğraflayın', idBack)}
         {step === 4 && renderImageUpload('selfie', 'Selfie Fotoğrafı', 'Yüzünüzün tam göründüğü bir selfie çekin (şapka olmadan)', selfie)}
-        {step === 5 && renderImageUpload('selfie_with_id', 'Kimlik + Selfie', 'Kimliğinizi elinizde tutup selfie çekin. Fotoğrafta gösterilen kodu kimliğinizin yanında gösterin.', selfieWithId)}
       </ScrollView>
       
       <View style={styles.footer}>
@@ -506,7 +471,7 @@ export default function KycVerifyScreen() {
             <ActivityIndicator size="small" color={COLORS.white} />
           ) : (
             <Text style={styles.nextButtonText}>
-              {step === 5 ? 'Gönder' : 'İleri'}
+              {step === 4 ? 'Gönder' : 'İleri'}
             </Text>
           )}
         </TouchableOpacity>

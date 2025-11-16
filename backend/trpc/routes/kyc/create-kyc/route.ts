@@ -12,7 +12,7 @@ export const createKycProcedure = protectedProcedure
       email: z.string().email().optional(),
       documents: z.array(
         z.object({
-          type: z.enum(["id_front", "id_back", "selfie", "selfie_with_id"]),
+          type: z.enum(["id_front", "id_back", "selfie"]),
           fileUrl: z.string().url(),
         })
       ),
@@ -35,16 +35,6 @@ export const createKycProcedure = protectedProcedure
       throw new Error("Zaten bekleyen bir kimlik doğrulama başvurunuz var");
     }
     
-    // Verification code oluştur (selfie + kimlik fotoğrafı için)
-    const today = new Date();
-    const dateStr = today.toLocaleDateString("tr-TR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-    const randomCode = Math.floor(1000 + Math.random() * 9000); // 1000-9999 arası
-    const verificationCode = `MYTRABZON – ${dateStr} – KOD: ${randomCode}`;
-    
     // KYC request oluştur
     const { data: kycRequest, error: kycError } = await supabase
       .from("kyc_requests")
@@ -57,8 +47,6 @@ export const createKycProcedure = protectedProcedure
         country: input.country,
         city: input.city,
         email: input.email,
-        verification_code: verificationCode,
-        code_generated_at: new Date().toISOString(),
       })
       .select()
       .single();
@@ -81,7 +69,6 @@ export const createKycProcedure = protectedProcedure
     return {
       success: true,
       kycId: kycRequest.id,
-      verificationCode,
     };
   });
 
