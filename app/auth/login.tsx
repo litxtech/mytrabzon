@@ -6,6 +6,7 @@ import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Mail, Lock } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
+import * as AppleAuthentication from 'expo-apple-authentication';
 
 type AuthMode = 'login' | 'register' | 'magic' | 'forgot';
 
@@ -346,6 +347,58 @@ export default function LoginScreen() {
     } catch (error: any) {
       console.error('Error during Twitter/X login:', error);
       Alert.alert('Hata', error.message || 'X ile giriş yapılırken bir hata oluştu');
+      setLoading(false);
+      setOauthLoading(false);
+    }
+  };
+
+  const handleAppleLogin = async () => {
+    // Apple ile giriş sadece iOS'ta çalışır
+    if (Platform.OS !== 'ios') {
+      Alert.alert('Bilgi', 'Apple ile giriş sadece iOS cihazlarda kullanılabilir');
+      return;
+    }
+
+    setLoading(true);
+    setOauthLoading(true);
+    try {
+      // Apple Authentication ile kimlik doğrulama
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      if (!credential.identityToken) {
+        throw new Error('Apple kimlik token alınamadı');
+      }
+
+      // Supabase'e Apple ile giriş yap
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
+        nonce: credential.nonce || undefined,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      // Kullanıcı bilgilerini kontrol et ve yönlendir
+      if (data.user) {
+        setOauthLoading(false);
+        setLoading(false);
+        await checkProfileAndNavigate(data.user.id);
+      }
+    } catch (error: any) {
+      // Kullanıcı iptal ettiyse hata gösterme
+      if (error.code === 'ERR_CANCELED') {
+        console.log('Apple giriş iptal edildi');
+      } else {
+        console.error('Error during Apple login:', error);
+        Alert.alert('Hata', error.message || 'Apple ile giriş yapılırken bir hata oluştu');
+      }
       setLoading(false);
       setOauthLoading(false);
     }

@@ -101,6 +101,12 @@
         {
           "color": "#ffffff"
         }
+      ],
+      [
+        "expo-apple-authentication",
+        {
+          "appleTeamId": "9W6CR7KXM7"
+        }
       ]
     ],
     "experiments": {
