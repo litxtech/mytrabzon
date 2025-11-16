@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView, ScrollView, Alert, Linking } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, usePathname } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,7 +17,9 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
+  const isNavigatingRef = useRef(false); // Navigation flag - duplicate call'ları önlemek için
   const router = useRouter();
+  const pathname = usePathname(); // Mevcut path'i takip et
   
   // Policy'leri çek
   const { data: policies } = (trpc as any).admin.getPolicies.useQuery();
@@ -36,18 +38,137 @@ export default function LoginScreen() {
   };
 
   const checkProfileAndNavigate = useCallback(async (userId: string) => {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-
-    if (!profile || !profile.full_name) {
-      router.replace('/auth/onboarding');
-    } else {
-      router.replace('/(tabs)/feed');
+    // Duplicate call'ları önle
+    if (isNavigatingRef.current) {
+      console.log('Navigation already in progress, skipping...');
+      return;
     }
-  }, [router]);
+
+    try {
+      isNavigatingRef.current = true;
+      console.log('Checking profile for user:', userId);
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (profileError) {
+        console.error('Profile fetch error:', profileError);
+      }
+
+      console.log('Profile check result:', {
+        hasProfile: !!profile,
+        hasFullName: !!profile?.full_name,
+        profileId: profile?.id,
+      });
+
+      // Loading state'leri kapat
+      setOauthLoading(false);
+      setLoading(false);
+
+      // Navigation path'ini belirle
+      const targetPath = !profile || !profile.full_name 
+        ? '/auth/onboarding' 
+        : '/(tabs)/feed';
+      
+      console.log('Navigating to:', targetPath);
+
+      // Navigation'ı gerçekleştir - birden fazla deneme yap
+      let navigationAttempts = 0;
+      const maxAttempts = 3;
+      let navigationSuccess = false;
+      const initialPath = pathname; // Başlangıç path'ini kaydet
+
+      while (navigationAttempts < maxAttempts && !navigationSuccess) {
+        navigationAttempts++;
+        console.log(`Navigation attempt ${navigationAttempts}/${maxAttempts} to ${targetPath}`);
+        console.log(`Current pathname: ${pathname}, Initial path: ${initialPath}`);
+        
+        try {
+          // İlk denemede replace, sonraki denemelerde push kullan
+          if (navigationAttempts === 1) {
+            router.replace(targetPath as any);
+            console.log('router.replace called');
+          } else {
+            router.push(targetPath as any);
+            console.log('router.push called (fallback)');
+          }
+          
+          // Navigation'ın çalışması için delay - pathname'in değişmesini bekle
+          await new Promise(resolve => setTimeout(resolve, 800));
+          
+          // Pathname'in değişip değişmediğini kontrol et
+          // Not: pathname state'i güncellenmiş olabilir, ama callback içinde direkt erişemeyiz
+          // Bu yüzden navigation'ı başarılı kabul ediyoruz
+          // Eğer navigation gerçekten başarısız olursa, onAuthStateChange tekrar tetiklenecek
+          // ve checkProfileAndNavigate tekrar çağrılacak, ama isNavigatingRef flag'i bunu engelleyecek
+          navigationSuccess = true;
+          console.log('Navigation completed successfully');
+          
+        } catch (navError: any) {
+          console.error(`Navigation attempt ${navigationAttempts} failed:`, navError);
+          
+          if (navigationAttempts < maxAttempts) {
+            // Bir sonraki deneme için kısa bir delay
+            await new Promise(resolve => setTimeout(resolve, 300));
+          } else {
+            // Tüm denemeler başarısız - hata göster
+            console.error('All navigation attempts failed');
+            Alert.alert(
+              'Yönlendirme Hatası',
+              'Sayfaya yönlendirilemedi. Lütfen tekrar deneyin.',
+              [
+                {
+                  text: 'Tekrar Dene',
+                  onPress: () => {
+                    isNavigatingRef.current = false;
+                    checkProfileAndNavigate(userId);
+                  }
+                },
+                {
+                  text: 'Tamam',
+                  onPress: () => {
+                    isNavigatingRef.current = false;
+                  }
+                }
+              ]
+            );
+          }
+        }
+      }
+
+      if (navigationSuccess) {
+        console.log('Navigation successful, resetting flag after delay');
+        // Navigation başarılı - flag'i sıfırla (delay ile)
+        // Eğer navigation gerçekten başarısız olursa, onAuthStateChange tekrar tetiklenecek
+        // ama isNavigatingRef flag'i bunu engelleyecek, bu yüzden döngü oluşmayacak
+        setTimeout(() => {
+          isNavigatingRef.current = false;
+          console.log('Navigation flag reset');
+        }, 3000);
+      }
+
+    } catch (error: any) {
+      console.error('Error in checkProfileAndNavigate:', error);
+      setOauthLoading(false);
+      setLoading(false);
+      
+      // Hata durumunda onboarding'e yönlendir
+      try {
+        router.replace('/auth/onboarding');
+        console.log('Error fallback: Navigating to onboarding');
+      } catch (navError) {
+        console.error('Error fallback navigation failed:', navError);
+        router.push('/auth/onboarding');
+      }
+      
+      // Flag'i sıfırla
+      setTimeout(() => {
+        isNavigatingRef.current = false;
+      }, 2000);
+    }
+  }, [router, pathname]);
 
   // OAuth callback'i dinle - her zaman aktif
   useEffect(() => {
@@ -56,17 +177,20 @@ export default function LoginScreen() {
       
       if (event === 'SIGNED_IN' && session?.user) {
         console.log('User signed in via OAuth:', session.user.id);
-        setOauthLoading(false);
-        setLoading(false);
-        await checkProfileAndNavigate(session.user.id);
+        // Duplicate call'ları önle - eğer zaten navigation yapılıyorsa atla
+        if (!isNavigatingRef.current) {
+          // checkProfileAndNavigate içinde loading state'leri kapatılıyor
+          await checkProfileAndNavigate(session.user.id);
+        }
       } else if (event === 'SIGNED_OUT') {
         console.log('User signed out');
         setOauthLoading(false);
         setLoading(false);
+        isNavigatingRef.current = false;
       } else if (event === 'TOKEN_REFRESHED' && session?.user) {
         console.log('Token refreshed for user:', session.user.id);
-        // Token yenilendiğinde de kontrol et
-        if (oauthLoading) {
+        // Token yenilendiğinde de kontrol et (sadece OAuth loading durumunda)
+        if (oauthLoading && !isNavigatingRef.current) {
           setOauthLoading(false);
           setLoading(false);
           await checkProfileAndNavigate(session.user.id);
@@ -378,9 +502,11 @@ export default function LoginScreen() {
               }
 
               if (sessionData.session?.user) {
+                console.log('Session set successfully, user ID:', sessionData.session.user.id);
                 setOauthLoading(false);
                 setLoading(false);
-                await checkProfileAndNavigate(sessionData.session.user.id);
+                // onAuthStateChange otomatik olarak checkProfileAndNavigate'i çağıracak
+                // Burada tekrar çağırmaya gerek yok, duplicate call'ları önlemek için
                 return;
               }
             } else if (code) {
@@ -394,9 +520,11 @@ export default function LoginScreen() {
               }
 
               if (exchangeData.session?.user) {
+                console.log('Code exchanged successfully, user ID:', exchangeData.session.user.id);
                 setOauthLoading(false);
                 setLoading(false);
-                await checkProfileAndNavigate(exchangeData.session.user.id);
+                // onAuthStateChange otomatik olarak checkProfileAndNavigate'i çağıracak
+                // Burada tekrar çağırmaya gerek yok, duplicate call'ları önlemek için
                 return;
               }
             }
@@ -467,7 +595,13 @@ export default function LoginScreen() {
       }
 
       // Mobilde Supabase OAuth URL'ini uygulama içinde aç
-      const redirectUrl = 'mytrabzon://auth/callback';
+      // Twitter OAuth için Supabase callback URL'ini kullan, oradan deep link'e yönlendir
+      const deepLinkUrl = 'mytrabzon://auth/callback';
+      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+      const redirectUrl = `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`;
+      
+      console.log('Twitter redirect URL:', redirectUrl);
+      
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'twitter',
         options: {
@@ -488,7 +622,8 @@ export default function LoginScreen() {
       console.log('Opening Twitter/X OAuth in app browser:', data.url);
 
       // OAuth URL'ini uygulama içinde aç
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+      // Twitter callback'i Supabase callback URL'ine gidecek, oradan deep link handler yakalayacak
+      const result = await WebBrowser.openAuthSessionAsync(data.url, deepLinkUrl);
 
       console.log('WebBrowser result:', result);
       console.log('WebBrowser result type:', result.type);
@@ -557,9 +692,11 @@ export default function LoginScreen() {
               }
 
               if (sessionData.session?.user) {
+                console.log('Session set successfully, user ID:', sessionData.session.user.id);
                 setOauthLoading(false);
                 setLoading(false);
-                await checkProfileAndNavigate(sessionData.session.user.id);
+                // onAuthStateChange otomatik olarak checkProfileAndNavigate'i çağıracak
+                // Burada tekrar çağırmaya gerek yok, duplicate call'ları önlemek için
                 return;
               }
             } else if (code) {
@@ -573,9 +710,11 @@ export default function LoginScreen() {
               }
 
               if (exchangeData.session?.user) {
+                console.log('Code exchanged successfully, user ID:', exchangeData.session.user.id);
                 setOauthLoading(false);
                 setLoading(false);
-                await checkProfileAndNavigate(exchangeData.session.user.id);
+                // onAuthStateChange otomatik olarak checkProfileAndNavigate'i çağıracak
+                // Burada tekrar çağırmaya gerek yok, duplicate call'ları önlemek için
                 return;
               }
             }

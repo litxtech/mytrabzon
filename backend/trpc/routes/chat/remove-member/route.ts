@@ -29,7 +29,15 @@ export const removeMemberProcedure = protectedProcedure
       });
     }
 
-    if (room.created_by !== userId) {
+    // Admin rolü kontrolü - add-members ile tutarlı olması için
+    const { data: membership, error: membershipError } = await ctx.supabase
+      .from('chat_members')
+      .select('role')
+      .eq('room_id', room.id)
+      .eq('user_id', userId)
+      .single();
+
+    if (membershipError || !membership || membership.role !== 'admin') {
       throw new TRPCError({
         code: 'FORBIDDEN',
         message: 'Üyeleri çıkarmak için yetkiniz yok',
