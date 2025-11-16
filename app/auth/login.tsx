@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView, ScrollView, Alert } from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -13,7 +13,42 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
   const router = useRouter();
+
+  const checkProfileAndNavigate = useCallback(async (userId: string) => {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (!profile || !profile.full_name) {
+      router.replace('/auth/onboarding');
+    } else {
+      router.replace('/(tabs)/feed');
+    }
+  }, [router]);
+
+  // OAuth callback'i dinle
+  useEffect(() => {
+    if (!oauthLoading) return;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        setOauthLoading(false);
+        setLoading(false);
+        await checkProfileAndNavigate(session.user.id);
+      } else if (event === 'SIGNED_OUT') {
+        setOauthLoading(false);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [oauthLoading, checkProfileAndNavigate]);
 
   const handleEmailAuth = async () => {
     const trimmedEmail = email.trim().toLowerCase();
@@ -191,6 +226,7 @@ export default function LoginScreen() {
 
   const handleGoogleLogin = async () => {
     setLoading(true);
+    setOauthLoading(true);
     try {
       const redirectUrl = Platform.select({
         web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
@@ -205,23 +241,37 @@ export default function LoginScreen() {
         },
       });
 
-      if (error) throw error;
-
-      // Web'de OAuth browser'da açılır, mobilde otomatik yönlendirme olur
-      if (Platform.OS === 'web' && data.url) {
-        // Web'de browser'da aç
-        window.location.href = data.url;
+      if (error) {
+        throw error;
       }
-      // Mobilde OAuth tamamlandıktan sonra callback'te session kontrol edilecek
+
+      // Web'de OAuth browser'da açılır
+      if (Platform.OS === 'web' && data.url) {
+        window.location.href = data.url;
+        return; // Web'de yönlendirme yapıldı
+      }
+
+      // Mobilde OAuth callback'i beklemek için session kontrolü yap
+      // onAuthStateChange listener otomatik olarak yönlendirecek
+      // Timeout ekle - eğer 60 saniye içinde callback gelmezse hata göster
+      setTimeout(() => {
+        if (oauthLoading) {
+          setOauthLoading(false);
+          setLoading(false);
+          Alert.alert('Zaman Aşımı', 'Giriş işlemi zaman aşımına uğradı. Lütfen tekrar deneyin.');
+        }
+      }, 60000);
     } catch (error: any) {
       console.error('Error during Google login:', error);
       Alert.alert('Hata', error.message || 'Google ile giriş yapılırken bir hata oluştu');
       setLoading(false);
+      setOauthLoading(false);
     }
   };
 
   const handleTwitterLogin = async () => {
     setLoading(true);
+    setOauthLoading(true);
     try {
       const redirectUrl = Platform.select({
         web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
@@ -236,34 +286,34 @@ export default function LoginScreen() {
         },
       });
 
-      if (error) throw error;
-
-      // Web'de OAuth browser'da açılır, mobilde otomatik yönlendirme olur
-      if (Platform.OS === 'web' && data.url) {
-        // Web'de browser'da aç
-        window.location.href = data.url;
+      if (error) {
+        throw error;
       }
-      // Mobilde OAuth tamamlandıktan sonra callback'te session kontrol edilecek
+
+      // Web'de OAuth browser'da açılır
+      if (Platform.OS === 'web' && data.url) {
+        window.location.href = data.url;
+        return; // Web'de yönlendirme yapıldı
+      }
+
+      // Mobilde OAuth callback'i beklemek için session kontrolü yap
+      // onAuthStateChange listener otomatik olarak yönlendirecek
+      // Timeout ekle - eğer 60 saniye içinde callback gelmezse hata göster
+      setTimeout(() => {
+        if (oauthLoading) {
+          setOauthLoading(false);
+          setLoading(false);
+          Alert.alert('Zaman Aşımı', 'Giriş işlemi zaman aşımına uğradı. Lütfen tekrar deneyin.');
+        }
+      }, 60000);
     } catch (error: any) {
       console.error('Error during Twitter/X login:', error);
       Alert.alert('Hata', error.message || 'X ile giriş yapılırken bir hata oluştu');
       setLoading(false);
+      setOauthLoading(false);
     }
   };
 
-  const checkProfileAndNavigate = async (userId: string) => {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-
-    if (!profile || !profile.full_name) {
-      router.replace('/auth/onboarding');
-    } else {
-      router.replace('/(tabs)/feed');
-    }
-  };
 
   const renderForm = () => {
     if (mode === 'magic') {
