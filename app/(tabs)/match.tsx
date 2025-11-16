@@ -35,10 +35,7 @@ export default function MatchScreen() {
   const [matchStatus, setMatchStatus] = useState<'idle' | 'searching' | 'matched'>('idle');
   const [cameraReady, setCameraReady] = useState(true);
   const [micReady, setMicReady] = useState(true);
-  const [showMatchFoundModal, setShowMatchFoundModal] = useState(false);
-  const [foundSession, setFoundSession] = useState<any>(null);
   const pulseAnim = useRef(new Animated.Value(0)).current;
-  const matchFoundTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const joinQueueMutation = trpc.match.joinQueue.useMutation({
     onSuccess: (data: any) => {
@@ -96,15 +93,6 @@ export default function MatchScreen() {
     }
   };
 
-  const handleAcceptMatch = useCallback(() => {
-    if (matchFoundTimeout.current) {
-      clearTimeout(matchFoundTimeout.current);
-    }
-    setShowMatchFoundModal(false);
-    if (foundSession?.id) {
-      router.push(`/match/video/${foundSession.id}` as any);
-    }
-  }, [foundSession, router]);
 
   useEffect(() => {
     if (checkMatchQuery.data?.matched && checkMatchQuery.data.session?.id) {
@@ -134,10 +122,6 @@ export default function MatchScreen() {
           setIsMatching(false);
           setMatchStatus('idle');
         }
-        if (matchFoundTimeout.current) {
-          clearTimeout(matchFoundTimeout.current);
-          matchFoundTimeout.current = null;
-        }
       };
     }, [matchStatus])
   );
@@ -145,9 +129,6 @@ export default function MatchScreen() {
   useEffect(() => {
     return () => {
       stopPolling();
-      if (matchFoundTimeout.current) {
-        clearTimeout(matchFoundTimeout.current);
-      }
       // Component unmount olduğunda da eşleşmeyi iptal et
       if (matchStatus === 'searching') {
         leaveQueueMutation.mutate();
@@ -200,16 +181,6 @@ export default function MatchScreen() {
     stopPolling();
   };
 
-  const handleRejectMatch = () => {
-    if (matchFoundTimeout.current) {
-      clearTimeout(matchFoundTimeout.current);
-    }
-    setShowMatchFoundModal(false);
-    setFoundSession(null);
-    setMatchStatus('idle');
-    setIsMatching(false);
-    leaveQueueMutation.mutate();
-  };
 
   const searching = matchStatus === 'searching';
   const pulseStyle = {
