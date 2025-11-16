@@ -10,6 +10,8 @@ import {
   Alert,
   Platform,
   Dimensions,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { Image } from 'expo-image';
 
@@ -38,6 +40,10 @@ export default function FeedScreen() {
   const utils = trpc.useUtils();
   const [selectedDistrict, setSelectedDistrict] = useState<District | 'all'>('all');
   const [sortType, setSortType] = useState<SortType>('new');
+  const [imageModalVisible, setImageModalVisible] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
+  const [videoModalVisible, setVideoModalVisible] = useState(false);
 
   const formatCount = useCallback((count: number | null | undefined): string => {
     if (!count) return '0';
@@ -298,28 +304,41 @@ export default function FeedScreen() {
         {firstMedia && (
           <>
             {isVideo ? (
-              <VideoPlayer
-                videoUrl={firstMedia.path}
-                postId={item.id}
-                isLiked={item.is_liked}
-                likeCount={item.like_count}
-                commentCount={item.comment_count}
-                shareCount={item.share_count}
-                onLike={() => handleLike(item.id)}
-                onComment={() => router.push(`/post/${item.id}` as any)}
-                onShare={() => {
-                  // Paylaşma fonksiyonu
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedVideo(firstMedia.path);
+                  setVideoModalVisible(true);
                 }}
-                onTag={() => {
-                  // Etiketleme fonksiyonu
-                }}
-                autoPlay={false}
-                previewMode={true}
-              />
+                activeOpacity={0.9}
+                style={styles.videoContainer}
+              >
+                <VideoPlayer
+                  videoUrl={firstMedia.path}
+                  postId={item.id}
+                  isLiked={item.is_liked}
+                  likeCount={item.like_count}
+                  commentCount={item.comment_count}
+                  shareCount={item.share_count}
+                  onLike={() => handleLike(item.id)}
+                  onComment={() => router.push(`/post/${item.id}` as any)}
+                  onShare={() => {
+                    // Paylaşma fonksiyonu
+                  }}
+                  onTag={() => {
+                    // Etiketleme fonksiyonu
+                  }}
+                  autoPlay={false}
+                  previewMode={true}
+                />
+              </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                onPress={() => router.push(`/post/${item.id}` as any)}
+                onPress={() => {
+                  setSelectedImage(firstMedia.path);
+                  setImageModalVisible(true);
+                }}
                 activeOpacity={0.9}
+                style={styles.imageContainer}
               >
                 <Image
                   source={{ uri: firstMedia.path }}
@@ -447,6 +466,74 @@ export default function FeedScreen() {
         <Plus size={24} color={COLORS.white} />
       </TouchableOpacity>
 
+      {/* Full Screen Image Modal */}
+      <Modal
+        visible={imageModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setImageModalVisible(false)}
+      >
+        <View style={styles.fullScreenModal}>
+          <TouchableOpacity
+            style={styles.modalCloseButton}
+            onPress={() => setImageModalVisible(false)}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+          >
+            <Text style={styles.modalCloseText}>✕</Text>
+          </TouchableOpacity>
+          <ScrollView
+            contentContainerStyle={styles.modalImageContainer}
+            maximumZoomScale={3}
+            minimumZoomScale={1}
+            showsVerticalScrollIndicator={false}
+            showsHorizontalScrollIndicator={false}
+          >
+            {selectedImage && (
+              <Image
+                source={{ uri: selectedImage }}
+                style={styles.fullScreenImage}
+                contentFit="contain"
+                transition={200}
+              />
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Full Screen Video Modal */}
+      <Modal
+        visible={videoModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setVideoModalVisible(false)}
+      >
+        <View style={styles.fullScreenModal}>
+          <TouchableOpacity
+            style={styles.modalCloseButton}
+            onPress={() => setVideoModalVisible(false)}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+          >
+            <Text style={styles.modalCloseText}>✕</Text>
+          </TouchableOpacity>
+          {selectedVideo && (
+            <VideoPlayer
+              videoUrl={selectedVideo}
+              postId=""
+              isLiked={false}
+              likeCount={0}
+              commentCount={0}
+              shareCount={0}
+              onLike={() => {}}
+              onComment={() => {}}
+              onShare={() => {}}
+              onTag={() => {}}
+              autoPlay={true}
+              previewMode={false}
+            />
+          )}
+        </View>
+      </Modal>
+
     </View>
   );
 }
@@ -522,12 +609,14 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
   },
   postCard: {
-    marginHorizontal: SPACING.md,
+    marginHorizontal: 0,
     marginVertical: SPACING.sm,
-    borderRadius: 12,
-    width: Dimensions.get('window').width - (SPACING.md * 2),
+    borderRadius: 0,
+    width: '100%',
     overflow: 'hidden',
-    borderWidth: 1,
+    borderWidth: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
   postHeader: {
     flexDirection: 'row' as const,
@@ -602,11 +691,57 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     width: '100%',
   },
+  imageContainer: {
+    width: '100%',
+    marginHorizontal: 0,
+    paddingHorizontal: 0,
+  },
   postImage: {
     width: '100%',
     height: undefined,
     aspectRatio: 1,
     maxHeight: 500,
+    marginHorizontal: 0,
+    paddingHorizontal: 0,
+  },
+  videoContainer: {
+    width: '100%',
+    marginHorizontal: 0,
+    paddingHorizontal: 0,
+  },
+  fullScreenModal: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseButton: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 30,
+    right: 20,
+    zIndex: 1000,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseText: {
+    color: COLORS.white,
+    fontSize: 24,
+    fontWeight: '600',
+  },
+  modalImageContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height,
+  },
+  fullScreenImage: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height,
   },
   mediaCountBadge: {
     position: 'absolute' as const,
