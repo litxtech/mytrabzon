@@ -4092,6 +4092,13 @@ const appRouter = createTRPCRouter({
           }
         }
 
+        // Önce mevcut aktif kuyruk kaydını kontrol et ve temizle
+        await supabase
+          .from('waiting_queue')
+          .update({ is_active: false })
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+
         // Eşleşme ara
         const { data: matchId, error: findMatchError } = await supabase.rpc('find_match', {
           p_user_id: user.id,
@@ -4102,10 +4109,26 @@ const appRouter = createTRPCRouter({
 
         if (findMatchError) {
           console.error('find_match error in joinQueue:', findMatchError);
-          throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
-            message: `Eşleşme aranırken hata oluştu: ${findMatchError.message}`,
+          // Hata durumunda da kuyruğa ekle, kullanıcı bekleyebilsin
+          const { data: queueId, error: queueError } = await supabase.rpc('join_waiting_queue', {
+            p_user_id: user.id,
+            p_gender: profile.gender,
+            p_city: profile.city || null,
+            p_district: profile.district || null,
           });
+
+          if (queueError) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: `Eşleşme aranırken hata oluştu: ${findMatchError.message}`,
+            });
+          }
+
+          return {
+            matched: false,
+            queueId: queueId,
+            message: 'Eşleşme aranıyor...',
+          };
         }
 
         if (matchId) {
@@ -4282,7 +4305,7 @@ const appRouter = createTRPCRouter({
           };
         }
 
-        // Eşleşme ara
+        // Eşleşme ara - sadece kuyrukta aktifse ara
         const { data: matchId, error: matchError } = await supabase.rpc('find_match', {
           p_user_id: user.id,
           p_gender: profile.gender,
@@ -4291,7 +4314,8 @@ const appRouter = createTRPCRouter({
         });
 
         if (matchError) {
-          console.error('find_match error:', matchError);
+          console.error('find_match error in checkMatch:', matchError);
+          // Hata durumunda kuyrukta kalmaya devam et
           return {
             matched: false,
             session: null,
