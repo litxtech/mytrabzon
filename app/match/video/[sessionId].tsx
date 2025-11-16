@@ -91,7 +91,12 @@ export default function MatchVideoScreen() {
   }, [sessionData]);
 
   const initializeCall = async () => {
-    if (!sessionRef.current || !user) return;
+    if (!sessionRef.current || !user) {
+      console.error('initializeCall: sessionRef.current or user is null');
+      Alert.alert('Hata', 'Eşleşme bilgisi bulunamadı. Lütfen tekrar deneyin.');
+      router.back();
+      return;
+    }
 
     try {
       setIsLoading(true);
@@ -101,6 +106,14 @@ export default function MatchVideoScreen() {
       await manager.initialize();
 
       const channelName = sessionRef.current.channel_name;
+      if (!channelName) {
+        console.error('Channel name is missing in session');
+        Alert.alert('Hata', 'Eşleşme kanalı bulunamadı.');
+        setIsLoading(false);
+        router.back();
+        return;
+      }
+
       const uid = Math.floor(Math.random() * 100000);
 
       // Agora token al
@@ -113,7 +126,10 @@ export default function MatchVideoScreen() {
         token = tokenResult?.token || '';
       } catch (error: any) {
         console.error('Token generation error:', error);
-        // Token olmadan devam et (test mode)
+        // Hata mesajını göster ama devam et (test mode'da token olmadan çalışabilir)
+        if (error.message && !error.message.includes('Eşleşme bulunamadı')) {
+          Alert.alert('Uyarı', 'Token oluşturulamadı, test modunda devam ediliyor.');
+        }
         token = '';
       }
       

@@ -5000,19 +5000,45 @@ const appRouter = createTRPCRouter({
         const { supabase, user } = ctx;
         if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
 
-        // Session'ı kontrol et
-        const { data: session } = await supabase
+        // Session'ı kontrol et - önce channel_name ile, sonra user ile
+        let session = null;
+        
+        // Önce channel_name ile ara
+        const { data: sessionByChannel, error: channelError } = await supabase
           .from('match_sessions')
           .select('*')
           .eq('channel_name', input.channel_name)
           .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
           .is('ended_at', null)
-          .single();
+          .maybeSingle();
+
+        if (channelError) {
+          console.error('Session query error by channel:', channelError);
+        } else if (sessionByChannel) {
+          session = sessionByChannel;
+        } else {
+          // Channel name ile bulunamadı, kullanıcının aktif session'ını ara
+          const { data: activeSession, error: activeError } = await supabase
+            .from('match_sessions')
+            .select('*')
+            .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
+            .is('ended_at', null)
+            .order('started_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (activeError) {
+            console.error('Active session query error:', activeError);
+          } else if (activeSession) {
+            session = activeSession;
+          }
+        }
 
         if (!session) {
+          console.error('No session found for user:', user.id, 'channel:', input.channel_name);
           throw new TRPCError({
             code: 'NOT_FOUND',
-            message: 'Eşleşme bulunamadı',
+            message: 'Eşleşme bulunamadı. Lütfen eşleşme sayfasından tekrar deneyin.',
           });
         }
 

@@ -65,6 +65,9 @@ export default function KTUVerifyScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       quality: 0.8,
+      allowsMultipleSelection: false,
+      // Hem belge hem normal resim kabul et
+      exif: false,
     });
 
     if (!result.canceled && result.assets[0]) {
