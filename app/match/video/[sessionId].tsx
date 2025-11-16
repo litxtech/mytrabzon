@@ -104,7 +104,7 @@ export default function MatchVideoScreen() {
       // Agora token al
       let token = '';
       try {
-        const tokenResult = await (trpc as any).match.generateAgoraToken.mutateAsync({
+        const tokenResult = await generateAgoraTokenMutation.mutateAsync({
           channel_name: channelName,
           uid: uid,
         });

@@ -1,6 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
-import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { trpc, trpcClient } from "@/lib/trpc";
@@ -11,8 +10,6 @@ import * as Notifications from 'expo-notifications';
 import { registerForPushNotifications, addNotificationResponseReceivedListener } from "@/lib/notifications";
 import { supabase } from "@/lib/supabase";
 import { ThemeProvider } from "@/contexts/ThemeContext";
-
-SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
@@ -67,7 +64,6 @@ export default function RootLayout() {
   const router = useRouter();
 
   useEffect(() => {
-    SplashScreen.hideAsync();
 
     // Deep link handling - Uygulama açılmadan önce gelen link
     const handleInitialURL = async () => {
