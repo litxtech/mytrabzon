@@ -21,6 +21,7 @@ import { Camera, Video, VideoOff, Mic, MicOff, X, Sparkles, Shield, Heart } from
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { trpc } from '@/lib/trpc';
 import { Footer } from '@/components/Footer';
@@ -29,6 +30,7 @@ export default function MatchScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { profile } = useAuth();
+  const { theme } = useTheme();
   const [isMatching, setIsMatching] = useState(false);
   const [matchStatus, setMatchStatus] = useState<'idle' | 'searching' | 'matched'>('idle');
   const [cameraReady, setCameraReady] = useState(true);
@@ -202,9 +204,13 @@ export default function MatchScreen() {
     }),
   };
 
+  const gradientColors = theme.mode === 'dark' 
+    ? [theme.colors.background, theme.colors.surface]
+    : ['#F6F9FF', '#EEF2FF'];
+
   return (
     <LinearGradient
-      colors={['#F6F9FF', '#EEF2FF']}
+      colors={gradientColors}
       style={[styles.container, { paddingTop: insets.top }]}
     >
       <ScrollView
@@ -214,21 +220,22 @@ export default function MatchScreen() {
         nestedScrollEnabled={true}
       >
         <View style={styles.header}>
-          <Text style={styles.sectionLabel}>Sınırsız eşleşme</Text>
-          <Text style={styles.title}>Görüntülü Eşleşme</Text>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.sectionLabel, { color: theme.colors.primary }]}>Sınırsız eşleşme</Text>
+          <Text style={[styles.title, { color: theme.colors.text }]}>Görüntülü Eşleşme</Text>
+          <Text style={[styles.subtitle, { color: theme.colors.textLight }]}>
             Karşı cinsle gerçek zamanlı görüntülü görüş, beğenmezsen tek dokunuşta geç!
           </Text>
         </View>
 
         <View style={styles.previewWrapper}>
-          <Animated.View style={[styles.pulseRing, pulseStyle]} />
-          <View style={styles.previewCard}>
-            <View style={[styles.statusPill, searching && styles.statusPillSearching]}>
-              <Sparkles size={16} color={searching ? COLORS.error : COLORS.primary} />
+          <Animated.View style={[styles.pulseRing, pulseStyle, { backgroundColor: theme.colors.primary + '30' }]} />
+          <View style={[styles.previewCard, { backgroundColor: theme.colors.card }]}>
+            <View style={[styles.statusPill, { backgroundColor: searching ? theme.colors.error + '15' : theme.colors.primary + '15' }, searching && styles.statusPillSearching]}>
+              <Sparkles size={16} color={searching ? theme.colors.error : theme.colors.primary} />
               <Text
                 style={[
                   styles.statusPillText,
+                  { color: searching ? theme.colors.error : theme.colors.primary },
                   searching && styles.statusPillTextSearching,
                 ]}
               >
@@ -236,70 +243,72 @@ export default function MatchScreen() {
               </Text>
             </View>
 
-            <View style={styles.cameraIconContainer}>
-              <Camera size={48} color={COLORS.primary} />
+            <View style={[styles.cameraIconContainer, { backgroundColor: theme.colors.surface }]}>
+              <Camera size={48} color={theme.colors.primary} />
             </View>
 
-            <Text style={styles.previewTitle}>
+            <Text style={[styles.previewTitle, { color: theme.colors.text }]}>
               {searching ? 'Yeni eşleşme sıraya alındı' : 'Kamera önizlemesine hazır mısın?'}
             </Text>
-            <Text style={styles.previewDescription}>
+            <Text style={[styles.previewDescription, { color: theme.colors.textLight }]}>
               Eşleşme sınırı kaldırıldı. İstediğin kadar eşleş, sohbet et, geçiş yap.
             </Text>
           </View>
         </View>
 
-        <BlurView intensity={60} tint="light" style={styles.controlPanel}>
+        <BlurView intensity={60} tint={theme.mode === 'dark' ? 'dark' : 'light'} style={[styles.controlPanel, { backgroundColor: theme.colors.card + '80' }]}>
           <View style={styles.controlHeader}>
-            <Text style={styles.controlTitle}>Kontroller</Text>
-            <Text style={styles.controlSubtitle}>Görüşme başlamadan önce ayarlarını yap.</Text>
+            <Text style={[styles.controlTitle, { color: theme.colors.text }]}>Kontroller</Text>
+            <Text style={[styles.controlSubtitle, { color: theme.colors.textLight }]}>Görüşme başlamadan önce ayarlarını yap.</Text>
           </View>
           <View style={styles.controlActions}>
             <TouchableOpacity
               onPress={() => setCameraReady((prev) => !prev)}
               style={[
                 styles.toggleButton,
+                { backgroundColor: cameraReady ? theme.colors.primary : theme.colors.textLight + '20' },
                 cameraReady && styles.toggleButtonActive,
               ]}
             >
               {cameraReady ? (
                 <Video size={18} color={COLORS.white} />
               ) : (
-                <VideoOff size={18} color={COLORS.white} />
+                <VideoOff size={18} color={theme.colors.text} />
               )}
-              <Text style={styles.toggleText}>Kamera {cameraReady ? 'Açık' : 'Kapalı'}</Text>
+              <Text style={[styles.toggleText, { color: cameraReady ? COLORS.white : theme.colors.text }]}>Kamera {cameraReady ? 'Açık' : 'Kapalı'}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => setMicReady((prev) => !prev)}
               style={[
                 styles.toggleButton,
+                { backgroundColor: micReady ? theme.colors.primary : theme.colors.textLight + '20' },
                 micReady && styles.toggleButtonActive,
               ]}
             >
               {micReady ? (
                 <Mic size={18} color={COLORS.white} />
               ) : (
-                <MicOff size={18} color={COLORS.white} />
+                <MicOff size={18} color={theme.colors.text} />
               )}
-              <Text style={styles.toggleText}>Mikrofon {micReady ? 'Açık' : 'Kapalı'}</Text>
+              <Text style={[styles.toggleText, { color: micReady ? COLORS.white : theme.colors.text }]}>Mikrofon {micReady ? 'Açık' : 'Kapalı'}</Text>
             </TouchableOpacity>
           </View>
         </BlurView>
 
         <View style={styles.featuresGrid}>
           <FeatureChip
-            icon={<Shield size={18} color={COLORS.primary} />}
+            icon={<Shield size={18} color={theme.colors.primary} />}
             title="Güvenli alan"
             description="Kötü davranışları tek dokunuşla bildir"
           />
           <FeatureChip
-            icon={<Heart size={18} color={COLORS.primary} />}
+            icon={<Heart size={18} color={theme.colors.primary} />}
             title="Gerçek zamanlı"
             description="Saniyeler içinde görüntülü eşleşme"
           />
           <FeatureChip
-            icon={<Sparkles size={18} color={COLORS.primary} />}
+            icon={<Sparkles size={18} color={theme.colors.primary} />}
             title="Sınırsız eşleşme"
             description="Limiti kaldırdık, eşleşmeye devam"
           />
@@ -307,13 +316,13 @@ export default function MatchScreen() {
 
         <View style={styles.ctaWrapper}>
           {searching ? (
-            <TouchableOpacity style={[styles.primaryButton, styles.stopButton]} onPress={handleStopMatch}>
+            <TouchableOpacity style={[styles.primaryButton, styles.stopButton, { backgroundColor: theme.colors.error }]} onPress={handleStopMatch}>
               <X size={20} color={COLORS.white} />
               <Text style={styles.primaryButtonText}>Beklemeyi Durdur</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
-              style={styles.primaryButton}
+              style={[styles.primaryButton, { backgroundColor: theme.colors.primary }]}
               onPress={handleStartMatch}
               disabled={isMatching}
             >
@@ -329,7 +338,7 @@ export default function MatchScreen() {
           )}
 
           {!searching && (
-            <Text style={styles.helperText}>
+            <Text style={[styles.helperText, { color: theme.colors.textLight }]}>
               Her eşleşme öncesi eşleşme sınırı yok – istediğin kadar dene.
             </Text>
           )}
@@ -346,34 +355,34 @@ export default function MatchScreen() {
         onRequestClose={handleRejectMatch}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.card }]}>
             <View style={styles.modalHeader}>
-              <Sparkles size={48} color={COLORS.primary} />
-              <Text style={styles.modalTitle}>Eşleşme Bulundu!</Text>
-              <Text style={styles.modalSubtitle}>
+              <Sparkles size={48} color={theme.colors.primary} />
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Eşleşme Bulundu!</Text>
+              <Text style={[styles.modalSubtitle, { color: theme.colors.textLight }]}>
                 Karşı taraf seni bekliyor
               </Text>
             </View>
 
-            <View style={styles.modalInfo}>
-              <Text style={styles.modalInfoText}>
+            <View style={[styles.modalInfo, { backgroundColor: theme.colors.surface }]}>
+              <Text style={[styles.modalInfoText, { color: theme.colors.text }]}>
                 Görüntülü görüşmeye başlamak için hazır mısın?
               </Text>
-              <Text style={styles.modalWarning}>
+              <Text style={[styles.modalWarning, { color: theme.colors.warning }]}>
                 30 saniye içinde otomatik başlayacak
               </Text>
             </View>
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                style={styles.modalButtonReject}
+                style={[styles.modalButtonReject, { backgroundColor: theme.colors.surface, borderColor: theme.colors.error }]}
                 onPress={handleRejectMatch}
               >
-                <X size={20} color={COLORS.error} />
-                <Text style={styles.modalButtonRejectText}>Vazgeç</Text>
+                <X size={20} color={theme.colors.error} />
+                <Text style={[styles.modalButtonRejectText, { color: theme.colors.error }]}>Vazgeç</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.modalButtonAccept}
+                style={[styles.modalButtonAccept, { backgroundColor: theme.colors.primary }]}
                 onPress={handleAcceptMatch}
               >
                 <Video size={20} color={COLORS.white} />
@@ -395,15 +404,18 @@ const FeatureChip = ({
   icon: React.ReactNode;
   title: string;
   description: string;
-}) => (
-  <View style={styles.featureChip}>
-    {icon}
-    <View style={styles.featureChipText}>
-      <Text style={styles.featureChipTitle}>{title}</Text>
-      <Text style={styles.featureChipDescription}>{description}</Text>
+}) => {
+  const { theme } = useTheme();
+  return (
+    <View style={[styles.featureChip, { backgroundColor: theme.colors.card }]}>
+      {icon}
+      <View style={styles.featureChipText}>
+        <Text style={[styles.featureChipTitle, { color: theme.colors.text }]}>{title}</Text>
+        <Text style={[styles.featureChipDescription, { color: theme.colors.textLight }]}>{description}</Text>
+      </View>
     </View>
-  </View>
-);
+  );
+};
 
 const styles = StyleSheet.create({
   container: {

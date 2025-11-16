@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Sha
 import { Image } from 'expo-image';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, MoreVertical, Share2, Users, MessageCircle } from 'lucide-react-native';
 import { DISTRICT_BADGES } from '../../constants/districts';
 import { useRouter } from 'expo-router';
@@ -188,6 +189,7 @@ function FollowingList({ userId }: { userId: string }) {
 
 export default function ProfileScreen() {
   const { profile, user, signOut } = useAuth();
+  const { theme } = useTheme();
   const router = useRouter();
   const [supportVisible, setSupportVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -412,19 +414,19 @@ export default function ProfileScreen() {
   if (!profile) return null;
 
   return (
-    <View style={[styles.container, { paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.md) : 0 }]}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background, paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.md) : 0 }]}>
       <ScrollView 
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: Platform.OS === 'android' ? SPACING.lg : 0 }}
       >
         {/* Header - Resimdeki gibi */}
-        <View style={[styles.profileHeader, { paddingTop: Math.max(insets.top, SPACING.md) }]}>
+        <View style={[styles.profileHeader, { backgroundColor: theme.colors.card, paddingTop: Math.max(insets.top, SPACING.md) }]}>
           <TouchableOpacity 
-            style={styles.menuButton} 
+            style={[styles.menuButton, { backgroundColor: theme.colors.card }]} 
             onPress={() => setMenuVisible(true)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <MoreVertical size={18} color={COLORS.text} />
+            <MoreVertical size={18} color={theme.colors.text} />
           </TouchableOpacity>
           <View style={styles.profileTopRow}>
             <View style={styles.profileLeft}>
@@ -441,22 +443,22 @@ export default function ProfileScreen() {
             <View style={styles.profileRight}>
               <View style={styles.statsRow}>
                 <TouchableOpacity style={styles.statItem} onPress={() => {}}>
-                  <Text style={styles.statValue}>{totalPosts}</Text>
-                  <Text style={styles.statLabel}>gönderi</Text>
+                  <Text style={[styles.statValue, { color: theme.colors.text }]}>{totalPosts}</Text>
+                  <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>gönderi</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={styles.statItem} 
                   onPress={() => setFollowersModalVisible(true)}
                 >
-                  <Text style={styles.statValue}>{followersCount}</Text>
-                  <Text style={styles.statLabel}>takipçi</Text>
+                  <Text style={[styles.statValue, { color: theme.colors.text }]}>{followersCount}</Text>
+                  <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>takipçi</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={styles.statItem} 
                   onPress={() => setFollowingModalVisible(true)}
                 >
-                  <Text style={styles.statValue}>{followingCount}</Text>
-                  <Text style={styles.statLabel}>takip</Text>
+                  <Text style={[styles.statValue, { color: theme.colors.text }]}>{followingCount}</Text>
+                  <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>takip</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -464,7 +466,7 @@ export default function ProfileScreen() {
           
           <View style={styles.profileInfo}>
             <View style={styles.nameRow}>
-              <Text style={styles.name}>{profile.full_name}</Text>
+              <Text style={[styles.name, { color: theme.colors.text }]}>{profile.full_name}</Text>
               {profile.verified && (
                 <View style={styles.verifiedDot}>
                   <Text style={styles.verifiedText}>✓</Text>
@@ -479,16 +481,16 @@ export default function ProfileScreen() {
               )}
             </View>
             {profile.username && (
-              <Text style={styles.username}>@{profile.username}</Text>
+              <Text style={[styles.username, { color: theme.colors.textLight }]}>@{profile.username}</Text>
             )}
             {profile.bio && (
-              <Text style={styles.bio} numberOfLines={3}>
+              <Text style={[styles.bio, { color: theme.colors.text }]} numberOfLines={3}>
                 {profile.bio}
               </Text>
             )}
             {profile.district && (
               <View style={styles.locationRow}>
-                <Text style={styles.locationText}>
+                <Text style={[styles.locationText, { color: theme.colors.textLight }]}>
                   {DISTRICT_BADGES[profile.district as keyof typeof DISTRICT_BADGES] || '📍'} {profile.district}
                 </Text>
               </View>
@@ -496,20 +498,20 @@ export default function ProfileScreen() {
             {/* Mesaj Butonu - Kendi profiline mesaj göndermek mantıklı değil, bu yüzden kaldırıldı */}
           </View>
 
-        <View style={styles.quickActions}>
+        <View style={[styles.quickActions, { backgroundColor: theme.colors.card }]}>
           {quickActions.map((action) => {
             const IconComponent = action.icon;
             const isDisabled = action.disabled;
             const toneColor =
               action.tone === 'danger'
-                ? COLORS.error
+                ? theme.colors.error
                 : action.tone === 'success'
-                ? COLORS.success
-                : COLORS.primary;
+                ? theme.colors.success
+                : theme.colors.primary;
             return (
               <TouchableOpacity
                 key={action.id}
-                style={[styles.quickActionCard, isDisabled && styles.quickActionCardDisabled]}
+                style={[styles.quickActionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, isDisabled && styles.quickActionCardDisabled]}
                 onPress={action.onPress}
                 disabled={isDisabled || !action.onPress}
                 activeOpacity={isDisabled ? 1 : 0.8}
@@ -518,6 +520,7 @@ export default function ProfileScreen() {
                 <Text
                   style={[
                     styles.quickActionLabel,
+                    { color: theme.colors.text },
                     isDisabled && styles.quickActionLabelDisabled,
                   ]}
                 >
@@ -531,19 +534,19 @@ export default function ProfileScreen() {
         </View>
 
         {/* Tab Navigation - Grid, Tagged */}
-        <View style={styles.tabNavigation}>
+        <View style={[styles.tabNavigation, { backgroundColor: theme.colors.card, borderTopColor: theme.colors.border }]}>
           <TouchableOpacity style={[styles.tab, styles.tabActive]}>
-            <View style={styles.tabIcon} />
+            <View style={[styles.tabIcon, { backgroundColor: theme.colors.primary }]} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.tab}>
-            <View style={[styles.tabIcon, styles.tabIconTagged]} />
+            <View style={[styles.tabIcon, styles.tabIconTagged, { backgroundColor: theme.colors.textLight }]} />
           </TouchableOpacity>
         </View>
 
         {/* Posts Grid - Resimdeki gibi boş durum */}
         {postsLoading ? (
           <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>Yükleniyor...</Text>
+            <Text style={[styles.loadingText, { color: theme.colors.text }]}>Yükleniyor...</Text>
           </View>
         ) : postsData?.posts && postsData.posts.length > 0 ? (
           <View style={styles.postsGrid}>
@@ -560,16 +563,16 @@ export default function ProfileScreen() {
             })}
           </View>
         ) : (
-          <View style={styles.emptyPostsContainer}>
+          <View style={[styles.emptyPostsContainer, { backgroundColor: theme.colors.card }]}>
             <View style={styles.emptyPostsIllustration}>
               <Text style={styles.emptyPostsEmoji}>🎨</Text>
             </View>
-            <Text style={styles.emptyPostsTitle}>İlk gönderini oluştur</Text>
-            <Text style={styles.emptyPostsSubtitle}>
+            <Text style={[styles.emptyPostsTitle, { color: theme.colors.text }]}>İlk gönderini oluştur</Text>
+            <Text style={[styles.emptyPostsSubtitle, { color: theme.colors.textLight }]}>
               Bu alanı kendine özel hale getir.
             </Text>
             <TouchableOpacity
-              style={styles.createPostButton}
+              style={[styles.createPostButton, { backgroundColor: theme.colors.primary }]}
               onPress={() => router.push('/create-post')}
             >
               <Text style={styles.createPostButtonText}>Oluştur</Text>
@@ -579,9 +582,9 @@ export default function ProfileScreen() {
 
         {/* Geçmiş Maçlar Bölümü */}
         {pastMatches.length > 0 && (
-          <View style={styles.matchesSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Geçmiş Maçlar</Text>
+          <View style={[styles.matchesSection, { backgroundColor: theme.colors.card, borderTopColor: theme.colors.border }]}>
+            <View style={[styles.sectionHeader, { borderBottomColor: theme.colors.border }]}>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Geçmiş Maçlar</Text>
             </View>
             <View style={styles.matchesList}>
               {pastMatches.map((match: any) => {
@@ -610,15 +613,15 @@ export default function ProfileScreen() {
                 return (
                   <TouchableOpacity
                     key={match.id}
-                    style={styles.matchItem}
+                    style={[styles.matchItem, { backgroundColor: theme.colors.surface }]}
                     onPress={() => router.push(`/football/match/${match.id}` as any)}
                   >
                     <View style={styles.matchItemContent}>
-                      <Text style={styles.matchItemField}>{match.field?.name || 'Halı Saha'}</Text>
-                      <Text style={styles.matchItemDate}>{formattedDate}</Text>
-                      <Text style={styles.matchItemTime}>{formattedTime}</Text>
+                      <Text style={[styles.matchItemField, { color: theme.colors.text }]}>{match.field?.name || 'Halı Saha'}</Text>
+                      <Text style={[styles.matchItemDate, { color: theme.colors.textLight }]}>{formattedDate}</Text>
+                      <Text style={[styles.matchItemTime, { color: theme.colors.primary }]}>{formattedTime}</Text>
                       {match.district && (
-                        <Text style={styles.matchItemDistrict}>{match.district}</Text>
+                        <Text style={[styles.matchItemDistrict, { color: theme.colors.textLight }]}>{match.district}</Text>
                       )}
                     </View>
                   </TouchableOpacity>
@@ -638,23 +641,24 @@ export default function ProfileScreen() {
         onRequestClose={() => setMenuVisible(false)}
       >
         <View style={styles.menuOverlay}>
-          <View style={styles.menuContent}>
-            <Text style={styles.menuTitle}>Profil menüsü</Text>
+          <View style={[styles.menuContent, { backgroundColor: theme.colors.card }]}>
+            <Text style={[styles.menuTitle, { color: theme.colors.text }]}>Profil menüsü</Text>
             {menuActions.map((action) => {
               const IconComponent = action.icon;
               const isDisabled = action.disabled;
               const toneColor =
                 action.tone === 'danger'
-                  ? COLORS.error
+                  ? theme.colors.error
                   : action.tone === 'success'
-                  ? COLORS.success
-                  : COLORS.text;
+                  ? theme.colors.success
+                  : theme.colors.text;
               
               return (
                 <TouchableOpacity
                   key={action.id}
                   style={[
                     styles.menuOption,
+                    { borderTopColor: theme.colors.border },
                     action.tone === 'danger' && styles.menuOptionDanger,
                     isDisabled && styles.menuOptionDisabled
                   ]}
@@ -669,8 +673,9 @@ export default function ProfileScreen() {
                   <Text
                     style={[
                       styles.menuOptionText,
-                      action.tone === 'danger' && styles.menuOptionDangerText,
-                      isDisabled && styles.menuOptionTextDisabled
+                      { color: theme.colors.text },
+                      action.tone === 'danger' && { color: theme.colors.error },
+                      isDisabled && { color: theme.colors.textLight }
                     ]}
                   >
                     {action.label}
@@ -692,11 +697,11 @@ export default function ProfileScreen() {
         onRequestClose={() => setFollowersModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.followersModalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Takipçiler</Text>
+          <View style={[styles.followersModalContent, { backgroundColor: theme.colors.card }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Takipçiler</Text>
               <TouchableOpacity onPress={() => setFollowersModalVisible(false)}>
-                <Text style={styles.modalCloseText}>✕</Text>
+                <Text style={[styles.modalCloseText, { color: theme.colors.textLight }]}>✕</Text>
               </TouchableOpacity>
             </View>
             <FollowersList userId={user?.id || ''} />
@@ -712,11 +717,11 @@ export default function ProfileScreen() {
         onRequestClose={() => setFollowingModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.followersModalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Takip Edilenler</Text>
+          <View style={[styles.followersModalContent, { backgroundColor: theme.colors.card }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Takip Edilenler</Text>
               <TouchableOpacity onPress={() => setFollowingModalVisible(false)}>
-                <Text style={styles.modalCloseText}>✕</Text>
+                <Text style={[styles.modalCloseText, { color: theme.colors.textLight }]}>✕</Text>
               </TouchableOpacity>
             </View>
             <FollowingList userId={user?.id || ''} />

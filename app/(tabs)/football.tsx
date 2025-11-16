@@ -12,6 +12,7 @@ import {
 import { useRouter } from 'expo-router';
 import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLogo } from '@/components/AppLogo';
@@ -22,6 +23,7 @@ export default function FootballScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { theme } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
 
   // Kullanıcı profilini getir (şehir bilgisi için)
@@ -91,39 +93,39 @@ export default function FootballScreen() {
     
     return (
       <TouchableOpacity
-        style={styles.matchCard}
+        style={[styles.matchCard, { backgroundColor: theme.colors.card }]}
         onPress={() => router.push(`/football/match/${item.id}` as any)}
       >
         <View style={styles.matchHeader}>
           <View style={styles.matchTimeContainer}>
-            <Clock size={16} color={COLORS.primary} />
-            <Text style={styles.matchTime}>{formatTime(item)}</Text>
+            <Clock size={16} color={theme.colors.primary} />
+            <Text style={[styles.matchTime, { color: theme.colors.text }]}>{formatTime(item)}</Text>
           </View>
           <View style={styles.matchFieldContainer}>
-            <MapPin size={14} color={COLORS.textLight} />
-            <Text style={styles.matchField}>{item.field?.name}</Text>
+            <MapPin size={14} color={theme.colors.textLight} />
+            <Text style={[styles.matchField, { color: theme.colors.textLight }]}>{item.field?.name}</Text>
           </View>
         </View>
 
         {isLookingForOpponent ? (
-          <View style={styles.opponentSearchCard}>
-            <AlertCircle size={20} color={COLORS.warning} />
-            <Text style={styles.opponentSearchText}>Halısaha Rakibi Aranıyor</Text>
-            <Text style={styles.opponentSearchSubtext}>
+          <View style={[styles.opponentSearchCard, { backgroundColor: theme.colors.warning + '20' }]}>
+            <AlertCircle size={20} color={theme.colors.warning} />
+            <Text style={[styles.opponentSearchText, { color: theme.colors.text }]}>Halısaha Rakibi Aranıyor</Text>
+            <Text style={[styles.opponentSearchSubtext, { color: theme.colors.textLight }]}>
               {item.organizer?.full_name || 'Organizatör'} rakip takım arıyor
             </Text>
           </View>
         ) : (
           <View style={styles.matchTeams}>
             <View style={styles.teamContainer}>
-              <Text style={styles.teamName}>{item.team1?.name || 'Takım 1'}</Text>
+              <Text style={[styles.teamName, { color: theme.colors.text }]}>{item.team1?.name || 'Takım 1'}</Text>
               {item.team1?.logo_url && (
                 <Image source={{ uri: item.team1.logo_url }} style={styles.teamLogo} />
               )}
             </View>
-            <Text style={styles.vsText}>VS</Text>
+            <Text style={[styles.vsText, { color: theme.colors.textLight }]}>VS</Text>
             <View style={styles.teamContainer}>
-              <Text style={styles.teamName}>{item.team2?.name || 'Takım 2'}</Text>
+              <Text style={[styles.teamName, { color: theme.colors.text }]}>{item.team2?.name || 'Takım 2'}</Text>
               {item.team2?.logo_url && (
                 <Image source={{ uri: item.team2.logo_url }} style={styles.teamLogo} />
               )}
@@ -132,25 +134,25 @@ export default function FootballScreen() {
         )}
 
         {isLookingForPlayers && item.missing_players_count > 0 && (
-          <View style={styles.missingPlayersBadge}>
-            <AlertCircle size={14} color={COLORS.error} />
-            <Text style={styles.missingPlayersText}>
+          <View style={[styles.missingPlayersBadge, { backgroundColor: theme.colors.error + '20' }]}>
+            <AlertCircle size={14} color={theme.colors.error} />
+            <Text style={[styles.missingPlayersText, { color: theme.colors.error }]}>
               {item.missing_players_count} oyuncu eksik
             </Text>
           </View>
         )}
 
-        <ChevronRight size={20} color={COLORS.textLight} style={styles.chevron} />
+        <ChevronRight size={20} color={theme.colors.textLight} style={styles.chevron} />
       </TouchableOpacity>
     );
   };
 
   return (
-    <View style={[styles.container, { paddingTop: Math.max(insets.top, SPACING.md) }]}>
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background, paddingTop: Math.max(insets.top, SPACING.md) }]}>
+      <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
         <AppLogo size="medium" />
         <TouchableOpacity
-          style={styles.addButton}
+          style={[styles.addButton, { backgroundColor: theme.colors.primary }]}
           onPress={() => router.push('/football/create-match' as any)}
         >
           <Plus size={24} color={COLORS.white} />
@@ -158,13 +160,13 @@ export default function FootballScreen() {
       </View>
 
       <View style={styles.titleContainer}>
-        <Calendar size={24} color={COLORS.primary} />
-        <Text style={styles.title}>Bugün Maç Var mı?</Text>
+        <Calendar size={24} color={theme.colors.primary} />
+        <Text style={[styles.title, { color: theme.colors.text }]}>Bugün Maç Var mı?</Text>
       </View>
 
       {isLoading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
       ) : visibleMatches.length > 0 ? (
         <FlatList
@@ -173,7 +175,7 @@ export default function FootballScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={[styles.listContent, { paddingBottom: SPACING.xl * 2 }]}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />
           }
           ListFooterComponent={<Footer />}
           showsVerticalScrollIndicator={true}
@@ -181,13 +183,13 @@ export default function FootballScreen() {
         />
       ) : (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>
+          <Text style={[styles.emptyText, { color: theme.colors.text }]}>
             {todayMatches?.matches && Array.isArray(todayMatches.matches) && todayMatches.matches.length > 0
               ? 'Planlanan maçlar tamamlandı'
               : 'Bugün maç yok'}
           </Text>
           <TouchableOpacity
-            style={styles.createMatchButton}
+            style={[styles.createMatchButton, { backgroundColor: theme.colors.primary }]}
             onPress={() => router.push('/football/create-match' as any)}
           >
             <Plus size={20} color={COLORS.white} />

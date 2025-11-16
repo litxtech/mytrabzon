@@ -11,6 +11,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
+import { useTheme } from '@/contexts/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Bell, Trash2, Check, X, Filter } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
@@ -22,6 +23,7 @@ type NotificationType = 'EVENT' | 'SYSTEM' | 'MESSAGE' | 'RESERVATION' | 'FOOTBA
 
 export default function NotificationsScreen() {
   const router = useRouter();
+  const { theme } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const [filterType, setFilterType] = useState<NotificationType>('all');
 
@@ -131,28 +133,29 @@ export default function NotificationsScreen() {
     }
   };
 
-  const getSeverityColor = (severity?: string) => {
-    switch (severity) {
-      case 'CRITICAL':
-        return COLORS.error;
-      case 'HIGH':
-        return COLORS.warning;
-      case 'NORMAL':
-        return COLORS.primary;
-      default:
-        return COLORS.textLight;
-    }
-  };
 
   const notifications = notificationsData?.notifications || [];
 
+  const getSeverityColor = (severity?: string) => {
+    switch (severity) {
+      case 'CRITICAL':
+        return theme.colors.error;
+      case 'HIGH':
+        return theme.colors.warning;
+      case 'NORMAL':
+        return theme.colors.primary;
+      default:
+        return theme.colors.textLight;
+    }
+  };
+
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+      <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
         <View style={styles.headerTop}>
-          <Text style={styles.headerTitle}>Bildirimler</Text>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Bildirimler</Text>
           {unreadCount && unreadCount.count > 0 && (
-            <View style={styles.badge}>
+            <View style={[styles.badge, { backgroundColor: theme.colors.error }]}>
               <Text style={styles.badgeText}>{unreadCount.count}</Text>
             </View>
           )}
@@ -160,7 +163,7 @@ export default function NotificationsScreen() {
         
         <View style={styles.headerActions}>
           <TouchableOpacity
-            style={styles.filterButton}
+            style={[styles.filterButton, { backgroundColor: theme.colors.surface }]}
             onPress={() => {
               const types: NotificationType[] = ['all', 'EVENT', 'MESSAGE', 'RESERVATION', 'FOOTBALL', 'SYSTEM'];
               const currentIndex = types.indexOf(filterType);
@@ -168,8 +171,8 @@ export default function NotificationsScreen() {
               setFilterType(types[nextIndex]);
             }}
           >
-            <Filter size={18} color={COLORS.primary} />
-            <Text style={styles.filterText}>
+            <Filter size={18} color={theme.colors.primary} />
+            <Text style={[styles.filterText, { color: theme.colors.primary }]}>
               {filterType === 'all' ? 'Tümü' : filterType}
             </Text>
           </TouchableOpacity>
@@ -181,14 +184,14 @@ export default function NotificationsScreen() {
                 onPress={handleMarkAllAsRead}
                 disabled={markAllAsReadMutation.isPending}
               >
-                <Check size={18} color={COLORS.primary} />
+                <Check size={18} color={theme.colors.primary} />
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.actionButton}
                 onPress={handleDeleteAll}
                 disabled={deleteAllNotificationsMutation.isPending}
               >
-                <Trash2 size={18} color={COLORS.error} />
+                <Trash2 size={18} color={theme.colors.error} />
               </TouchableOpacity>
             </>
           )}
@@ -197,7 +200,7 @@ export default function NotificationsScreen() {
 
       {isLoading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
       ) : (
         <FlatList
@@ -207,7 +210,8 @@ export default function NotificationsScreen() {
             <TouchableOpacity
               style={[
                 styles.notificationItem,
-                !item.read_at && styles.notificationUnread,
+                { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border },
+                !item.read_at && { backgroundColor: theme.colors.primary + '08' },
               ]}
               onPress={() => handleNotificationPress(item)}
               onLongPress={() => handleDelete(item.id)}
@@ -222,21 +226,22 @@ export default function NotificationsScreen() {
                 <View style={styles.notificationHeader}>
                   <Text style={[
                     styles.notificationTitle,
-                    !item.read_at && styles.notificationTitleUnread,
+                    { color: theme.colors.text },
+                    !item.read_at && { color: theme.colors.text, fontWeight: '700' },
                   ]}>
                     {item.title}
                   </Text>
-                  {!item.read_at && <View style={styles.unreadDot} />}
+                  {!item.read_at && <View style={[styles.unreadDot, { backgroundColor: theme.colors.primary }]} />}
                 </View>
-                <Text style={styles.notificationMessage} numberOfLines={2}>
+                <Text style={[styles.notificationMessage, { color: theme.colors.textLight }]} numberOfLines={2}>
                   {item.body}
                 </Text>
                 <View style={styles.notificationFooter}>
-                  <Text style={styles.notificationTime}>
+                  <Text style={[styles.notificationTime, { color: theme.colors.textLight }]}>
                     {formatTimeAgo(item.created_at)}
                   </Text>
                   {item.event?.district && (
-                    <Text style={styles.notificationLocation}>
+                    <Text style={[styles.notificationLocation, { color: theme.colors.textLight }]}>
                       • {item.event.district}
                     </Text>
                   )}
@@ -247,21 +252,21 @@ export default function NotificationsScreen() {
                 onPress={() => handleDelete(item.id)}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <X size={16} color={COLORS.textLight} />
+                <X size={16} color={theme.colors.textLight} />
               </TouchableOpacity>
             </TouchableOpacity>
           )}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Bell size={48} color={COLORS.textLight} />
-              <Text style={styles.emptyText}>Henüz bildirim yok</Text>
-              <Text style={styles.emptySubtext}>
+              <Bell size={48} color={theme.colors.textLight} />
+              <Text style={[styles.emptyText, { color: theme.colors.text }]}>Henüz bildirim yok</Text>
+              <Text style={[styles.emptySubtext, { color: theme.colors.textLight }]}>
                 Yeni bildirimler burada görünecek
               </Text>
             </View>
           }
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />
           }
           contentContainerStyle={styles.listContent}
         />

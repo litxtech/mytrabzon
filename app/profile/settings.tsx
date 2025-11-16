@@ -13,13 +13,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { trpc } from '@/lib/trpc';
 import { 
   ChevronLeft, 
   Bell, 
   Shield, 
   Lock, 
-  MessageSquare
+  MessageSquare,
+  Sun,
+  Moon
 } from 'lucide-react-native';
 
 interface UserSettings {
@@ -44,6 +47,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { profile, refreshProfile } = useAuth();
+  const { theme, mode, setMode } = useTheme();
 
   // Default settings
   const defaultSettings: UserSettings = {
@@ -115,33 +119,39 @@ export default function SettingsScreen() {
     },
   });
 
-  const renderSection = (title: string, IconComponent: React.ReactNode) => (
-    <View style={styles.sectionHeader}>
-      {IconComponent}
-      <Text style={styles.sectionTitle}>{title}</Text>
-    </View>
-  );
+  const renderSection = (title: string, IconComponent: React.ReactNode) => {
+    const { theme } = useTheme();
+    return (
+      <View style={styles.sectionHeader}>
+        {IconComponent}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>{title}</Text>
+      </View>
+    );
+  };
 
   const renderToggle = (
     label: string,
     value: boolean,
     onValueChange: (value: boolean) => void,
     description?: string
-  ) => (
-    <View style={styles.settingItem}>
-      <View style={styles.settingInfo}>
-        <Text style={styles.settingLabel}>{label}</Text>
-        {description && <Text style={styles.settingDescription}>{description}</Text>}
+  ) => {
+    const { theme } = useTheme();
+    return (
+      <View style={[styles.settingItem, { borderTopColor: theme.colors.border }]}>
+        <View style={styles.settingInfo}>
+          <Text style={[styles.settingLabel, { color: theme.colors.text }]}>{label}</Text>
+          {description && <Text style={[styles.settingDescription, { color: theme.colors.textLight }]}>{description}</Text>}
+        </View>
+        <Switch
+          value={value}
+          onValueChange={onValueChange}
+          trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+          thumbColor={COLORS.white}
+          disabled={isLoading}
+        />
       </View>
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        trackColor={{ false: COLORS.border, true: COLORS.primary }}
-        thumbColor={COLORS.white}
-        disabled={isLoading}
-      />
-    </View>
-  );
+    );
+  };
 
   const handleSaveSettings = async () => {
     if (!profile) {
@@ -166,18 +176,18 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
+      <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <ChevronLeft size={24} color={COLORS.text} />
+          <ChevronLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>Ayarlar</Text>
+        <Text style={[styles.title, { color: theme.colors.text }]}>Ayarlar</Text>
         <View style={{ width: 24 }} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.section}>
-          {renderSection('Bildirimler', <Bell size={20} color={COLORS.primary} />)}
+        <View style={[styles.section, { backgroundColor: theme.colors.card }]}>
+          {renderSection('Bildirimler', <Bell size={20} color={theme.colors.primary} />)}
           
           {renderToggle(
             'Push Bildirimleri',
@@ -201,8 +211,8 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        <View style={styles.section}>
-          {renderSection('Bildirim Türleri', <MessageSquare size={20} color={COLORS.primary} />)}
+        <View style={[styles.section, { backgroundColor: theme.colors.card }]}>
+          {renderSection('Bildirim Türleri', <MessageSquare size={20} color={theme.colors.primary} />)}
           
           {renderToggle(
             'Beğeniler',
@@ -233,8 +243,8 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        <View style={styles.section}>
-          {renderSection('Gizlilik', <Shield size={20} color={COLORS.primary} />)}
+        <View style={[styles.section, { backgroundColor: theme.colors.card }]}>
+          {renderSection('Gizlilik', <Shield size={20} color={theme.colors.primary} />)}
           
           {renderToggle(
             'Profil Görünürlüğü',
@@ -265,33 +275,67 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        <View style={styles.section}>
-          {renderSection('Hesap', <Lock size={20} color={COLORS.primary} />)}
+        <View style={[styles.section, { backgroundColor: theme.colors.card }]}>
+          {renderSection('Tema', mode === 'dark' ? <Moon size={20} color={theme.colors.primary} /> : <Sun size={20} color={theme.colors.primary} />)}
+          
+          <View style={styles.themeContainer}>
+            <TouchableOpacity
+              style={[
+                styles.themeButton,
+                { borderColor: theme.colors.border },
+                mode === 'light' && { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary },
+              ]}
+              onPress={() => setMode('light')}
+            >
+              <Sun size={20} color={mode === 'light' ? theme.colors.primary : theme.colors.textLight} />
+              <Text style={[styles.themeButtonText, { color: mode === 'light' ? theme.colors.primary : theme.colors.text }]}>
+                Açık Mod
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.themeButton,
+                { borderColor: theme.colors.border },
+                mode === 'dark' && { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary },
+              ]}
+              onPress={() => setMode('dark')}
+            >
+              <Moon size={20} color={mode === 'dark' ? theme.colors.primary : theme.colors.textLight} />
+              <Text style={[styles.themeButtonText, { color: mode === 'dark' ? theme.colors.primary : theme.colors.text }]}>
+                Koyu Mod
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={[styles.section, { backgroundColor: theme.colors.card }]}>
+          {renderSection('Hesap', <Lock size={20} color={theme.colors.primary} />)}
           
           <TouchableOpacity 
-            style={styles.settingButton}
+            style={[styles.settingButton, { borderTopColor: theme.colors.border }]}
             onPress={() => Alert.alert('Şifre Değiştir', 'Bu özellik yakında eklenecek.')}
           >
-            <Text style={styles.settingButtonText}>Şifre Değiştir</Text>
+            <Text style={[styles.settingButtonText, { color: theme.colors.primary }]}>Şifre Değiştir</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={styles.settingButton}
+            style={[styles.settingButton, { borderTopColor: theme.colors.border }]}
             onPress={() => Alert.alert('2FA', 'İki faktörlü kimlik doğrulama yakında eklenecek.')}
           >
-            <Text style={styles.settingButtonText}>İki Faktörlü Doğrulama</Text>
+            <Text style={[styles.settingButtonText, { color: theme.colors.primary }]}>İki Faktörlü Doğrulama</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={styles.settingButton}
+            style={[styles.settingButton, { borderTopColor: theme.colors.border }]}
             onPress={() => Alert.alert('Veri İndir', 'Verileriniz hazırlanıyor...')}
           >
-            <Text style={styles.settingButtonText}>Verilerimi İndir</Text>
+            <Text style={[styles.settingButtonText, { color: theme.colors.primary }]}>Verilerimi İndir</Text>
           </TouchableOpacity>
         </View>
 
         <TouchableOpacity 
-          style={[styles.saveButton, isLoading && styles.saveButtonDisabled]}
+          style={[styles.saveButton, { backgroundColor: theme.colors.primary }, isLoading && styles.saveButtonDisabled]}
           onPress={handleSaveSettings}
           disabled={isLoading}
         >
@@ -311,7 +355,6 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
   },
   header: {
     flexDirection: 'row',
@@ -319,9 +362,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
-    backgroundColor: COLORS.white,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
   },
   backButton: {
     padding: SPACING.xs,
@@ -329,13 +370,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: FONT_SIZES.lg,
     fontWeight: '700',
-    color: COLORS.text,
   },
   content: {
     flex: 1,
   },
   section: {
-    backgroundColor: COLORS.white,
     marginTop: SPACING.md,
     paddingVertical: SPACING.md,
   },
@@ -349,7 +388,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: FONT_SIZES.lg,
     fontWeight: '700',
-    color: COLORS.text,
   },
   settingItem: {
     flexDirection: 'row',
@@ -358,7 +396,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
   },
   settingInfo: {
     flex: 1,
@@ -367,26 +404,41 @@ const styles = StyleSheet.create({
   settingLabel: {
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
-    color: COLORS.text,
     marginBottom: 4,
   },
   settingDescription: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.textLight,
   },
   settingButton: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
   },
   settingButtonText: {
     fontSize: FONT_SIZES.md,
-    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  themeContainer: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+  },
+  themeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  themeButtonText: {
+    fontSize: FONT_SIZES.md,
     fontWeight: '600',
   },
   saveButton: {
-    backgroundColor: COLORS.primary,
     marginHorizontal: SPACING.md,
     marginTop: SPACING.xl,
     paddingVertical: SPACING.md,
