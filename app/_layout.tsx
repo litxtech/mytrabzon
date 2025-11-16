@@ -113,7 +113,12 @@ export default function RootLayout() {
           for (const pair of pairs) {
             const [key, value] = pair.split('=');
             if (key && value) {
-              params[decodeURIComponent(key)] = decodeURIComponent(value);
+              try {
+                params[decodeURIComponent(key)] = decodeURIComponent(value);
+              } catch (e) {
+                // Decode hatası - raw value kullan
+                params[key] = value;
+              }
             }
           }
           
