@@ -328,11 +328,8 @@ export default function LoginScreen() {
         provider: 'twitter',
         options: {
           redirectTo: redirectUrl,
-          skipBrowserRedirect: Platform.OS !== 'web',
-          // Query parameters ekle
-          queryParams: {
-            redirect_to: redirectUrl,
-          },
+          skipBrowserRedirect: false, // Mobilde false - Supabase callback'i açılmalı
+          // Query parameters - Supabase'in callback URL'ine eklenir
         },
       });
 
@@ -349,38 +346,19 @@ export default function LoginScreen() {
         return; // Web'de yönlendirme yapıldı
       }
 
-      // Mobilde OAuth URL'ini aç
+      // Mobilde OAuth URL'ini aç - Supabase callback URL'i açılacak
       if (Platform.OS !== 'web' && data.url) {
+        console.log('Opening OAuth URL:', data.url);
         const canOpen = await Linking.canOpenURL(data.url);
         console.log('Can open URL:', canOpen);
+        
         if (canOpen) {
           await Linking.openURL(data.url);
-          console.log('OAuth URL opened, waiting for callback...');
+          console.log('OAuth URL opened, waiting for deep link callback...');
           
-          // Session kontrolü için polling başlat
-          const checkSession = setInterval(async () => {
-            try {
-              const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-              if (sessionError) {
-                console.error('Session check error:', sessionError);
-                return;
-              }
-              
-              if (session?.user) {
-                console.log('Session found for user:', session.user.id);
-                clearInterval(checkSession);
-                setOauthLoading(false);
-                setLoading(false);
-                await checkProfileAndNavigate(session.user.id);
-              }
-            } catch (err) {
-              console.error('Error checking session:', err);
-            }
-          }, 2000); // Her 2 saniyede bir kontrol et
-
-          // Timeout - 60 saniye sonra polling'i durdur
+          // Deep link handler otomatik olarak callback'i işleyecek
+          // Timeout ekle - eğer 60 saniye içinde callback gelmezse hata göster
           setTimeout(() => {
-            clearInterval(checkSession);
             if (oauthLoading) {
               console.log('OAuth timeout - checking final session state');
               supabase.auth.getSession().then(({ data: { session } }) => {
@@ -399,7 +377,7 @@ export default function LoginScreen() {
         } else {
           throw new Error('OAuth URL açılamadı');
         }
-      } else {
+      } else if (!data.url) {
         throw new Error('OAuth URL alınamadı');
       }
     } catch (error: any) {
@@ -454,38 +432,19 @@ export default function LoginScreen() {
         return;
       }
 
-      // Mobilde OAuth URL'ini aç
+      // Mobilde OAuth URL'ini aç - Supabase callback URL'i açılacak
       if (Platform.OS !== 'web' && data.url) {
+        console.log('Opening OAuth URL:', data.url);
         const canOpen = await Linking.canOpenURL(data.url);
         console.log('Can open Apple URL:', canOpen);
+        
         if (canOpen) {
           await Linking.openURL(data.url);
-          console.log('Apple OAuth URL opened, waiting for callback...');
+          console.log('Apple OAuth URL opened, waiting for deep link callback...');
           
-          // Session kontrolü için polling başlat
-          const checkSession = setInterval(async () => {
-            try {
-              const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-              if (sessionError) {
-                console.error('Session check error:', sessionError);
-                return;
-              }
-              
-              if (session?.user) {
-                console.log('Session found for user:', session.user.id);
-                clearInterval(checkSession);
-                setOauthLoading(false);
-                setLoading(false);
-                await checkProfileAndNavigate(session.user.id);
-              }
-            } catch (err) {
-              console.error('Error checking session:', err);
-            }
-          }, 2000);
-
-          // Timeout - 60 saniye sonra polling'i durdur
+          // Deep link handler otomatik olarak callback'i işleyecek
+          // Timeout ekle - eğer 60 saniye içinde callback gelmezse hata göster
           setTimeout(() => {
-            clearInterval(checkSession);
             if (oauthLoading) {
               console.log('Apple OAuth timeout - checking final session state');
               supabase.auth.getSession().then(({ data: { session } }) => {
@@ -504,7 +463,7 @@ export default function LoginScreen() {
         } else {
           throw new Error('Apple OAuth URL açılamadı');
         }
-      } else {
+      } else if (!data.url) {
         throw new Error('Apple OAuth URL alınamadı');
       }
     } catch (error: any) {
