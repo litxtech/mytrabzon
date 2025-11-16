@@ -431,11 +431,20 @@ export default function ProfileScreen() {
           <View style={styles.profileTopRow}>
             <View style={styles.profileLeft}>
               <View style={styles.avatarContainer}>
-                <Image
-                  source={{ uri: profile.avatar_url || 'https://via.placeholder.com/100' }}
-                  style={styles.avatar}
-                />
-                <TouchableOpacity style={styles.storyAddButton}>
+                <TouchableOpacity 
+                  onPress={() => router.push('/profile/edit')}
+                  activeOpacity={0.8}
+                >
+                  <Image
+                    source={{ uri: profile.avatar_url || 'https://via.placeholder.com/100' }}
+                    style={styles.avatar}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.storyAddButton}
+                  onPress={() => router.push('/profile/edit')}
+                  activeOpacity={0.8}
+                >
                   <Text style={styles.storyAddIcon}>+</Text>
                 </TouchableOpacity>
               </View>
@@ -760,6 +769,7 @@ const styles = StyleSheet.create({
     borderRadius: 45,
     borderWidth: 2,
     borderColor: COLORS.border,
+    overflow: 'hidden',
   },
   storyAddButton: {
     position: 'absolute',
