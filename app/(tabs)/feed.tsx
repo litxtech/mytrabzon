@@ -16,6 +16,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
+import { useTheme } from '@/contexts/ThemeContext';
 import { DISTRICTS, DISTRICT_BADGES } from '@/constants/districts';
 import { Post, District } from '@/types/database';
 import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, MoreVertical, AlertCircle } from 'lucide-react-native';
@@ -33,6 +34,7 @@ export default function FeedScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { theme } = useTheme();
   const utils = trpc.useUtils();
   const [selectedDistrict, setSelectedDistrict] = useState<District | 'all'>('all');
   const [sortType, setSortType] = useState<SortType>('new');
@@ -110,32 +112,48 @@ export default function FeedScreen() {
   }, [likePostMutation]);
 
   const renderSortTabs = useMemo(() => (
-    <View style={styles.sortContainer}>
+    <View style={[styles.sortContainer, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
       <TouchableOpacity
-        style={[styles.sortTab, sortType === 'new' && styles.sortTabActive]}
+        style={[
+          styles.sortTab,
+          { backgroundColor: theme.colors.surface },
+          sortType === 'new' && { backgroundColor: theme.colors.primary }
+        ]}
         onPress={() => setSortType('new')}
       >
-        <Text style={[styles.sortText, sortType === 'new' && styles.sortTextActive]}>
+        <Text style={[
+          styles.sortText,
+          { color: theme.colors.text },
+          sortType === 'new' && { color: COLORS.white }
+        ]}>
           En Yeni
         </Text>
       </TouchableOpacity>
       <TouchableOpacity
-        style={[styles.sortTab, sortType === 'trending' && styles.sortTabActive]}
+        style={[
+          styles.sortTab,
+          { backgroundColor: theme.colors.surface },
+          sortType === 'trending' && { backgroundColor: theme.colors.primary }
+        ]}
         onPress={() => setSortType('trending')}
       >
         <TrendingUp
           size={16}
-          color={sortType === 'trending' ? COLORS.white : COLORS.text}
+          color={sortType === 'trending' ? COLORS.white : theme.colors.text}
         />
-        <Text style={[styles.sortText, sortType === 'trending' && styles.sortTextActive]}>
+        <Text style={[
+          styles.sortText,
+          { color: theme.colors.text },
+          sortType === 'trending' && { color: COLORS.white }
+        ]}>
           Trending
         </Text>
       </TouchableOpacity>
     </View>
-  ), [sortType]);
+  ), [sortType, theme]);
 
   const renderDistrictFilter = useMemo(() => (
-    <View style={styles.filterContainer}>
+    <View style={[styles.filterContainer, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
       <FlatList
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -148,7 +166,8 @@ export default function FeedScreen() {
           <TouchableOpacity
             style={[
               styles.filterChip,
-              selectedDistrict === item.id && styles.filterChipActive,
+              { backgroundColor: theme.colors.surface },
+              selectedDistrict === item.id && { backgroundColor: theme.colors.primary },
             ]}
             onPress={() => setSelectedDistrict(item.id as District | 'all')}
           >
@@ -156,8 +175,10 @@ export default function FeedScreen() {
             <Text
               style={[
                 styles.filterText,
-                selectedDistrict === item.id && styles.filterTextActive,
+                { color: theme.colors.text },
+                selectedDistrict === item.id && { color: COLORS.white, fontWeight: '600' },
               ]}
+              numberOfLines={1}
             >
               {item.name}
             </Text>
@@ -165,7 +186,7 @@ export default function FeedScreen() {
         )}
       />
     </View>
-  ), [selectedDistrict]);
+  ), [selectedDistrict, theme]);
 
   const deletePostMutation = trpc.post.deletePost.useMutation({
     onSuccess: () => {
@@ -195,7 +216,7 @@ export default function FeedScreen() {
     const isVideo = firstMedia?.type === 'video' || firstMedia?.path?.match(/\.(mp4|mov|avi|webm)$/i);
 
     return (
-      <View style={styles.postCard}>
+      <View style={[styles.postCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
         <View style={styles.postHeader}>
           <TouchableOpacity
             onPress={() => item.author_id && router.push(`/profile/${item.author_id}` as any)}
@@ -217,7 +238,7 @@ export default function FeedScreen() {
             activeOpacity={0.7}
           >
             <View style={styles.postAuthorContainer}>
-              <Text style={styles.postAuthor}>
+              <Text style={[styles.postAuthor, { color: theme.colors.text }]} numberOfLines={1} ellipsizeMode="tail">
                 {item.author?.full_name}
               </Text>
               {item.author?.supporter_badge && item.author?.supporter_badge_visible && (
@@ -230,19 +251,19 @@ export default function FeedScreen() {
             </View>
             {item.author?.username && (
               <View style={styles.postUsernameContainer}>
-                <Text style={styles.postUsername}>
+                <Text style={[styles.postUsername, { color: theme.colors.textLight }]} numberOfLines={1} ellipsizeMode="tail">
                   @{item.author.username}
                 </Text>
               </View>
             )}
             <View style={styles.postMeta}>
               <View style={styles.postDistrictContainer}>
-                <Text style={styles.postDistrict} numberOfLines={1} ellipsizeMode="tail">
+                <Text style={[styles.postDistrict, { color: theme.colors.textLight }]} numberOfLines={1} ellipsizeMode="tail">
                   {DISTRICT_BADGES[item.district]} {item.district}
                 </Text>
               </View>
               <View style={styles.postTimeContainer}>
-                <Text style={styles.postTime} numberOfLines={1}>
+                <Text style={[styles.postTime, { color: theme.colors.textLight }]} numberOfLines={1} ellipsizeMode="tail">
                   {' • '}
                   {formatTimeAgo(item.created_at)}
                 </Text>
@@ -255,7 +276,7 @@ export default function FeedScreen() {
               onPress={() => handlePostOptions(item)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <MoreVertical size={18} color={COLORS.textLight} />
+              <MoreVertical size={18} color={theme.colors.textLight} />
             </TouchableOpacity>
           )}
         </View>
@@ -266,7 +287,7 @@ export default function FeedScreen() {
           activeOpacity={0.9}
         >
           <Text 
-            style={styles.postContent}
+            style={[styles.postContent, { color: theme.colors.text }]}
             numberOfLines={10}
             ellipsizeMode="tail"
           >
@@ -292,7 +313,7 @@ export default function FeedScreen() {
                 onTag={() => {
                   // Etiketleme fonksiyonu
                 }}
-                autoPlay={false}
+                autoPlay={true}
                 previewMode={true}
               />
             ) : (
@@ -318,24 +339,28 @@ export default function FeedScreen() {
           </View>
         )}
 
-        <View style={styles.postActions}>
+        <View style={[styles.postActions, { borderTopColor: theme.colors.border }]}>
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => handleLike(item.id)}
           >
             <Heart
               size={20}
-              color={item.is_liked ? COLORS.error : COLORS.textLight}
-              fill={item.is_liked ? COLORS.error : 'transparent'}
+              color={item.is_liked ? theme.colors.error : theme.colors.textLight}
+              fill={item.is_liked ? theme.colors.error : 'transparent'}
             />
-            <Text style={styles.actionText}>{formatCount(item.like_count)}</Text>
+            <Text style={[styles.actionText, { color: theme.colors.textLight }]} numberOfLines={1}>
+              {formatCount(item.like_count)}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => router.push(`/post/${item.id}` as any)}
           >
-            <MessageCircle size={20} color={COLORS.textLight} />
-            <Text style={styles.actionText}>{formatCount(item.comment_count)}</Text>
+            <MessageCircle size={20} color={theme.colors.textLight} />
+            <Text style={[styles.actionText, { color: theme.colors.textLight }]} numberOfLines={1}>
+              {formatCount(item.comment_count)}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.actionButton}
@@ -343,24 +368,26 @@ export default function FeedScreen() {
               // Paylaşma fonksiyonu
             }}
           >
-            <Share2 size={20} color={COLORS.textLight} />
-            <Text style={styles.actionText}>{formatCount(item.share_count)}</Text>
+            <Share2 size={20} color={theme.colors.textLight} />
+            <Text style={[styles.actionText, { color: theme.colors.textLight }]} numberOfLines={1}>
+              {formatCount(item.share_count)}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
     );
-  }, [handleLike, router, formatCount, user?.id, handlePostOptions]);
+  }, [handleLike, router, formatCount, user?.id, handlePostOptions, theme]);
 
   return (
-    <View style={[styles.container, { paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.md) : 0 }]}>
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, Platform.OS === 'android' ? SPACING.lg : SPACING.md) }]}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background, paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.md) : 0 }]}>
+      <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border, paddingTop: Math.max(insets.top, Platform.OS === 'android' ? SPACING.lg : SPACING.md) }]}>
         <AppLogo size="medium" style={styles.headerLogo} />
         <TouchableOpacity
-          style={styles.usersButton}
+          style={[styles.usersButton, { backgroundColor: theme.colors.surface }]}
           onPress={() => router.push('/all-users')}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Users size={24} color={COLORS.primary} />
+          <Users size={24} color={theme.colors.primary} />
         </TouchableOpacity>
       </View>
 
@@ -369,7 +396,7 @@ export default function FeedScreen() {
 
       {isLoading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
       ) : (
         <FlatList
@@ -378,7 +405,12 @@ export default function FeedScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.feedList}
           refreshControl={
-            <RefreshControl refreshing={false} onRefresh={refetch} />
+            <RefreshControl 
+              refreshing={false} 
+              onRefresh={refetch}
+              tintColor={theme.colors.primary}
+              colors={[theme.colors.primary]}
+            />
           }
           removeClippedSubviews={true}
           maxToRenderPerBatch={5}
@@ -388,8 +420,8 @@ export default function FeedScreen() {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>Henüz gönderi yok</Text>
-              <Text style={styles.emptySubtext}>
+              <Text style={[styles.emptyText, { color: theme.colors.text }]}>Henüz gönderi yok</Text>
+              <Text style={[styles.emptySubtext, { color: theme.colors.textLight }]}>
                 {user?.id 
                   ? 'Takip ettiğin kullanıcıların gönderileri burada görünecek'
                   : 'İlk paylaşımı yapan sen ol!'}
@@ -422,14 +454,11 @@ export default function FeedScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
   },
   header: {
-    backgroundColor: COLORS.white,
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'space-between' as const,
@@ -442,16 +471,16 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: COLORS.background,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
     marginTop: 2,
   },
   sortContainer: {
     flexDirection: 'row' as const,
-    backgroundColor: COLORS.white,
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.sm,
+    paddingBottom: SPACING.sm,
+    borderBottomWidth: 1,
     gap: SPACING.sm,
   },
   sortTab: {
@@ -460,30 +489,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: 20,
-    backgroundColor: COLORS.background,
     gap: SPACING.xs,
-  },
-  sortTabActive: {
-    backgroundColor: COLORS.primary,
   },
   sortText: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.text,
     fontWeight: '600' as const,
   },
-  sortTextActive: {
-    color: COLORS.white,
-  },
   filterContainer: {
-    backgroundColor: COLORS.white,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
     paddingVertical: SPACING.sm,
   },
   filterChip: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    backgroundColor: COLORS.background,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: 20,
@@ -492,32 +510,24 @@ const styles = StyleSheet.create({
     flexShrink: 0, // Android'de metinlerin kesilmemesi için
     flexGrow: 0, // Horizontal scroll için genişlememeli
   },
-  filterChipActive: {
-    backgroundColor: COLORS.primary,
-  },
   filterEmoji: {
     fontSize: FONT_SIZES.sm,
     flexShrink: 0,
   },
   filterText: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.text,
     flexShrink: 0, // Android'de metinlerin tam görünmesi için
-  },
-  filterTextActive: {
-    color: COLORS.white,
-    fontWeight: '600' as const,
   },
   feedList: {
     paddingVertical: SPACING.sm,
   },
   postCard: {
-    backgroundColor: COLORS.white,
     marginHorizontal: SPACING.md,
     marginVertical: SPACING.sm,
     borderRadius: 12,
     width: Dimensions.get('window').width - (SPACING.md * 2),
     overflow: 'hidden',
+    borderWidth: 1,
   },
   postHeader: {
     flexDirection: 'row' as const,
@@ -550,7 +560,6 @@ const styles = StyleSheet.create({
   postAuthor: {
     fontSize: FONT_SIZES.md,
     fontWeight: '600' as const,
-    color: COLORS.text,
     flexShrink: 1,
   },
   postUsernameContainer: {
@@ -560,7 +569,6 @@ const styles = StyleSheet.create({
   },
   postUsername: {
     fontSize: FONT_SIZES.xs,
-    color: COLORS.textLight,
     flexShrink: 1,
   },
   postMeta: {
@@ -576,7 +584,6 @@ const styles = StyleSheet.create({
   },
   postDistrict: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.textLight,
     flexShrink: 1,
   },
   postTimeContainer: {
@@ -584,7 +591,6 @@ const styles = StyleSheet.create({
   },
   postTime: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.textLight,
   },
   postContentContainer: {
     paddingHorizontal: SPACING.md,
@@ -593,7 +599,6 @@ const styles = StyleSheet.create({
   },
   postContent: {
     fontSize: FONT_SIZES.md,
-    color: COLORS.text,
     lineHeight: 20,
     width: '100%',
   },
@@ -623,16 +628,17 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     gap: SPACING.lg,
     width: '100%',
+    borderTopWidth: 1,
   },
   actionButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: SPACING.xs,
     minWidth: 50,
+    flexShrink: 0,
   },
   actionText: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.textLight,
     flexShrink: 0,
   },
   loadingContainer: {
@@ -647,12 +653,10 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: FONT_SIZES.lg,
     fontWeight: '600' as const,
-    color: COLORS.text,
     marginBottom: SPACING.sm,
   },
   emptySubtext: {
     fontSize: FONT_SIZES.md,
-    color: COLORS.textLight,
     textAlign: 'center' as const,
   },
   fab: {

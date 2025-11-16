@@ -10,6 +10,7 @@ import { StyleSheet, Linking } from "react-native";
 import * as Notifications from 'expo-notifications';
 import { registerForPushNotifications, addNotificationResponseReceivedListener } from "@/lib/notifications";
 import { supabase } from "@/lib/supabase";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -280,9 +281,11 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <AuthContext>
           <ChatContext>
-            <GestureHandlerRootView style={styles.container}>
-              <RootLayoutNav />
-            </GestureHandlerRootView>
+            <ThemeProvider>
+              <GestureHandlerRootView style={styles.container}>
+                <RootLayoutNav />
+              </GestureHandlerRootView>
+            </ThemeProvider>
           </ChatContext>
         </AuthContext>
       </QueryClientProvider>

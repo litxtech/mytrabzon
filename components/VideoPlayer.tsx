@@ -33,6 +33,7 @@ import {
 } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface VideoPlayerProps {
   videoUrl: string;
@@ -65,6 +66,7 @@ export function VideoPlayer({
   showControls = true,
   previewMode = true,
 }: VideoPlayerProps) {
+  const { theme } = useTheme();
   const videoRef = useRef<Video>(null);
   const [isPlaying, setIsPlaying] = useState(autoPlay);
   const [isMuted, setIsMuted] = useState(previewMode); // Önizlemede sessiz başlar
@@ -277,6 +279,7 @@ function FullScreenVideoPlayer({
   onTag,
   onClose,
 }: FullScreenVideoPlayerProps) {
+  const { theme } = useTheme();
   const videoRef = useRef<Video>(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
@@ -451,8 +454,8 @@ function FullScreenVideoPlayer({
           >
             <Heart
               size={32}
-              color={isLiked ? COLORS.error : COLORS.white}
-              fill={isLiked ? COLORS.error : 'transparent'}
+              color={isLiked ? theme.colors.error : COLORS.white}
+              fill={isLiked ? theme.colors.error : 'transparent'}
             />
             <Text style={styles.actionCountText}>{formatCount(likeCount)}</Text>
           </TouchableOpacity>
