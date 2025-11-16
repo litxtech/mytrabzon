@@ -118,13 +118,14 @@ DECLARE
   v_daily_matches INTEGER;
   v_last_reset DATE;
   v_is_restricted BOOLEAN;
+  v_restriction_until TIMESTAMP WITH TIME ZONE;
 BEGIN
   -- Kısıtlama kontrolü
-  SELECT is_restricted, restriction_until INTO v_is_restricted
+  SELECT is_restricted, restriction_until INTO v_is_restricted, v_restriction_until
   FROM user_match_limits
   WHERE user_id = p_user_id;
   
-  IF v_is_restricted AND (restriction_until IS NULL OR restriction_until > NOW()) THEN
+  IF v_is_restricted AND (v_restriction_until IS NULL OR v_restriction_until > NOW()) THEN
     RETURN false;
   END IF;
   
@@ -211,13 +212,17 @@ BEGIN
   
   -- Eşleşme bulunduysa
   IF v_match_user_id IS NOT NULL THEN
-    -- Kullanıcıların hala kuyrukta olduğunu kontrol et
-    PERFORM 1 FROM waiting_queue
-    WHERE user_id = v_match_user_id AND is_active = true AND expires_at > NOW()
-    FOR UPDATE;
+    -- Kullanıcıların hala kuyrukta olduğunu kontrol et (lock ile)
+    SELECT EXISTS(
+      SELECT 1 FROM waiting_queue
+      WHERE user_id = v_match_user_id 
+        AND is_active = true 
+        AND expires_at > NOW()
+      FOR UPDATE
+    ) INTO v_match_user_still_active;
     
     -- Eğer eşleşme kullanıcısı artık kuyrukta değilse, NULL döndür
-    IF NOT FOUND THEN
+    IF NOT v_match_user_still_active THEN
       RETURN NULL;
     END IF;
     

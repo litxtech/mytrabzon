@@ -52,7 +52,7 @@ export default function MatchVideoScreen() {
   const sessionRef = useRef<any>(null);
 
   // Session bilgisini al
-  const { data: sessionData } = (trpc as any).match.checkMatch.useQuery(
+  const { data: sessionData } = trpc.match.checkMatch.useQuery(
     sessionId ? { session_id: sessionId } : undefined,
     {
       enabled: !!sessionId,
@@ -60,7 +60,7 @@ export default function MatchVideoScreen() {
     }
   );
 
-  const updateSessionMutation = (trpc as any).match.updateSession.useMutation({
+  const updateSessionMutation = trpc.match.updateSession.useMutation({
     onSuccess: (data: any) => {
       if (data.session.ended_at) {
         // Görüşme bitti

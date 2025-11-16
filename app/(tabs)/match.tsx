@@ -40,7 +40,7 @@ export default function MatchScreen() {
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const matchFoundTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const joinQueueMutation = (trpc as any).match.joinQueue.useMutation({
+  const joinQueueMutation = trpc.match.joinQueue.useMutation({
     onSuccess: (data: any) => {
       if (data.matched && data.session?.id) {
         setMatchStatus('matched');
@@ -65,7 +65,7 @@ export default function MatchScreen() {
     },
   });
 
-  const leaveQueueMutation = (trpc as any).match.leaveQueue.useMutation({
+  const leaveQueueMutation = trpc.match.leaveQueue.useMutation({
     onSuccess: () => {
       setIsMatching(false);
       setMatchStatus('idle');
@@ -73,7 +73,7 @@ export default function MatchScreen() {
     },
   });
 
-  const checkMatchQuery = (trpc as any).match.checkMatch.useQuery(undefined, {
+  const checkMatchQuery = trpc.match.checkMatch.useQuery({}, {
     enabled: matchStatus === 'searching',
     refetchInterval: 2000, // 2 saniyede bir kontrol et
   });
