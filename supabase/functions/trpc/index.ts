@@ -4107,16 +4107,27 @@ const appRouter = createTRPCRouter({
         }
 
         // Eşleşme ara
-        const { data: matchId } = await supabase.rpc('find_match', {
+        const { data: matchId, error: findMatchError } = await supabase.rpc('find_match', {
           p_user_id: user.id,
           p_gender: profile.gender,
           p_city: profile.city || null,
           p_district: profile.district || null,
         });
 
+        if (findMatchError) {
+          console.error('find_match error in joinQueue:', findMatchError);
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `Eşleşme aranırken hata oluştu: ${findMatchError.message}`,
+          });
+        }
+
         if (matchId) {
           // Eşleşme bulundu
-          console.log('Match found, matchId:', matchId);
+          console.log('Match found in joinQueue, matchId:', matchId);
+          
+          // Kısa bir bekleme ekle (race condition'ı önlemek için)
+          await new Promise(resolve => setTimeout(resolve, 100));
           
           const { data: session, error: sessionError } = await supabase
             .from('match_sessions')
@@ -4207,12 +4218,16 @@ const appRouter = createTRPCRouter({
 
         // Eğer session_id verilmişse, o session'ı getir
         if (input?.session_id) {
-          const { data: session } = await supabase
+          const { data: session, error: sessionError } = await supabase
             .from('match_sessions')
             .select('*, user1:profiles!match_sessions_user1_id_fkey(id, full_name, avatar_url, gender), user2:profiles!match_sessions_user2_id_fkey(id, full_name, avatar_url, gender)')
             .eq('id', input.session_id)
             .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
             .maybeSingle();
+
+          if (sessionError) {
+            console.error('Session query error:', sessionError);
+          }
 
           if (session) {
             return {
@@ -4223,7 +4238,7 @@ const appRouter = createTRPCRouter({
         }
 
         // Aktif eşleşme var mı kontrol et
-        const { data: activeSession } = await supabase
+        const { data: activeSession, error: activeSessionError } = await supabase
           .from('match_sessions')
           .select('*, user1:profiles!match_sessions_user1_id_fkey(id, full_name, avatar_url, gender), user2:profiles!match_sessions_user2_id_fkey(id, full_name, avatar_url, gender)')
           .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
@@ -4232,6 +4247,10 @@ const appRouter = createTRPCRouter({
           .limit(1)
           .maybeSingle();
 
+        if (activeSessionError) {
+          console.error('Active session query error:', activeSessionError);
+        }
+
         if (activeSession) {
           return {
             matched: true,
@@ -4239,35 +4258,86 @@ const appRouter = createTRPCRouter({
           };
         }
 
-        // YENİ: Kuyrukta beklerken eşleşme ara
+        // Kuyrukta beklerken eşleşme ara - önce kuyrukta olup olmadığını kontrol et
+        const { data: queueCheck } = await supabase
+          .from('waiting_queue')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (!queueCheck) {
+          // Kullanıcı kuyrukta değil, eşleşme yok
+          return {
+            matched: false,
+            session: null,
+          };
+        }
+
+        // Profil bilgilerini al
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('gender, city, district')
           .eq('id', user.id)
           .maybeSingle();
 
-        if (!profileError && profile?.gender && (profile.gender === 'male' || profile.gender === 'female')) {
-          const { data: matchId } = await supabase.rpc('find_match', {
-            p_user_id: user.id,
-            p_gender: profile.gender,
-            p_city: profile.city || null,
-            p_district: profile.district || null,
-          });
+        if (profileError) {
+          console.error('Profile error in checkMatch:', profileError);
+          return {
+            matched: false,
+            session: null,
+          };
+        }
 
-          if (matchId) {
-            // Eşleşme bulundu!
-            const { data: newSession } = await supabase
-              .from('match_sessions')
-              .select('*, user1:profiles!match_sessions_user1_id_fkey(id, full_name, avatar_url, gender), user2:profiles!match_sessions_user2_id_fkey(id, full_name, avatar_url, gender)')
-              .eq('id', matchId)
-              .maybeSingle();
+        if (!profile?.gender || (profile.gender !== 'male' && profile.gender !== 'female')) {
+          return {
+            matched: false,
+            session: null,
+          };
+        }
 
-            if (newSession) {
-              return {
-                matched: true,
-                session: newSession,
-              };
-            }
+        // Eşleşme ara
+        const { data: matchId, error: matchError } = await supabase.rpc('find_match', {
+          p_user_id: user.id,
+          p_gender: profile.gender,
+          p_city: profile.city || null,
+          p_district: profile.district || null,
+        });
+
+        if (matchError) {
+          console.error('find_match error:', matchError);
+          return {
+            matched: false,
+            session: null,
+          };
+        }
+
+        if (matchId) {
+          // Eşleşme bulundu!
+          console.log('Match found in checkMatch, matchId:', matchId);
+          
+          const { data: newSession, error: newSessionError } = await supabase
+            .from('match_sessions')
+            .select('*, user1:profiles!match_sessions_user1_id_fkey(id, full_name, avatar_url, gender), user2:profiles!match_sessions_user2_id_fkey(id, full_name, avatar_url, gender)')
+            .eq('id', matchId)
+            .maybeSingle();
+
+          if (newSessionError) {
+            console.error('New session query error:', newSessionError);
+            return {
+              matched: false,
+              session: null,
+            };
+          }
+
+          if (newSession) {
+            console.log('New session found:', newSession.id);
+            return {
+              matched: true,
+              session: newSession,
+            };
+          } else {
+            console.error('Match ID found but session not found:', matchId);
           }
         }
 

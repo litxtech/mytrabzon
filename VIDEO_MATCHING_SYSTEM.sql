@@ -180,8 +180,10 @@ DECLARE
   v_match_user_id UUID;
   v_match_id UUID;
   v_channel_name TEXT;
+  v_user1_id UUID;
+  v_user2_id UUID;
 BEGIN
-  -- Önce aynı şehir/ilçeden ara
+  -- Önce aynı şehir/ilçeden ara (FOR UPDATE ile lock al)
   SELECT user_id INTO v_match_user_id
   FROM waiting_queue
   WHERE is_active = true
@@ -191,7 +193,8 @@ BEGIN
     AND (p_city IS NULL OR city = p_city)
     AND (p_district IS NULL OR district = p_district)
   ORDER BY joined_at ASC
-  LIMIT 1;
+  LIMIT 1
+  FOR UPDATE SKIP LOCKED;
   
   -- Bulamazsa şehir filtresini kaldır
   IF v_match_user_id IS NULL THEN
@@ -202,17 +205,36 @@ BEGIN
       AND gender != p_gender
       AND expires_at > NOW()
     ORDER BY joined_at ASC
-    LIMIT 1;
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED;
   END IF;
   
   -- Eşleşme bulunduysa
   IF v_match_user_id IS NOT NULL THEN
-    -- Kanal adı oluştur
-    v_channel_name := 'match_' || LEAST(p_user_id::text, v_match_user_id::text) || '_' || GREATEST(p_user_id::text, v_match_user_id::text);
+    -- Kullanıcıların hala kuyrukta olduğunu kontrol et
+    PERFORM 1 FROM waiting_queue
+    WHERE user_id = v_match_user_id AND is_active = true AND expires_at > NOW()
+    FOR UPDATE;
+    
+    -- Eğer eşleşme kullanıcısı artık kuyrukta değilse, NULL döndür
+    IF NOT FOUND THEN
+      RETURN NULL;
+    END IF;
+    
+    -- Kanal adı oluştur (alfabetik sıraya göre)
+    IF p_user_id < v_match_user_id THEN
+      v_user1_id := p_user_id;
+      v_user2_id := v_match_user_id;
+    ELSE
+      v_user1_id := v_match_user_id;
+      v_user2_id := p_user_id;
+    END IF;
+    
+    v_channel_name := 'match_' || v_user1_id::text || '_' || v_user2_id::text;
     
     -- Match session oluştur
     INSERT INTO match_sessions (user1_id, user2_id, channel_name)
-    VALUES (p_user_id, v_match_user_id, v_channel_name)
+    VALUES (v_user1_id, v_user2_id, v_channel_name)
     RETURNING id INTO v_match_id;
     
     -- Her iki kullanıcıyı da kuyruktan çıkar
