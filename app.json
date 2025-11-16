@@ -2,7 +2,7 @@
   "expo": {
     "name": "MyTrabzon",
     "slug": "MyTrabzon",
-    "version": "1.0.25",
+    "version": "1.0.26",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mytrabzon",
@@ -27,7 +27,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.litxtech.mytrabzon",
-      "versionCode": 26,
+      "versionCode": 27,
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
@@ -64,7 +64,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.litxtech.mytrabzon",
-      "buildNumber": "26",
+      "buildNumber": "27",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photos",
         "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to access your camera",
