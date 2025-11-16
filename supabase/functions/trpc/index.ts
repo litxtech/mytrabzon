@@ -1817,6 +1817,82 @@ const appRouter = createTRPCRouter({
         return { success: true, deletedCount: 'all' };
       }),
 
+    leaveRoom: protectedProcedure
+      .input(z.object({ roomId: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        const userId = ctx.user.id;
+
+        // Kullanıcının üyeliğini sil
+        const { error } = await ctx.supabase
+          .from('chat_members')
+          .delete()
+          .eq('room_id', input.roomId)
+          .eq('user_id', userId);
+
+        if (error) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Odadan ayrılınamadı',
+          });
+        }
+
+        return { success: true };
+      }),
+
+    deleteRoom: protectedProcedure
+      .input(z.object({ roomId: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        const userId = ctx.user.id;
+
+        // Odanın sahibi olup olmadığını kontrol et
+        const { data: room, error: roomError } = await ctx.supabase
+          .from('chat_rooms')
+          .select('created_by, type')
+          .eq('id', input.roomId)
+          .single();
+
+        if (roomError || !room) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Oda bulunamadı',
+          });
+        }
+
+        if (room.created_by !== userId) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Sadece oda sahibi odayı silebilir',
+          });
+        }
+
+        // Önce mesajları sil
+        await ctx.supabase
+          .from('messages')
+          .delete()
+          .eq('room_id', input.roomId);
+
+        // Üyeleri sil
+        await ctx.supabase
+          .from('chat_members')
+          .delete()
+          .eq('room_id', input.roomId);
+
+        // Odayı sil
+        const { error: deleteError } = await ctx.supabase
+          .from('chat_rooms')
+          .delete()
+          .eq('id', input.roomId);
+
+        if (deleteError) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Oda silinemedi',
+          });
+        }
+
+        return { success: true };
+      }),
+
     addReaction: protectedProcedure
       .input(
         z.object({
