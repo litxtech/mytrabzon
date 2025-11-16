@@ -4144,13 +4144,13 @@ const appRouter = createTRPCRouter({
         }
 
         // YENİ: Kuyrukta beklerken eşleşme ara
-        const { data: profile } = await supabase
+        const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('gender, city, district')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
 
-        if (profile?.gender && (profile.gender === 'male' || profile.gender === 'female')) {
+        if (!profileError && profile?.gender && (profile.gender === 'male' || profile.gender === 'female')) {
           const { data: matchId } = await supabase.rpc('find_match', {
             p_user_id: user.id,
             p_gender: profile.gender,
@@ -4164,12 +4164,14 @@ const appRouter = createTRPCRouter({
               .from('match_sessions')
               .select('*, user1:profiles!match_sessions_user1_id_fkey(id, full_name, avatar_url, gender), user2:profiles!match_sessions_user2_id_fkey(id, full_name, avatar_url, gender)')
               .eq('id', matchId)
-              .single();
+              .maybeSingle();
 
-            return {
-              matched: true,
-              session: newSession,
-            };
+            if (newSession) {
+              return {
+                matched: true,
+                session: newSession,
+              };
+            }
           }
         }
 
