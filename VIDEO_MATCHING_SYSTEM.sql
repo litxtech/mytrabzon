@@ -183,6 +183,7 @@ DECLARE
   v_channel_name TEXT;
   v_user1_id UUID;
   v_user2_id UUID;
+  v_match_user_still_active BOOLEAN;
 BEGIN
   -- Önce aynı şehir/ilçeden ara (FOR UPDATE ile lock al)
   SELECT user_id INTO v_match_user_id
