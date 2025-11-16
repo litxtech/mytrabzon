@@ -313,21 +313,31 @@ export default function LoginScreen() {
 
       console.log('WebBrowser result:', result.type);
 
-      if (result.type === 'success' && result.url) {
-        // Deep link handler otomatik olarak işleyecek
-        // Session kontrolü yap
-        setTimeout(async () => {
+      if (result.type === 'success') {
+        // OAuth başarılı - callback URL deep link handler tarafından yakalanacak
+        // Deep link handler otomatik olarak session'ı set edecek
+        console.log('OAuth successful, waiting for deep link callback...');
+        
+        // Session kontrolü yap (deep link handler çalışana kadar bekle)
+        let attempts = 0;
+        const maxAttempts = 15; // 15 saniye bekle
+        
+        const checkSession = setInterval(async () => {
+          attempts++;
           const { data: { session } } = await supabase.auth.getSession();
+          
           if (session?.user) {
+            clearInterval(checkSession);
             setOauthLoading(false);
             setLoading(false);
             await checkProfileAndNavigate(session.user.id);
-          } else {
+          } else if (attempts >= maxAttempts) {
+            clearInterval(checkSession);
             setOauthLoading(false);
             setLoading(false);
             Alert.alert('Hata', 'Giriş tamamlanamadı. Lütfen tekrar deneyin.');
           }
-        }, 2000);
+        }, 1000);
       } else if (result.type === 'cancel') {
         console.log('Google giriş iptal edildi');
         setLoading(false);
@@ -392,21 +402,31 @@ export default function LoginScreen() {
 
       console.log('WebBrowser result:', result.type);
 
-      if (result.type === 'success' && result.url) {
-        // Deep link handler otomatik olarak işleyecek
-        // Session kontrolü yap
-        setTimeout(async () => {
+      if (result.type === 'success') {
+        // OAuth başarılı - callback URL deep link handler tarafından yakalanacak
+        // Deep link handler otomatik olarak session'ı set edecek
+        console.log('OAuth successful, waiting for deep link callback...');
+        
+        // Session kontrolü yap (deep link handler çalışana kadar bekle)
+        let attempts = 0;
+        const maxAttempts = 15; // 15 saniye bekle
+        
+        const checkSession = setInterval(async () => {
+          attempts++;
           const { data: { session } } = await supabase.auth.getSession();
+          
           if (session?.user) {
+            clearInterval(checkSession);
             setOauthLoading(false);
             setLoading(false);
             await checkProfileAndNavigate(session.user.id);
-          } else {
+          } else if (attempts >= maxAttempts) {
+            clearInterval(checkSession);
             setOauthLoading(false);
             setLoading(false);
             Alert.alert('Hata', 'Giriş tamamlanamadı. Lütfen tekrar deneyin.');
           }
-        }, 2000);
+        }, 1000);
       } else if (result.type === 'cancel') {
         console.log('Twitter/X giriş iptal edildi');
         setLoading(false);
@@ -468,6 +488,17 @@ export default function LoginScreen() {
             iss: payload.iss,
             exp: payload.exp,
           });
+          
+          // Expo Go kontrolü - aud claim'i "host.exp.Exponent" ise development build gerekli
+          if (payload.aud === 'host.exp.Exponent') {
+            Alert.alert(
+              'Development Build Gerekli',
+              'Apple ile giriş için development build kullanmanız gerekiyor. Expo Go\'da çalışmaz.\n\nLütfen EAS Build ile development build oluşturun.'
+            );
+            setLoading(false);
+            setOauthLoading(false);
+            return;
+          }
           
           // aud claim'i Service ID olmalı: com.litxtech.mytrabzon.login
           if (payload.aud && payload.aud !== 'com.litxtech.mytrabzon.login') {
