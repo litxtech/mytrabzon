@@ -98,14 +98,19 @@ export default function LoginScreen() {
       if (mode === 'login') {
         result = await supabase.auth.signInWithPassword({ email: trimmedEmail, password });
       } else {
+        // Email confirmation için Supabase callback URL kullan (mobilde deep link'e yönlendirsin)
+        const deepLinkUrl = 'mytrabzon://auth/callback';
+        const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+        const emailRedirectTo = Platform.select({
+          web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
+          default: `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`,
+        });
+
         result = await supabase.auth.signUp({ 
           email: trimmedEmail, 
           password,
           options: {
-            emailRedirectTo: Platform.select({
-              web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
-              default: 'mytrabzon://auth/callback',
-            }),
+            emailRedirectTo,
           }
         });
       }
@@ -134,14 +139,19 @@ export default function LoginScreen() {
                 text: 'Email Gönder',
                 onPress: async () => {
                   try {
+                    // Email resend için Supabase callback URL kullan
+                    const deepLinkUrl = 'mytrabzon://auth/callback';
+                    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+                    const emailRedirectTo = Platform.select({
+                      web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
+                      default: `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`,
+                    });
+
                     const { error: resendError } = await supabase.auth.resend({
                       type: 'signup',
                       email: trimmedEmail,
                       options: {
-                        emailRedirectTo: Platform.select({
-                          web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
-                          default: 'mytrabzon://auth/callback',
-                        }),
+                        emailRedirectTo,
                       },
                     });
                     if (resendError) throw resendError;
@@ -195,13 +205,18 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
+      // Magic link için Supabase callback URL kullan (mobilde deep link'e yönlendirsin)
+      const deepLinkUrl = 'mytrabzon://auth/callback';
+      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+      const emailRedirectTo = Platform.select({
+        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
+        default: `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`,
+      });
+
       const { error } = await supabase.auth.signInWithOtp({ 
         email: trimmedEmail,
         options: {
-          emailRedirectTo: Platform.select({
-            web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
-            default: 'mytrabzon://auth/callback',
-          }),
+          emailRedirectTo,
         }
       });
       
@@ -256,16 +271,24 @@ export default function LoginScreen() {
     setLoading(true);
     setOauthLoading(true);
     try {
+      // OAuth provider'lar https:// bekliyor, bu yüzden Supabase callback URL'ini kullan
+      // Deep link'i redirect_to parametresi olarak ekle
+      const deepLinkUrl = 'mytrabzon://auth/callback';
+      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
       const redirectUrl = Platform.select({
         web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
-        default: 'mytrabzon://auth/callback',
+        default: `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`,
       });
+
+      console.log('Google redirect URL:', redirectUrl);
+      console.log('Platform:', Platform.OS);
+      console.log('Deep link URL:', deepLinkUrl);
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: redirectUrl,
-          skipBrowserRedirect: Platform.OS !== 'web',
+          skipBrowserRedirect: true, // true - OAuth URL'ini direkt aç, Supabase callback'i deep link handler yakalayacak
         },
       });
 
@@ -330,7 +353,7 @@ export default function LoginScreen() {
         provider: 'twitter',
         options: {
           redirectTo: redirectUrl,
-          skipBrowserRedirect: false, // false - Supabase callback URL'ini açsın, oradan deep link'e yönlendirsin
+          skipBrowserRedirect: true, // true - OAuth URL'ini direkt aç, Supabase callback'i deep link handler yakalayacak
         },
       });
 
@@ -416,7 +439,7 @@ export default function LoginScreen() {
         provider: 'apple',
         options: {
           redirectTo: redirectUrl,
-          skipBrowserRedirect: false, // false - Supabase callback URL'ini açsın, oradan deep link'e yönlendirsin
+          skipBrowserRedirect: true, // true - OAuth URL'ini direkt aç, Supabase callback'i deep link handler yakalayacak
         },
       });
 
@@ -427,14 +450,8 @@ export default function LoginScreen() {
 
       console.log('Apple OAuth URL received:', data?.url ? 'Yes' : 'No');
 
-      // Web'de OAuth browser'da açılır
-      if (Platform.OS === 'web' && data.url) {
-        window.location.href = data.url;
-        return;
-      }
-
-      // Mobilde OAuth URL'ini aç - Supabase callback URL'i açılacak
-      if (Platform.OS !== 'web' && data.url) {
+      // iOS'ta OAuth URL'ini aç - Supabase callback URL'i açılacak
+      if (data.url) {
         console.log('Opening OAuth URL:', data.url);
         const canOpen = await Linking.canOpenURL(data.url);
         console.log('Can open Apple URL:', canOpen);

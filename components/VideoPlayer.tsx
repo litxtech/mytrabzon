@@ -14,7 +14,6 @@ import {
   TouchableOpacity,
   Modal,
   Dimensions,
-  Platform,
   Pressable,
   ActivityIndicator,
   Animated,
@@ -85,8 +84,7 @@ export function VideoPlayer({
   const [position, setPosition] = useState(0);
   const [showControlsOverlay, setShowControlsOverlay] = useState(true);
   const lastTap = useRef<number>(0);
-  const controlsTimeout = useRef<NodeJS.Timeout | null>(null);
-  const insets = useSafeAreaInsets();
+  const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // autoPlay değiştiğinde video'yu başlat
   useEffect(() => {
@@ -363,10 +361,12 @@ function FullScreenVideoPlayer({
   const [position, setPosition] = useState(0);
   const [showComments, setShowComments] = useState(false);
   const lastTap = useRef<number>(0);
-  const controlsTimeout = useRef<NodeJS.Timeout | null>(null);
+  const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const insets = useSafeAreaInsets();
   const { width, height } = Dimensions.get('window');
-  const commentSheetY = useRef(new Animated.Value(height)).current;
+  const SCREEN_HEIGHT = height;
+  const COMMENT_SHEET_HEIGHT = SCREEN_HEIGHT * 0.5; // Ekranın yarısı
+  const commentSheetY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
   useEffect(() => {
     // Tam ekran açıldığında video'yu otomatik başlat
@@ -466,7 +466,7 @@ function FullScreenVideoPlayer({
 
   const handleCloseComments = () => {
     Animated.spring(commentSheetY, {
-      toValue: height,
+      toValue: SCREEN_HEIGHT,
       useNativeDriver: true,
       tension: 50,
       friction: 7,
@@ -475,16 +475,16 @@ function FullScreenVideoPlayer({
     });
   };
 
-  // Yorum paneli için pan responder (aşağı çekme)
-  const panResponder = useRef(
+  // Yorum paneli için pan responder (sadece drag handle için - aşağı çekme)
+  const dragHandlePanResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => showComments,
+      onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        return showComments && Math.abs(gestureState.dy) > 10;
+        return Math.abs(gestureState.dy) > 5;
       },
       onPanResponderMove: (_, gestureState) => {
         if (gestureState.dy > 0) {
-          commentSheetY.setValue(height * 0.5 + gestureState.dy);
+          commentSheetY.setValue(COMMENT_SHEET_HEIGHT + gestureState.dy);
         }
       },
       onPanResponderRelease: (_, gestureState) => {
@@ -492,7 +492,7 @@ function FullScreenVideoPlayer({
           handleCloseComments();
         } else {
           Animated.spring(commentSheetY, {
-            toValue: height * 0.5,
+            toValue: COMMENT_SHEET_HEIGHT,
             useNativeDriver: true,
             tension: 50,
             friction: 7,
@@ -604,13 +604,20 @@ function FullScreenVideoPlayer({
           <TouchableOpacity
             style={styles.actionButtonLarge}
             onPress={() => {
+              console.log('Yorum butonuna basıldı, panel açılıyor...');
+              // Önce commentSheetY'yi başlangıç pozisyonuna ayarla (ekranın altı)
+              commentSheetY.setValue(SCREEN_HEIGHT);
+              // State'i güncelle
               setShowComments(true);
-              Animated.spring(commentSheetY, {
-                toValue: height * 0.5, // Yarıya kadar açılır
-                useNativeDriver: true,
-                tension: 50,
-                friction: 7,
-              }).start();
+              // Küçük bir delay ile animasyonu başlat (render için)
+              requestAnimationFrame(() => {
+                Animated.spring(commentSheetY, {
+                  toValue: COMMENT_SHEET_HEIGHT, // Ekranın yarısına kadar açılır
+                  useNativeDriver: true,
+                  tension: 50,
+                  friction: 7,
+                }).start();
+              });
             }}
           >
             <MessageCircle size={32} color={COLORS.white} />
@@ -647,24 +654,24 @@ function FullScreenVideoPlayer({
         </View>
       </Pressable>
 
-      {/* Yorum Paneli (Bottom Sheet) - Şeffaf, video izlenirken */}
+      {/* Yorum Paneli (Bottom Sheet) - Instagram tarzı, şeffaf, video izlenirken */}
       {showComments && (
         <Animated.View
           style={[
             styles.commentSheet,
             {
               transform: [{ translateY: commentSheetY }],
-              backgroundColor: 'rgba(0, 0, 0, 0.7)', // Şeffaf - video görünür
+              height: COMMENT_SHEET_HEIGHT,
+              backgroundColor: 'rgba(0, 0, 0, 0.75)', // Şeffaf - video görünür
             },
           ]}
-          {...panResponder.panHandlers}
         >
-          {/* Drag Handle */}
-          <View style={styles.dragHandleContainer}>
+          {/* Drag Handle - Sadece burada pan responder çalışır */}
+          <View style={styles.dragHandleContainer} {...dragHandlePanResponder.panHandlers}>
             <View style={[styles.dragHandle, { backgroundColor: COLORS.white }]} />
           </View>
           
-          <View style={[styles.commentSheetHeader, { borderBottomColor: theme.colors.border + '40' }]}>
+          <View style={[styles.commentSheetHeader, { borderBottomColor: 'rgba(255, 255, 255, 0.1)' }]}>
             <Text style={[styles.commentSheetTitle, { color: COLORS.white }]}>
               Yorumlar ({commentCount || 0})
             </Text>
@@ -672,7 +679,9 @@ function FullScreenVideoPlayer({
               <X size={24} color={COLORS.white} />
             </TouchableOpacity>
           </View>
-          <CommentSheet postId={postId} />
+          <View style={styles.commentSheetContent}>
+            <CommentSheet postId={postId} />
+          </View>
         </Animated.View>
       )}
     </View>
@@ -769,7 +778,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: Dimensions.get('window').height * 0.6,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     shadowColor: '#000',
@@ -777,6 +785,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 10,
     elevation: 15,
+    overflow: 'hidden',
+  },
+  commentSheetContent: {
+    flex: 1,
   },
   dragHandleContainer: {
     alignItems: 'center',

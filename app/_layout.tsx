@@ -174,7 +174,7 @@ export default function RootLayout() {
                 if (exchangeError) {
                   console.error('Code exchange error:', exchangeError);
                   // Code exchange başarısız olursa, redirect_to'ya yönlendir (token'lar orada olabilir)
-                  const redirectUrl = redirectTo || params.redirect_to;
+                  const redirectUrl = params.redirect_to;
                   if (redirectUrl && (redirectUrl.startsWith('mytrabzon://') || redirectUrl.startsWith('litxtech://'))) {
                     await handleDeepLink(redirectUrl);
                     return;
@@ -199,7 +199,7 @@ export default function RootLayout() {
               } catch (err) {
                 console.error('Code exchange error:', err);
                 // Hata durumunda redirect_to'ya yönlendir
-                const redirectUrl = redirectTo || params.redirect_to;
+                const redirectUrl = params.redirect_to;
                 if (redirectUrl && (redirectUrl.startsWith('mytrabzon://') || redirectUrl.startsWith('litxtech://'))) {
                   await handleDeepLink(redirectUrl);
                   return;
@@ -277,6 +277,7 @@ export default function RootLayout() {
         }
 
         // Supabase callback URL'ini işle - token'ları çıkar ve deep link'e yönlendir
+        // Bu URL hem deep link olarak hem de browser'dan gelebilir
         if (url.includes('supabase.co') && (url.includes('/auth/v1/callback') || url.includes('redirect_to='))) {
           console.log('Supabase callback URL detected:', url);
           
@@ -314,6 +315,23 @@ export default function RootLayout() {
             redirectTo 
           });
           
+          // Code varsa önce exchange et
+          if (code && !accessToken) {
+            console.log('Exchanging code for session from Supabase callback...');
+            try {
+              const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+              if (exchangeError) {
+                console.error('Code exchange error from Supabase callback:', exchangeError);
+              } else if (exchangeData.session) {
+                console.log('Session created from code exchange in Supabase callback');
+                accessToken = exchangeData.session.access_token;
+                refreshToken = exchangeData.session.refresh_token;
+              }
+            } catch (err) {
+              console.error('Code exchange error:', err);
+            }
+          }
+          
           // Eğer token'lar varsa, session'ı set et ve redirect_to'ya yönlendir
           if (accessToken && refreshToken) {
             const { error: sessionError } = await supabase.auth.setSession({
@@ -327,16 +345,20 @@ export default function RootLayout() {
               console.log('Session set successfully from Supabase callback');
               
               // redirect_to varsa oraya yönlendir
-              if (redirectTo && (redirectTo.startsWith('mytrabzon://') || redirectTo.startsWith('litxtech://'))) {
-                // Token'ları redirect URL'e ekle
-                const separator = redirectTo.includes('?') ? '&' : '?';
-                const redirectUrlWithTokens = `${redirectTo}${separator}access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}`;
-                console.log('Redirecting to deep link with tokens:', redirectUrlWithTokens);
-                await handleDeepLink(redirectUrlWithTokens);
-                return;
+              if (redirectTo) {
+                const decodedRedirect = decodeURIComponent(redirectTo);
+                console.log('Redirecting to:', decodedRedirect);
+                if (decodedRedirect.startsWith('mytrabzon://') || decodedRedirect.startsWith('litxtech://')) {
+                  // Token'ları redirect URL'e ekle
+                  const separator = decodedRedirect.includes('?') ? '&' : '?';
+                  const redirectUrlWithTokens = `${decodedRedirect}${separator}access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}`;
+                  console.log('Redirecting to deep link with tokens:', redirectUrlWithTokens);
+                  await handleDeepLink(redirectUrlWithTokens);
+                  return;
+                }
               }
               
-              // redirect_to yoksa session kontrolü yap
+              // redirect_to yoksa veya deep link değilse session kontrolü yap
               const { data: { session } } = await supabase.auth.getSession();
               if (session?.user) {
                 const { data: profile } = await supabase
@@ -356,9 +378,27 @@ export default function RootLayout() {
           } else if (redirectTo) {
             // Token yok ama redirect_to var - redirect_to'ya yönlendir
             const decodedRedirect = decodeURIComponent(redirectTo);
-            console.log('Redirecting to:', decodedRedirect);
+            console.log('Redirecting to (no tokens):', decodedRedirect);
             if (decodedRedirect.startsWith('mytrabzon://') || decodedRedirect.startsWith('litxtech://')) {
               await handleDeepLink(decodedRedirect);
+              return;
+            }
+          } else {
+            // Token yok, redirect_to yok - session kontrolü yap
+            console.log('No tokens or redirect_to, checking session...');
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', session.user.id)
+                .single();
+              
+              if (profile && profile.full_name) {
+                router.replace('/(tabs)/feed');
+              } else {
+                router.replace('/auth/onboarding');
+              }
               return;
             }
           }
@@ -376,6 +416,25 @@ export default function RootLayout() {
       console.log('Deep link received:', event.url);
       await handleDeepLink(event.url);
     });
+
+    // Supabase callback URL'ini dinle (browser'dan uygulamaya dönüş için)
+    // OAuth provider authenticate edip Supabase callback URL'ine yönlendirdiğinde
+    // Bu URL'i yakalayıp deep link'e yönlendirmemiz gerekiyor
+    const checkSupabaseCallback = async () => {
+      try {
+        // Eğer uygulama Supabase callback URL'i ile açıldıysa
+        const initialUrl = await Linking.getInitialURL();
+        if (initialUrl && (initialUrl.includes('supabase.co') || initialUrl.includes('/auth/v1/callback'))) {
+          console.log('Supabase callback URL detected on app start:', initialUrl);
+          await handleDeepLink(initialUrl);
+        }
+      } catch (error) {
+        console.error('Error checking Supabase callback:', error);
+      }
+    };
+    
+    // İlk kontrol
+    checkSupabaseCallback();
 
     // Push notification kaydı (Expo Go'da çalışmaz, try-catch ile sarmalıyoruz)
     try {

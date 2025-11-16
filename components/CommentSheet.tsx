@@ -59,16 +59,12 @@ export function CommentSheet({ postId }: CommentSheetProps) {
   const comments = commentsData?.comments || [];
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-    >
+    <View style={styles.container}>
       <FlatList
         data={comments}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <View style={[styles.commentItem, { borderBottomColor: theme.colors.border + '40' }]}>
+          <View style={[styles.commentItem, { borderBottomColor: 'rgba(255, 255, 255, 0.1)' }]}>
             <Image
               source={{ uri: item.author?.avatar_url || 'https://via.placeholder.com/32' }}
               style={styles.commentAvatar}
@@ -76,14 +72,14 @@ export function CommentSheet({ postId }: CommentSheetProps) {
             />
             <View style={styles.commentContent}>
               <View style={styles.commentHeader}>
-                <Text style={[styles.commentAuthor, { color: theme.colors.text }]}>
+                <Text style={[styles.commentAuthor, { color: COLORS.white }]}>
                   {item.author?.full_name}
                 </Text>
-                <Text style={[styles.commentTime, { color: theme.colors.textLight }]}>
+                <Text style={[styles.commentTime, { color: 'rgba(255, 255, 255, 0.6)' }]}>
                   {formatTimeAgo(item.created_at)}
                 </Text>
               </View>
-              <Text style={[styles.commentText, { color: theme.colors.text }]}>
+              <Text style={[styles.commentText, { color: COLORS.white }]}>
                 {item.content}
               </Text>
             </View>
@@ -99,49 +95,61 @@ export function CommentSheet({ postId }: CommentSheetProps) {
             </Text>
           </View>
         }
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          comments.length === 0 && styles.listContentEmpty,
+        ]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       />
 
-      {/* Yorum Input - Şeffaf arka plan */}
-      <View
-        style={[
-          styles.inputContainer,
-          { backgroundColor: theme.colors.surface + 'E0', borderTopColor: theme.colors.border + '40' }, // %88 opacity
-          { paddingBottom: Math.max(insets.bottom, SPACING.md) },
-        ]}
+      {/* Yorum Input - Instagram tarzı, şeffaf arka plan, en altta sabit */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        <Image
-          source={{ uri: profile?.avatar_url || 'https://via.placeholder.com/32' }}
-          style={styles.inputAvatar}
-          contentFit="cover"
-        />
-        <TextInput
-          style={[styles.input, { backgroundColor: 'rgba(255, 255, 255, 0.2)', color: COLORS.white }]}
-          placeholder="Yorum yaz..."
-          placeholderTextColor="rgba(255, 255, 255, 0.6)"
-          value={commentText}
-          onChangeText={setCommentText}
-          multiline
-          maxLength={500}
-        />
-        <TouchableOpacity
+        <View
           style={[
-            styles.sendButton,
-            { backgroundColor: theme.colors.primary },
-            !commentText.trim() && styles.sendButtonDisabled,
+            styles.inputContainer,
+            { 
+              backgroundColor: 'rgba(0, 0, 0, 0.6)', 
+              borderTopColor: 'rgba(255, 255, 255, 0.1)',
+            },
+            { paddingBottom: Math.max(insets.bottom, SPACING.md) },
           ]}
-          onPress={handleSendComment}
-          disabled={!commentText.trim() || createCommentMutation.isPending}
         >
-          {createCommentMutation.isPending ? (
-            <ActivityIndicator size="small" color={COLORS.white} />
-          ) : (
-            <Send size={20} color={COLORS.white} />
-          )}
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+          <Image
+            source={{ uri: profile?.avatar_url || 'https://via.placeholder.com/32' }}
+            style={styles.inputAvatar}
+            contentFit="cover"
+          />
+          <TextInput
+            style={[styles.input, { backgroundColor: 'rgba(255, 255, 255, 0.15)', color: COLORS.white }]}
+            placeholder="Yorum yaz..."
+            placeholderTextColor="rgba(255, 255, 255, 0.6)"
+            value={commentText}
+            onChangeText={setCommentText}
+            multiline
+            maxLength={500}
+          />
+          <TouchableOpacity
+            style={[
+              styles.sendButton,
+              { backgroundColor: theme.colors.primary },
+              !commentText.trim() && styles.sendButtonDisabled,
+            ]}
+            onPress={handleSendComment}
+            disabled={!commentText.trim() || createCommentMutation.isPending}
+          >
+            {createCommentMutation.isPending ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <Send size={20} color={COLORS.white} />
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -151,6 +159,11 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: SPACING.md,
+    flexGrow: 1,
+  },
+  listContentEmpty: {
+    flex: 1,
+    justifyContent: 'center',
   },
   commentItem: {
     flexDirection: 'row',
@@ -158,6 +171,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     gap: SPACING.sm,
     backgroundColor: 'transparent', // Şeffaf arka plan - video görünür
+    paddingHorizontal: SPACING.sm,
   },
   commentAvatar: {
     width: 32,
@@ -200,9 +214,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     padding: SPACING.md,
+    paddingTop: SPACING.sm,
     borderTopWidth: 1,
     gap: SPACING.sm,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)', // Şeffaf arka plan - video görünür
   },
   inputAvatar: {
     width: 32,
