@@ -4341,7 +4341,7 @@ const appRouter = createTRPCRouter({
           
           const { data: session, error: sessionError } = await supabase
             .from('match_sessions')
-            .select('*, user1:profiles!match_sessions_user1_id_fkey(id, full_name, avatar_url, gender), user2:profiles!match_sessions_user2_id_fkey(id, full_name, avatar_url, gender)')
+            .select('*')
             .eq('id', matchId)
             .maybeSingle();
 
@@ -4363,13 +4363,23 @@ const appRouter = createTRPCRouter({
             });
           }
 
+          // User bilgilerini ayrı sorgulardan al
+          const [user1Data, user2Data] = await Promise.all([
+            supabase.from('profiles').select('id, full_name, avatar_url, gender').eq('id', session.user1_id).maybeSingle(),
+            supabase.from('profiles').select('id, full_name, avatar_url, gender').eq('id', session.user2_id).maybeSingle(),
+          ]);
+
           if (ENFORCE_MATCH_LIMIT) {
             await supabase.rpc('increment_daily_match_limit', { p_user_id: user.id });
           }
 
           return {
             matched: true,
-            session: session,
+            session: {
+              ...session,
+              user1: user1Data.data || null,
+              user2: user2Data.data || null,
+            },
           };
         }
 
@@ -4430,19 +4440,30 @@ const appRouter = createTRPCRouter({
         if (input?.session_id) {
           const { data: session, error: sessionError } = await supabase
             .from('match_sessions')
-            .select('*, user1:profiles!match_sessions_user1_id_fkey(id, full_name, avatar_url, gender), user2:profiles!match_sessions_user2_id_fkey(id, full_name, avatar_url, gender)')
+            .select('*')
             .eq('id', input.session_id)
             .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
             .maybeSingle();
 
           if (sessionError) {
             console.error('Session query error:', sessionError);
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Session sorgulanamadı: ${sessionError.message}` });
           }
 
           if (session) {
+            // User bilgilerini ayrı sorgulardan al
+            const [user1Data, user2Data] = await Promise.all([
+              supabase.from('profiles').select('id, full_name, avatar_url, gender').eq('id', session.user1_id).maybeSingle(),
+              supabase.from('profiles').select('id, full_name, avatar_url, gender').eq('id', session.user2_id).maybeSingle(),
+            ]);
+
             return {
               matched: !session.ended_at,
-              session: session,
+              session: {
+                ...session,
+                user1: user1Data.data || null,
+                user2: user2Data.data || null,
+              },
             };
           }
         }
@@ -4450,7 +4471,7 @@ const appRouter = createTRPCRouter({
         // Aktif eşleşme var mı kontrol et
         const { data: activeSession, error: activeSessionError } = await supabase
           .from('match_sessions')
-          .select('*, user1:profiles!match_sessions_user1_id_fkey(id, full_name, avatar_url, gender), user2:profiles!match_sessions_user2_id_fkey(id, full_name, avatar_url, gender)')
+          .select('*')
           .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
           .is('ended_at', null)
           .order('started_at', { ascending: false })
@@ -4459,12 +4480,23 @@ const appRouter = createTRPCRouter({
 
         if (activeSessionError) {
           console.error('Active session query error:', activeSessionError);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Aktif oturum sorgulanamadı: ${activeSessionError.message}` });
         }
 
         if (activeSession) {
+          // User bilgilerini ayrı sorgulardan al
+          const [user1Data, user2Data] = await Promise.all([
+            supabase.from('profiles').select('id, full_name, avatar_url, gender').eq('id', activeSession.user1_id).maybeSingle(),
+            supabase.from('profiles').select('id, full_name, avatar_url, gender').eq('id', activeSession.user2_id).maybeSingle(),
+          ]);
+
           return {
             matched: true,
-            session: activeSession,
+            session: {
+              ...activeSession,
+              user1: user1Data.data || null,
+              user2: user2Data.data || null,
+            },
           };
         }
 
@@ -4529,26 +4561,35 @@ const appRouter = createTRPCRouter({
           
           const { data: newSession, error: newSessionError } = await supabase
             .from('match_sessions')
-            .select('*, user1:profiles!match_sessions_user1_id_fkey(id, full_name, avatar_url, gender), user2:profiles!match_sessions_user2_id_fkey(id, full_name, avatar_url, gender)')
+            .select('*')
             .eq('id', matchId)
             .maybeSingle();
 
           if (newSessionError) {
             console.error('New session query error:', newSessionError);
-            return {
-              matched: false,
-              session: null,
-            };
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Yeni oturum sorgulanamadı: ${newSessionError.message}` });
           }
 
           if (newSession) {
             console.log('New session found:', newSession.id);
+            
+            // User bilgilerini ayrı sorgulardan al
+            const [user1Data, user2Data] = await Promise.all([
+              supabase.from('profiles').select('id, full_name, avatar_url, gender').eq('id', newSession.user1_id).maybeSingle(),
+              supabase.from('profiles').select('id, full_name, avatar_url, gender').eq('id', newSession.user2_id).maybeSingle(),
+            ]);
+
             return {
               matched: true,
-              session: newSession,
+              session: {
+                ...newSession,
+                user1: user1Data.data || null,
+                user2: user2Data.data || null,
+              },
             };
           } else {
             console.error('Match ID found but session not found:', matchId);
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Eşleşme oturumu bulunamadı' });
           }
         }
 
