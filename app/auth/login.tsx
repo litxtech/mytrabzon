@@ -404,7 +404,7 @@ export default function LoginScreen() {
           onPress={handleTwitterLogin}
           disabled={loading}
         >
-          <Text style={styles.twitterButtonText}>𝕏 X ile Giriş Yap</Text>
+          <Text style={styles.twitterButtonText}>𝕏 ile Giriş Yap</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
