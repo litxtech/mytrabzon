@@ -237,12 +237,12 @@ export default function FeedScreen() {
             )}
             <View style={styles.postMeta}>
               <View style={styles.postDistrictContainer}>
-                <Text style={styles.postDistrict}>
+                <Text style={styles.postDistrict} numberOfLines={1} ellipsizeMode="tail">
                   {DISTRICT_BADGES[item.district]} {item.district}
                 </Text>
               </View>
               <View style={styles.postTimeContainer}>
-                <Text style={styles.postTime}>
+                <Text style={styles.postTime} numberOfLines={1}>
                   {' • '}
                   {formatTimeAgo(item.created_at)}
                 </Text>
@@ -578,7 +578,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
     flexShrink: 1,
-    numberOfLines: 1,
   },
   postTimeContainer: {
     flexShrink: 0,
