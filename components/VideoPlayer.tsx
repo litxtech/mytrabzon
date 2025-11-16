@@ -30,6 +30,8 @@ import {
   VolumeX,
   Maximize,
   X,
+  Bookmark,
+  BookmarkCheck,
 } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,6 +41,7 @@ interface VideoPlayerProps {
   videoUrl: string;
   postId: string;
   isLiked?: boolean;
+  isSaved?: boolean;
   likeCount?: number;
   commentCount?: number;
   shareCount?: number;
@@ -46,6 +49,7 @@ interface VideoPlayerProps {
   onComment?: () => void;
   onShare?: () => void;
   onTag?: () => void;
+  onSave?: () => void;
   autoPlay?: boolean;
   showControls?: boolean;
   previewMode?: boolean; // Önizleme modu (feed'de)
@@ -55,6 +59,7 @@ export function VideoPlayer({
   videoUrl,
   postId,
   isLiked = false,
+  isSaved = false,
   likeCount = 0,
   commentCount = 0,
   shareCount = 0,
@@ -62,6 +67,7 @@ export function VideoPlayer({
   onComment,
   onShare,
   onTag,
+  onSave,
   autoPlay = false,
   showControls = true,
   previewMode = true,
@@ -278,6 +284,7 @@ export function VideoPlayer({
             videoUrl={videoUrl}
             postId={postId}
             isLiked={isLiked}
+            isSaved={isSaved}
             likeCount={likeCount}
             commentCount={commentCount}
             shareCount={shareCount}
@@ -285,6 +292,7 @@ export function VideoPlayer({
             onComment={onComment}
             onShare={onShare}
             onTag={onTag}
+            onSave={onSave}
             onClose={() => setShowFullScreen(false)}
           />
         </Modal>
@@ -315,6 +323,7 @@ interface FullScreenVideoPlayerProps {
   videoUrl: string;
   postId: string;
   isLiked: boolean;
+  isSaved?: boolean;
   likeCount: number;
   commentCount: number;
   shareCount: number;
@@ -322,6 +331,7 @@ interface FullScreenVideoPlayerProps {
   onComment?: () => void;
   onShare?: () => void;
   onTag?: () => void;
+  onSave?: () => void;
   onClose: () => void;
 }
 
@@ -329,6 +339,7 @@ function FullScreenVideoPlayer({
   videoUrl,
   postId,
   isLiked,
+  isSaved = false,
   likeCount,
   commentCount,
   shareCount,
@@ -336,6 +347,7 @@ function FullScreenVideoPlayer({
   onComment,
   onShare,
   onTag,
+  onSave,
   onClose,
 }: FullScreenVideoPlayerProps) {
   const { theme } = useTheme();
@@ -568,6 +580,19 @@ function FullScreenVideoPlayer({
           >
             <Tag size={32} color={COLORS.white} />
           </TouchableOpacity>
+
+          {onSave && (
+            <TouchableOpacity
+              style={styles.actionButtonLarge}
+              onPress={onSave}
+            >
+              {isSaved ? (
+                <BookmarkCheck size={32} color={COLORS.primary} fill={COLORS.primary} />
+              ) : (
+                <Bookmark size={32} color={COLORS.white} />
+              )}
+            </TouchableOpacity>
+          )}
         </View>
       </Pressable>
     </View>

@@ -12,6 +12,7 @@ import {
   Dimensions,
   Modal,
   ScrollView,
+  Share,
 } from 'react-native';
 import { Image } from 'expo-image';
 
@@ -341,7 +342,7 @@ export default function FeedScreen() {
         )}
       </View>
     );
-  }, [router, formatTimeAgo, theme, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible]);
+  }, [router, theme, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible]);
 
   const renderPost = useCallback(({ item }: { item: Post }) => {
     const firstMedia = item.media && item.media.length > 0 ? item.media[0] : null;
@@ -442,16 +443,28 @@ export default function FeedScreen() {
                   videoUrl={firstMedia.path}
                   postId={item.id}
                   isLiked={item.is_liked}
+                  isSaved={false}
                   likeCount={item.like_count}
                   commentCount={item.comment_count}
                   shareCount={item.share_count}
                   onLike={() => handleLike(item.id)}
                   onComment={() => router.push(`/post/${item.id}` as any)}
-                  onShare={() => {
-                    // Paylaşma fonksiyonu
+                  onShare={async () => {
+                    try {
+                      await Share.share({
+                        message: `${item.author?.full_name} - ${item.content || 'Gönderi'}`,
+                        url: firstMedia.path,
+                      });
+                    } catch (error) {
+                      console.error('Share error:', error);
+                    }
                   }}
                   onTag={() => {
-                    // Etiketleme fonksiyonu
+                    router.push(`/post/${item.id}` as any);
+                  }}
+                  onSave={() => {
+                    // Kaydetme fonksiyonu - post.savePost mutation'ı kullanılabilir
+                    Alert.alert('Bilgi', 'Kaydetme özelliği yakında eklenecek');
                   }}
                   autoPlay={true}
                   previewMode={true}
