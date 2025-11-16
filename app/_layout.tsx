@@ -134,32 +134,54 @@ export default function RootLayout() {
 
           // Callback (OAuth)
           if (url.includes('callback')) {
+            console.log('OAuth callback received:', url);
             const accessToken = params.access_token;
             const refreshToken = params.refresh_token;
 
+            console.log('Tokens received:', { hasAccessToken: !!accessToken, hasRefreshToken: !!refreshToken });
+
             if (accessToken && refreshToken) {
-              const { error } = await supabase.auth.setSession({
+              const { error: sessionError } = await supabase.auth.setSession({
                 access_token: accessToken,
                 refresh_token: refreshToken,
               });
 
-              if (!error) {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (session?.user) {
-                  const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', session.user.id)
-                    .single();
-
-                  if (profile) {
-                    router.replace('/(tabs)/feed');
-                  } else {
-                    router.replace('/auth/onboarding');
-                  }
-                }
+              if (sessionError) {
+                console.error('Session set error:', sessionError);
                 return;
               }
+
+              console.log('Session set successfully');
+
+              // Session'ı tekrar kontrol et
+              const { data: { session }, error: getSessionError } = await supabase.auth.getSession();
+              
+              if (getSessionError) {
+                console.error('Get session error:', getSessionError);
+                return;
+              }
+
+              if (session?.user) {
+                console.log('User authenticated:', session.user.id);
+                const { data: profile } = await supabase
+                  .from('profiles')
+                  .select('*')
+                  .eq('id', session.user.id)
+                  .single();
+
+                if (profile && profile.full_name) {
+                  console.log('Profile found, redirecting to feed');
+                  router.replace('/(tabs)/feed');
+                } else {
+                  console.log('Profile not found, redirecting to onboarding');
+                  router.replace('/auth/onboarding');
+                }
+              } else {
+                console.log('No session found after setting tokens');
+              }
+              return;
+            } else {
+              console.log('Missing tokens in callback URL');
             }
           }
 

@@ -48,25 +48,35 @@ export default function LoginScreen() {
     }
   }, [router]);
 
-  // OAuth callback'i dinle
+  // OAuth callback'i dinle - her zaman aktif
   useEffect(() => {
-    if (!oauthLoading) return;
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event, session?.user?.id);
+      
       if (event === 'SIGNED_IN' && session?.user) {
+        console.log('User signed in via OAuth:', session.user.id);
         setOauthLoading(false);
         setLoading(false);
         await checkProfileAndNavigate(session.user.id);
       } else if (event === 'SIGNED_OUT') {
+        console.log('User signed out');
         setOauthLoading(false);
         setLoading(false);
+      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+        console.log('Token refreshed for user:', session.user.id);
+        // Token yenilendiğinde de kontrol et
+        if (oauthLoading) {
+          setOauthLoading(false);
+          setLoading(false);
+          await checkProfileAndNavigate(session.user.id);
+        }
       }
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [oauthLoading, checkProfileAndNavigate]);
+  }, [checkProfileAndNavigate, oauthLoading]);
 
   const handleEmailAuth = async () => {
     const trimmedEmail = email.trim().toLowerCase();
@@ -301,10 +311,14 @@ export default function LoginScreen() {
     setLoading(true);
     setOauthLoading(true);
     try {
+      console.log('Starting Twitter/X OAuth login...');
+      
       const redirectUrl = Platform.select({
         web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
         default: 'mytrabzon://auth/callback',
       });
+
+      console.log('Redirect URL:', redirectUrl);
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'twitter',
@@ -315,8 +329,11 @@ export default function LoginScreen() {
       });
 
       if (error) {
+        console.error('OAuth error:', error);
         throw error;
       }
+
+      console.log('OAuth URL received:', data?.url ? 'Yes' : 'No');
 
       // Web'de OAuth browser'da açılır
       if (Platform.OS === 'web' && data.url) {
@@ -327,23 +344,56 @@ export default function LoginScreen() {
       // Mobilde OAuth URL'ini aç
       if (Platform.OS !== 'web' && data.url) {
         const canOpen = await Linking.canOpenURL(data.url);
+        console.log('Can open URL:', canOpen);
         if (canOpen) {
           await Linking.openURL(data.url);
+          console.log('OAuth URL opened, waiting for callback...');
+          
+          // Session kontrolü için polling başlat
+          const checkSession = setInterval(async () => {
+            try {
+              const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+              if (sessionError) {
+                console.error('Session check error:', sessionError);
+                return;
+              }
+              
+              if (session?.user) {
+                console.log('Session found for user:', session.user.id);
+                clearInterval(checkSession);
+                setOauthLoading(false);
+                setLoading(false);
+                await checkProfileAndNavigate(session.user.id);
+              }
+            } catch (err) {
+              console.error('Error checking session:', err);
+            }
+          }, 2000); // Her 2 saniyede bir kontrol et
+
+          // Timeout - 60 saniye sonra polling'i durdur
+          setTimeout(() => {
+            clearInterval(checkSession);
+            if (oauthLoading) {
+              console.log('OAuth timeout - checking final session state');
+              supabase.auth.getSession().then(({ data: { session } }) => {
+                if (session?.user) {
+                  setOauthLoading(false);
+                  setLoading(false);
+                  checkProfileAndNavigate(session.user.id);
+                } else {
+                  setOauthLoading(false);
+                  setLoading(false);
+                  Alert.alert('Zaman Aşımı', 'Giriş işlemi zaman aşımına uğradı. Lütfen tekrar deneyin.');
+                }
+              });
+            }
+          }, 60000);
         } else {
           throw new Error('OAuth URL açılamadı');
         }
+      } else {
+        throw new Error('OAuth URL alınamadı');
       }
-
-      // Mobilde OAuth callback'i beklemek için session kontrolü yap
-      // onAuthStateChange listener otomatik olarak yönlendirecek
-      // Timeout ekle - eğer 60 saniye içinde callback gelmezse hata göster
-      setTimeout(() => {
-        if (oauthLoading) {
-          setOauthLoading(false);
-          setLoading(false);
-          Alert.alert('Zaman Aşımı', 'Giriş işlemi zaman aşımına uğradı. Lütfen tekrar deneyin.');
-        }
-      }, 60000);
     } catch (error: any) {
       console.error('Error during Twitter/X login:', error);
       Alert.alert('Hata', error.message || 'X ile giriş yapılırken bir hata oluştu');
