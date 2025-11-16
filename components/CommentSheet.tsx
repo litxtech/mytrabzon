@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
     gap: SPACING.sm,
-    backgroundColor: 'transparent', // Şeffaf arka plan
+    backgroundColor: 'transparent', // Şeffaf arka plan - video görünür
   },
   commentAvatar: {
     width: 32,
@@ -202,6 +202,7 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderTopWidth: 1,
     gap: SPACING.sm,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)', // Şeffaf arka plan - video görünür
   },
   inputAvatar: {
     width: 32,

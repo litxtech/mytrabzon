@@ -17,6 +17,8 @@ import {
   Platform,
   Pressable,
   ActivityIndicator,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
 import {
@@ -36,6 +38,7 @@ import {
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
+import { CommentSheet } from './CommentSheet';
 
 interface VideoPlayerProps {
   videoUrl: string;
@@ -358,10 +361,12 @@ function FullScreenVideoPlayer({
   const [isLoading, setIsLoading] = useState(true);
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
+  const [showComments, setShowComments] = useState(false);
   const lastTap = useRef<number>(0);
   const controlsTimeout = useRef<NodeJS.Timeout | null>(null);
   const insets = useSafeAreaInsets();
   const { width, height } = Dimensions.get('window');
+  const commentSheetY = useRef(new Animated.Value(height)).current;
 
   useEffect(() => {
     // Tam ekran açıldığında video'yu otomatik başlat
@@ -560,7 +565,15 @@ function FullScreenVideoPlayer({
 
           <TouchableOpacity
             style={styles.actionButtonLarge}
-            onPress={onComment}
+            onPress={() => {
+              setShowComments(true);
+              Animated.spring(commentSheetY, {
+                toValue: height * 0.5, // Yarıya kadar açılır
+                useNativeDriver: true,
+                tension: 50,
+                friction: 7,
+              }).start();
+            }}
           >
             <MessageCircle size={32} color={COLORS.white} />
             <Text style={styles.actionCountText}>{formatCount(commentCount)}</Text>

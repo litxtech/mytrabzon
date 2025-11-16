@@ -74,7 +74,7 @@ export function VideoFeedItem({ post, isActive, index }: VideoFeedItemProps) {
   const handleComment = () => {
     setShowComments(true);
     Animated.spring(commentSheetY, {
-      toValue: SCREEN_HEIGHT * 0.35, // Ekranın %35'i - daha az yer kaplar, video daha görünür
+      toValue: SCREEN_HEIGHT * 0.5, // Ekranın %50'si - yarıya kadar açılır, video hala görünür
       useNativeDriver: true,
       tension: 50,
       friction: 7,
@@ -101,7 +101,7 @@ export function VideoFeedItem({ post, isActive, index }: VideoFeedItemProps) {
       },
       onPanResponderMove: (_, gestureState) => {
         if (gestureState.dy > 0) {
-          commentSheetY.setValue(SCREEN_HEIGHT * 0.35 + gestureState.dy);
+          commentSheetY.setValue(SCREEN_HEIGHT * 0.5 + gestureState.dy);
         }
       },
       onPanResponderRelease: (_, gestureState) => {
@@ -109,7 +109,7 @@ export function VideoFeedItem({ post, isActive, index }: VideoFeedItemProps) {
           handleCloseComments();
         } else {
           Animated.spring(commentSheetY, {
-            toValue: SCREEN_HEIGHT * 0.35,
+            toValue: SCREEN_HEIGHT * 0.5,
             useNativeDriver: true,
             tension: 50,
             friction: 7,
@@ -188,14 +188,14 @@ export function VideoFeedItem({ post, isActive, index }: VideoFeedItemProps) {
         </View>
       </View>
 
-      {/* Yorum Paneli (Bottom Sheet) - Şeffaf */}
+      {/* Yorum Paneli (Bottom Sheet) - Şeffaf, video izlenirken */}
       {showComments && (
         <Animated.View
           style={[
             styles.commentSheet,
             {
               transform: [{ translateY: commentSheetY }],
-              backgroundColor: theme.colors.card + 'F0', // %94 opacity - şeffaf
+              backgroundColor: 'rgba(0, 0, 0, 0.7)', // Daha şeffaf - video daha görünür
             },
           ]}
           {...panResponder.panHandlers}
@@ -281,15 +281,15 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: SCREEN_HEIGHT * 0.6,
+    height: SCREEN_HEIGHT * 0.6, // Maksimum yükseklik
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 10,
-    backdropFilter: 'blur(10px)', // Web için blur efekti
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 15,
+    // Blur efekti için overlay
   },
   dragHandleContainer: {
     alignItems: 'center',
