@@ -76,7 +76,7 @@ export default function MatchScreen() {
     refetchInterval: 2000, // 2 saniyede bir kontrol et
   });
 
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startPolling = () => {
     if (pollingIntervalRef.current) {
