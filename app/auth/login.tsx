@@ -480,12 +480,6 @@ export default function LoginScreen() {
           )}
         </TouchableOpacity>
 
-        <View style={styles.divider}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>veya</Text>
-          <View style={styles.dividerLine} />
-        </View>
-
         <TouchableOpacity
           style={[styles.twitterButton, (loading || oauthLoading) && styles.buttonDisabled]}
           onPress={handleTwitterLogin}
@@ -560,7 +554,9 @@ export default function LoginScreen() {
             </TouchableOpacity>
             <View style={styles.divider}>
               <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>veya</Text>
+              <TouchableOpacity onPress={() => Linking.openURL('https://www.litxtech.com')}>
+                <Text style={styles.dividerText}>www.litxtech.com</Text>
+              </TouchableOpacity>
               <View style={styles.dividerLine} />
             </View>
             <Text style={styles.terms}>
