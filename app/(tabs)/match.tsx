@@ -3,7 +3,7 @@
  * Hızlı görüntülü eşleşme sistemi
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,7 +28,7 @@ import { Footer } from '@/components/Footer';
 export default function MatchScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user, profile } = useAuth();
+  const { profile } = useAuth();
   const [isMatching, setIsMatching] = useState(false);
   const [matchStatus, setMatchStatus] = useState<'idle' | 'searching' | 'matched'>('idle');
   const [cameraReady, setCameraReady] = useState(true);
@@ -36,10 +36,10 @@ export default function MatchScreen() {
   const [showMatchFoundModal, setShowMatchFoundModal] = useState(false);
   const [foundSession, setFoundSession] = useState<any>(null);
   const pulseAnim = useRef(new Animated.Value(0)).current;
-  const matchFoundTimeout = useRef<NodeJS.Timeout | null>(null);
+  const matchFoundTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const joinQueueMutation = trpc.match.joinQueue.useMutation({
-    onSuccess: (data) => {
+  const joinQueueMutation = (trpc as any).match.joinQueue.useMutation({
+    onSuccess: (data: any) => {
       if (data.matched && data.session?.id) {
         setMatchStatus('matched');
         setIsMatching(false);
@@ -56,14 +56,14 @@ export default function MatchScreen() {
         startPolling();
       }
     },
-    onError: (error) => {
+    onError: (error: any) => {
       setIsMatching(false);
       setMatchStatus('idle');
       Alert.alert('Hata', error.message);
     },
   });
 
-  const leaveQueueMutation = trpc.match.leaveQueue.useMutation({
+  const leaveQueueMutation = (trpc as any).match.leaveQueue.useMutation({
     onSuccess: () => {
       setIsMatching(false);
       setMatchStatus('idle');
@@ -71,7 +71,7 @@ export default function MatchScreen() {
     },
   });
 
-  const checkMatchQuery = trpc.match.checkMatch.useQuery(undefined, {
+  const checkMatchQuery = (trpc as any).match.checkMatch.useQuery(undefined, {
     enabled: matchStatus === 'searching',
     refetchInterval: 2000, // 2 saniyede bir kontrol et
   });
@@ -94,6 +94,16 @@ export default function MatchScreen() {
     }
   };
 
+  const handleAcceptMatch = useCallback(() => {
+    if (matchFoundTimeout.current) {
+      clearTimeout(matchFoundTimeout.current);
+    }
+    setShowMatchFoundModal(false);
+    if (foundSession?.id) {
+      router.push(`/match/video/${foundSession.id}` as any);
+    }
+  }, [foundSession, router]);
+
   useEffect(() => {
     if (checkMatchQuery.data?.matched && checkMatchQuery.data.session?.id) {
       setMatchStatus('matched');
@@ -109,7 +119,7 @@ export default function MatchScreen() {
         handleAcceptMatch();
       }, 30000);
     }
-  }, [checkMatchQuery.data, router]);
+  }, [checkMatchQuery.data, handleAcceptMatch]);
 
   useEffect(() => {
     return () => {
@@ -163,16 +173,6 @@ export default function MatchScreen() {
     setMatchStatus('idle');
     leaveQueueMutation.mutate();
     stopPolling();
-  };
-
-  const handleAcceptMatch = () => {
-    if (matchFoundTimeout.current) {
-      clearTimeout(matchFoundTimeout.current);
-    }
-    setShowMatchFoundModal(false);
-    if (foundSession?.id) {
-      router.push(`/match/video/${foundSession.id}` as any);
-    }
   };
 
   const handleRejectMatch = () => {
