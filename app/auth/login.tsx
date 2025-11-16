@@ -98,12 +98,11 @@ export default function LoginScreen() {
       if (mode === 'login') {
         result = await supabase.auth.signInWithPassword({ email: trimmedEmail, password });
       } else {
-        // Email confirmation için Supabase callback URL kullan (mobilde deep link'e yönlendirsin)
+        // Email confirmation için web callback sayfası kullan (oradan deep link'e yönlendirecek)
         const deepLinkUrl = 'mytrabzon://auth/callback';
-        const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
         const emailRedirectTo = Platform.select({
           web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
-          default: `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`,
+          default: `https://www.litxtech.com/auth/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`,
         });
 
         result = await supabase.auth.signUp({ 
@@ -139,12 +138,11 @@ export default function LoginScreen() {
                 text: 'Email Gönder',
                 onPress: async () => {
                   try {
-                    // Email resend için Supabase callback URL kullan
+                    // Email resend için web callback sayfası kullan (oradan deep link'e yönlendirecek)
                     const deepLinkUrl = 'mytrabzon://auth/callback';
-                    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
                     const emailRedirectTo = Platform.select({
                       web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
-                      default: `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`,
+                      default: `https://www.litxtech.com/auth/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`,
                     });
 
                     const { error: resendError } = await supabase.auth.resend({
@@ -205,12 +203,11 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      // Magic link için Supabase callback URL kullan (mobilde deep link'e yönlendirsin)
+      // Magic link için web callback sayfası kullan (oradan deep link'e yönlendirecek)
       const deepLinkUrl = 'mytrabzon://auth/callback';
-      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
       const emailRedirectTo = Platform.select({
         web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
-        default: `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`,
+        default: `https://www.litxtech.com/auth/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`,
       });
 
       const { error } = await supabase.auth.signInWithOtp({ 
@@ -271,13 +268,14 @@ export default function LoginScreen() {
     setLoading(true);
     setOauthLoading(true);
     try {
-      // OAuth provider'lar https:// bekliyor, bu yüzden Supabase callback URL'ini kullan
-      // Deep link'i redirect_to parametresi olarak ekle
+      // OAuth provider'lar Supabase callback URL'ini kullanmalı, ama redirect_to ile web callback sayfasına yönlendir
+      // Web callback sayfası oradan deep link'e yönlendirecek
       const deepLinkUrl = 'mytrabzon://auth/callback';
+      const webCallbackUrl = `https://www.litxtech.com/auth/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`;
       const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
       const redirectUrl = Platform.select({
-        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
-        default: `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`,
+        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : webCallbackUrl,
+        default: `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(webCallbackUrl)}`,
       });
 
       console.log('Google redirect URL:', redirectUrl);
@@ -336,13 +334,14 @@ export default function LoginScreen() {
     try {
       console.log('Starting Twitter/X OAuth login...');
       
-      // OAuth provider'lar https:// bekliyor, bu yüzden Supabase callback URL'ini kullan
-      // Deep link'i redirect_to parametresi olarak ekle
+      // OAuth provider'lar Supabase callback URL'ini kullanmalı, ama redirect_to ile web callback sayfasına yönlendir
+      // Web callback sayfası oradan deep link'e yönlendirecek
       const deepLinkUrl = 'mytrabzon://auth/callback';
+      const webCallbackUrl = `https://www.litxtech.com/auth/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`;
       const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
       const redirectUrl = Platform.select({
-        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
-        default: `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`,
+        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : webCallbackUrl,
+        default: `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(webCallbackUrl)}`,
       });
 
       console.log('Redirect URL:', redirectUrl);
@@ -424,11 +423,12 @@ export default function LoginScreen() {
     try {
       console.log('Starting Apple OAuth login...');
       
-      // OAuth provider'lar https:// bekliyor, bu yüzden Supabase callback URL'ini kullan
-      // Deep link'i redirect_to parametresi olarak ekle
+      // OAuth provider'lar Supabase callback URL'ini kullanmalı, ama redirect_to ile web callback sayfasına yönlendir
+      // Web callback sayfası oradan deep link'e yönlendirecek
       const deepLinkUrl = 'mytrabzon://auth/callback';
+      const webCallbackUrl = `https://www.litxtech.com/auth/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`;
       const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-      const redirectUrl = `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`;
+      const redirectUrl = `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(webCallbackUrl)}`;
 
       console.log('Apple redirect URL:', redirectUrl);
       console.log('Platform:', Platform.OS);

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyTrabzon - Kimlik Doğrulama</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #DC2626 0%, #991B1B 100%);
+            color: white;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .message {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+        .submessage {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+        .button {
+            display: inline-block;
+            margin-top: 1.5rem;
+            padding: 0.75rem 1.5rem;
+            background: white;
+            color: #DC2626;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+        .button:hover {
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <div class="message">Uygulamaya yönlendiriliyorsunuz...</div>
+        <div class="submessage">Eğer otomatik yönlendirme çalışmazsa, aşağıdaki butona tıklayın.</div>
+        <a href="#" id="deepLinkButton" class="button" style="display: none;">Uygulamayı Aç</a>
+    </div>
+
+    <script>
+        (function() {
+            // URL'den parametreleri al
+            const urlParams = new URLSearchParams(window.location.search);
+            const accessToken = urlParams.get('access_token');
+            const refreshToken = urlParams.get('refresh_token');
+            const code = urlParams.get('code');
+            const redirectTo = urlParams.get('redirect_to');
+            const error = urlParams.get('error');
+            const errorDescription = urlParams.get('error_description');
+
+            // Hata varsa göster
+            if (error) {
+                document.querySelector('.message').textContent = 'Hata: ' + (errorDescription || error);
+                document.querySelector('.submessage').textContent = 'Lütfen uygulamayı açıp tekrar deneyin.';
+                return;
+            }
+
+            // Deep link URL'ini oluştur
+            let deepLinkUrl = 'mytrabzon://auth/callback';
+            const params = [];
+
+            if (accessToken) params.push('access_token=' + encodeURIComponent(accessToken));
+            if (refreshToken) params.push('refresh_token=' + encodeURIComponent(refreshToken));
+            if (code) params.push('code=' + encodeURIComponent(code));
+            if (redirectTo) params.push('redirect_to=' + encodeURIComponent(redirectTo));
+
+            if (params.length > 0) {
+                deepLinkUrl += '?' + params.join('&');
+            }
+
+            // Deep link butonunu göster
+            const deepLinkButton = document.getElementById('deepLinkButton');
+            deepLinkButton.href = deepLinkUrl;
+            deepLinkButton.style.display = 'inline-block';
+
+            // Mobil cihazlarda otomatik yönlendirme dene
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            
+            if (isMobile) {
+                // iOS için
+                if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                    // Universal Link denemesi
+                    window.location.href = deepLinkUrl;
+                    
+                    // Eğer 2 saniye içinde yönlendirme olmazsa, butonu göster
+                    setTimeout(function() {
+                        deepLinkButton.style.display = 'inline-block';
+                        document.querySelector('.message').textContent = 'Uygulamayı açmak için butona tıklayın';
+                    }, 2000);
+                } 
+                // Android için
+                else if (/Android/i.test(navigator.userAgent)) {
+                    // Intent URL denemesi
+                    const intentUrl = 'intent://auth/callback#' + 
+                        (params.length > 0 ? params.join('&') : '') + 
+                        '#Intent;scheme=mytrabzon;package=com.litxtech.mytrabzon;end';
+                    
+                    // Önce intent URL'i dene
+                    window.location.href = intentUrl;
+                    
+                    // Eğer çalışmazsa normal deep link'e dön
+                    setTimeout(function() {
+                        window.location.href = deepLinkUrl;
+                    }, 500);
+                    
+                    // Eğer hala çalışmazsa butonu göster
+                    setTimeout(function() {
+                        deepLinkButton.style.display = 'inline-block';
+                        document.querySelector('.message').textContent = 'Uygulamayı açmak için butona tıklayın';
+                    }, 2000);
+                }
+            } else {
+                // Desktop'ta direkt butonu göster
+                deepLinkButton.style.display = 'inline-block';
+                document.querySelector('.message').textContent = 'Mobil cihazınızda uygulamayı açın';
+                document.querySelector('.submessage').textContent = 'Bu sayfa sadece mobil cihazlarda çalışır.';
+            }
+
+            // Butona tıklandığında
+            deepLinkButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                window.location.href = deepLinkUrl;
+            });
+        })();
+    </script>
+</body>
+</html>
+
