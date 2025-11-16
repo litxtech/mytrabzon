@@ -20,7 +20,7 @@ import { X, Image as ImageIcon, Camera, MapPin, Video as VideoIcon } from 'lucid
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Footer } from '@/components/Footer';
-import { Video } from 'expo-av';
+import { Video, ResizeMode } from 'expo-av';
 
 export default function CreatePostScreen() {
   const router = useRouter();
@@ -174,7 +174,6 @@ export default function CreatePostScreen() {
           content: content.trim() || ' ',
           district: profile.district,
           media_urls: mediaUrls.length > 0 ? mediaUrls : undefined,
-          room_id: isGroupPost ? room_id : undefined, // Grup post'u için room_id ekle
         });
 
         Alert.alert('Başarılı', 'Gönderiniz paylaşıldı!', [
@@ -262,7 +261,7 @@ export default function CreatePostScreen() {
                 <Video
                   source={{ uri }}
                   style={styles.selectedVideo}
-                  resizeMode="cover"
+                  resizeMode={ResizeMode.CONTAIN}
                   shouldPlay={false}
                   isLooping
                   isMuted
@@ -432,6 +431,31 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     borderRadius: 12,
     padding: 4,
+    zIndex: 10,
+  },
+  videosContainer: {
+    padding: SPACING.md,
+    gap: SPACING.sm,
+    backgroundColor: COLORS.white,
+  },
+  videoWrapper: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+    position: 'relative' as const,
+  },
+  selectedVideo: {
+    width: '100%',
+    height: '100%',
+  },
+  videoOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    pointerEvents: 'none' as const,
   },
   characterCount: {
     textAlign: 'right' as const,
