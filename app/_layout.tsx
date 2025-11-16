@@ -169,8 +169,9 @@ export default function RootLayout() {
                 if (exchangeError) {
                   console.error('Code exchange error:', exchangeError);
                   // Code exchange başarısız olursa, redirect_to'ya yönlendir (token'lar orada olabilir)
-                  if (redirectTo && (redirectTo.startsWith('mytrabzon://') || redirectTo.startsWith('litxtech://'))) {
-                    await handleDeepLink(redirectTo);
+                  const redirectUrl = redirectTo || params.redirect_to;
+                  if (redirectUrl && (redirectUrl.startsWith('mytrabzon://') || redirectUrl.startsWith('litxtech://'))) {
+                    await handleDeepLink(redirectUrl);
                     return;
                   }
                   return;
@@ -193,8 +194,9 @@ export default function RootLayout() {
               } catch (err) {
                 console.error('Code exchange error:', err);
                 // Hata durumunda redirect_to'ya yönlendir
-                if (redirectTo && (redirectTo.startsWith('mytrabzon://') || redirectTo.startsWith('litxtech://'))) {
-                  await handleDeepLink(redirectTo);
+                const redirectUrl = redirectTo || params.redirect_to;
+                if (redirectUrl && (redirectUrl.startsWith('mytrabzon://') || redirectUrl.startsWith('litxtech://'))) {
+                  await handleDeepLink(redirectUrl);
                   return;
                 }
               }
@@ -273,15 +275,37 @@ export default function RootLayout() {
         if (url.includes('supabase.co') && (url.includes('/auth/v1/callback') || url.includes('redirect_to='))) {
           console.log('Supabase callback URL detected:', url);
           
-          // URL'den token'ları ve redirect_to'yu çıkar
-          const urlObj = new URL(url);
-          const accessToken = urlObj.searchParams.get('access_token');
-          const refreshToken = urlObj.searchParams.get('refresh_token');
-          const redirectTo = urlObj.searchParams.get('redirect_to');
+          // URL'den token'ları ve redirect_to'yu çıkar (React Native'de URL constructor çalışmayabilir)
+          let accessToken: string | null = null;
+          let refreshToken: string | null = null;
+          let redirectTo: string | null = null;
+          let code: string | null = null;
+          
+          try {
+            // URL parse etmeyi dene
+            const urlObj = new URL(url);
+            accessToken = urlObj.searchParams.get('access_token');
+            refreshToken = urlObj.searchParams.get('refresh_token');
+            redirectTo = urlObj.searchParams.get('redirect_to');
+            code = urlObj.searchParams.get('code');
+          } catch (urlError) {
+            // URL parse hatası - manuel parse
+            console.log('URL parse failed, using manual parsing');
+            const accessTokenMatch = url.match(/[?&]access_token=([^&]+)/);
+            const refreshTokenMatch = url.match(/[?&]refresh_token=([^&]+)/);
+            const redirectToMatch = url.match(/[?&]redirect_to=([^&]+)/);
+            const codeMatch = url.match(/[?&]code=([^&]+)/);
+            
+            if (accessTokenMatch) accessToken = decodeURIComponent(accessTokenMatch[1]);
+            if (refreshTokenMatch) refreshToken = decodeURIComponent(refreshTokenMatch[1]);
+            if (redirectToMatch) redirectTo = decodeURIComponent(redirectToMatch[1]);
+            if (codeMatch) code = decodeURIComponent(codeMatch[1]);
+          }
           
           console.log('Tokens from Supabase callback:', { 
             hasAccessToken: !!accessToken, 
             hasRefreshToken: !!refreshToken,
+            hasCode: !!code,
             redirectTo 
           });
           
