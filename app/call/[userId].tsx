@@ -56,11 +56,11 @@ export default function CallScreen() {
         // Agora token al (opsiyonel - test mode için gerekli değil)
         let token = '';
         try {
-          const tokenResult = await (trpc as any).match.generateAgoraToken.mutate({
+          const tokenResult = await (trpc as any).match.generateAgoraToken.mutateAsync({
             channel_name: channelName,
             uid: uid,
           });
-          token = tokenResult.token || '';
+          token = tokenResult?.token || '';
         } catch (error) {
           console.error('Token generation error:', error);
           // Token olmadan devam et (test mode)
