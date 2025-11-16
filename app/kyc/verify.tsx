@@ -175,9 +175,6 @@ export default function KycVerifyScreen() {
         case 'selfie':
           setSelfie(urlData.publicUrl);
           break;
-        case 'selfie_with_id':
-          setSelfieWithId(urlData.publicUrl);
-          break;
       }
     } catch (error: any) {
       console.error('Upload error:', error);
