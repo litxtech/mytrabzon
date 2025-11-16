@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Camera, Upload } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { trpc } from '../../lib/trpc';
 import { supabase } from '../../lib/supabase';
@@ -114,45 +115,66 @@ export default function KycVerifyScreen() {
   const uploadImage = async (uri: string, type: DocumentType) => {
     setLoading(true);
     try {
+      if (!user?.id) {
+        throw new Error('Kullanıcı bilgisi bulunamadı');
+      }
+
+      // Dosya uzantısını al
       let fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
-      // jpg -> jpeg düzelt
       if (fileExt === 'jpg') fileExt = 'jpeg';
-      const fileName = `${user?.id}/${type}_${Date.now()}.${fileExt}`;
+      
+      const fileName = `${user.id}/${type}_${Date.now()}.${fileExt}`;
       const filePath = `kyc-documents/${fileName}`;
       
-      // MIME type'ı düzelt
+      // MIME type'ı belirle
       const mimeType = fileExt === 'jpeg' || fileExt === 'jpg' 
         ? 'image/jpeg' 
         : fileExt === 'png' 
         ? 'image/png' 
         : `image/${fileExt}`;
       
-      // React Native'de blob() yok, fetch ile base64 veya doğrudan URI kullan
-      // Supabase Storage React Native için URI'yi doğrudan kabul eder
-      const { error: uploadError } = await supabase.storage
+      // Base64'e çevir
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      
+      // Base64'ü Uint8Array'e çevir
+      const base64Data = base64.replace(/^data:image\/\w+;base64,/, '');
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      
+      // Supabase Storage'a yükle
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from('kyc-documents')
-        .upload(filePath, {
-          uri,
-          type: mimeType,
-          name: fileName,
-        } as any, {
+        .upload(filePath, bytes, {
           contentType: mimeType,
           upsert: false,
         });
       
       if (uploadError) {
         console.error('Upload error:', uploadError);
-        throw uploadError;
+        throw new Error(uploadError.message || 'Fotoğraf yüklenirken bir hata oluştu');
       }
       
+      if (!uploadData) {
+        throw new Error('Yükleme verisi alınamadı');
+      }
+      
+      // Public URL al
       const { data: urlData } = supabase.storage
         .from('kyc-documents')
-        .getPublicUrl(filePath);
+        .getPublicUrl(uploadData.path);
       
       if (!urlData?.publicUrl) {
         throw new Error('Public URL oluşturulamadı');
       }
       
+      console.log('Image uploaded successfully:', urlData.publicUrl);
+      
+      // State'i güncelle
       switch (type) {
         case 'id_front':
           setIdFront(urlData.publicUrl);
