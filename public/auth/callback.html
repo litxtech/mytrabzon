@@ -66,6 +66,9 @@
 
     <script>
         (function() {
+            console.log('Callback page loaded');
+            console.log('Current URL:', window.location.href);
+            
             // URL'den parametreleri al
             const urlParams = new URLSearchParams(window.location.search);
             const accessToken = urlParams.get('access_token');
@@ -74,6 +77,16 @@
             const redirectTo = urlParams.get('redirect_to');
             const error = urlParams.get('error');
             const errorDescription = urlParams.get('error_description');
+            const type = urlParams.get('type'); // Email confirmation type
+
+            console.log('URL params:', {
+                hasAccessToken: !!accessToken,
+                hasRefreshToken: !!refreshToken,
+                hasCode: !!code,
+                redirectTo: redirectTo,
+                error: error,
+                type: type
+            });
 
             // Hata varsa göster
             if (error) {
@@ -82,18 +95,26 @@
                 return;
             }
 
-            // Deep link URL'ini oluştur
-            let deepLinkUrl = 'mytrabzon://auth/callback';
-            const params = [];
+            // redirect_to varsa onu kullan, yoksa varsayılan deep link
+            let deepLinkUrl = redirectTo || 'mytrabzon://auth/callback';
+            
+            // redirect_to zaten deep link ise direkt kullan
+            if (redirectTo && (redirectTo.startsWith('mytrabzon://') || redirectTo.startsWith('litxtech://'))) {
+                deepLinkUrl = redirectTo;
+            }
 
+            // Deep link URL'ine token'ları ekle
+            const params = [];
             if (accessToken) params.push('access_token=' + encodeURIComponent(accessToken));
             if (refreshToken) params.push('refresh_token=' + encodeURIComponent(refreshToken));
             if (code) params.push('code=' + encodeURIComponent(code));
-            if (redirectTo) params.push('redirect_to=' + encodeURIComponent(redirectTo));
 
             if (params.length > 0) {
-                deepLinkUrl += '?' + params.join('&');
+                const separator = deepLinkUrl.includes('?') ? '&' : '?';
+                deepLinkUrl += separator + params.join('&');
             }
+
+            console.log('Deep link URL:', deepLinkUrl);
 
             // Deep link butonunu göster
             const deepLinkButton = document.getElementById('deepLinkButton');

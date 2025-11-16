@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Mail, Lock } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import * as WebBrowser from 'expo-web-browser';
 
 type AuthMode = 'login' | 'register' | 'magic' | 'forgot';
 
@@ -268,25 +269,32 @@ export default function LoginScreen() {
     setLoading(true);
     setOauthLoading(true);
     try {
-      // OAuth provider'lar Supabase callback URL'ini kullanmalı, ama redirect_to ile web callback sayfasına yönlendir
-      // Web callback sayfası oradan deep link'e yönlendirecek
-      const deepLinkUrl = 'mytrabzon://auth/callback';
-      const webCallbackUrl = `https://www.litxtech.com/auth/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`;
-      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-      const redirectUrl = Platform.select({
-        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : webCallbackUrl,
-        default: `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(webCallbackUrl)}`,
-      });
+      console.log('Starting Google native login...');
 
-      console.log('Google redirect URL:', redirectUrl);
-      console.log('Platform:', Platform.OS);
-      console.log('Deep link URL:', deepLinkUrl);
+      // Web'de Supabase OAuth kullan
+      if (Platform.OS === 'web') {
+        const redirectUrl = typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback';
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: redirectUrl,
+            skipBrowserRedirect: false,
+          },
+        });
+        if (error) throw error;
+        if (data.url) {
+          window.location.href = data.url;
+        }
+        return;
+      }
 
+      // Mobilde Supabase OAuth URL'ini uygulama içinde aç
+      const redirectUrl = 'mytrabzon://auth/callback';
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: redirectUrl,
-          skipBrowserRedirect: true, // true - OAuth URL'ini direkt aç, Supabase callback'i deep link handler yakalayacak
+          skipBrowserRedirect: true,
         },
       });
 
@@ -294,32 +302,39 @@ export default function LoginScreen() {
         throw error;
       }
 
-      // Web'de OAuth browser'da açılır
-      if (Platform.OS === 'web' && data.url) {
-        window.location.href = data.url;
-        return; // Web'de yönlendirme yapıldı
+      if (!data.url) {
+        throw new Error('OAuth URL alınamadı');
       }
 
-      // Mobilde OAuth URL'ini aç
-      if (Platform.OS !== 'web' && data.url) {
-        const canOpen = await Linking.canOpenURL(data.url);
-        if (canOpen) {
-          await Linking.openURL(data.url);
-        } else {
-          throw new Error('OAuth URL açılamadı');
-        }
-      }
+      console.log('Opening Google OAuth in app browser:', data.url);
 
-      // Mobilde OAuth callback'i beklemek için session kontrolü yap
-      // onAuthStateChange listener otomatik olarak yönlendirecek
-      // Timeout ekle - eğer 60 saniye içinde callback gelmezse hata göster
-      setTimeout(() => {
-        if (oauthLoading) {
-          setOauthLoading(false);
-          setLoading(false);
-          Alert.alert('Zaman Aşımı', 'Giriş işlemi zaman aşımına uğradı. Lütfen tekrar deneyin.');
-        }
-      }, 60000);
+      // OAuth URL'ini uygulama içinde aç
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+
+      console.log('WebBrowser result:', result.type);
+
+      if (result.type === 'success' && result.url) {
+        // Deep link handler otomatik olarak işleyecek
+        // Session kontrolü yap
+        setTimeout(async () => {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            setOauthLoading(false);
+            setLoading(false);
+            await checkProfileAndNavigate(session.user.id);
+          } else {
+            setOauthLoading(false);
+            setLoading(false);
+            Alert.alert('Hata', 'Giriş tamamlanamadı. Lütfen tekrar deneyin.');
+          }
+        }, 2000);
+      } else if (result.type === 'cancel') {
+        console.log('Google giriş iptal edildi');
+        setLoading(false);
+        setOauthLoading(false);
+      } else {
+        throw new Error('Google giriş başarısız');
+      }
     } catch (error: any) {
       console.error('Error during Google login:', error);
       Alert.alert('Hata', error.message || 'Google ile giriş yapılırken bir hata oluştu');
@@ -332,27 +347,32 @@ export default function LoginScreen() {
     setLoading(true);
     setOauthLoading(true);
     try {
-      console.log('Starting Twitter/X OAuth login...');
-      
-      // OAuth provider'lar Supabase callback URL'ini kullanmalı, ama redirect_to ile web callback sayfasına yönlendir
-      // Web callback sayfası oradan deep link'e yönlendirecek
-      const deepLinkUrl = 'mytrabzon://auth/callback';
-      const webCallbackUrl = `https://www.litxtech.com/auth/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`;
-      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-      const redirectUrl = Platform.select({
-        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : webCallbackUrl,
-        default: `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(webCallbackUrl)}`,
-      });
+      console.log('Starting Twitter/X native login...');
 
-      console.log('Redirect URL:', redirectUrl);
-      console.log('Platform:', Platform.OS);
-      console.log('Deep link URL:', deepLinkUrl);
+      // Web'de Supabase OAuth kullan
+      if (Platform.OS === 'web') {
+        const redirectUrl = typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback';
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'twitter',
+          options: {
+            redirectTo: redirectUrl,
+            skipBrowserRedirect: false,
+          },
+        });
+        if (error) throw error;
+        if (data.url) {
+          window.location.href = data.url;
+        }
+        return;
+      }
 
+      // Mobilde Supabase OAuth URL'ini uygulama içinde aç
+      const redirectUrl = 'mytrabzon://auth/callback';
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'twitter',
         options: {
           redirectTo: redirectUrl,
-          skipBrowserRedirect: true, // true - OAuth URL'ini direkt aç, Supabase callback'i deep link handler yakalayacak
+          skipBrowserRedirect: true,
         },
       });
 
@@ -361,47 +381,38 @@ export default function LoginScreen() {
         throw error;
       }
 
-      console.log('OAuth URL received:', data?.url ? 'Yes' : 'No');
-
-      // Web'de OAuth browser'da açılır
-      if (Platform.OS === 'web' && data.url) {
-        window.location.href = data.url;
-        return; // Web'de yönlendirme yapıldı
+      if (!data.url) {
+        throw new Error('OAuth URL alınamadı');
       }
 
-      // Mobilde OAuth URL'ini aç - Supabase callback URL'i açılacak
-      if (Platform.OS !== 'web' && data.url) {
-        console.log('Opening OAuth URL:', data.url);
-        const canOpen = await Linking.canOpenURL(data.url);
-        console.log('Can open URL:', canOpen);
-        
-        if (canOpen) {
-          await Linking.openURL(data.url);
-          console.log('OAuth URL opened, waiting for deep link callback...');
-          
-          // Deep link handler otomatik olarak callback'i işleyecek
-          // Timeout ekle - eğer 60 saniye içinde callback gelmezse hata göster
-          setTimeout(() => {
-            if (oauthLoading) {
-              console.log('OAuth timeout - checking final session state');
-              supabase.auth.getSession().then(({ data: { session } }) => {
-                if (session?.user) {
-                  setOauthLoading(false);
-                  setLoading(false);
-                  checkProfileAndNavigate(session.user.id);
-                } else {
-                  setOauthLoading(false);
-                  setLoading(false);
-                  Alert.alert('Zaman Aşımı', 'Giriş işlemi zaman aşımına uğradı. Lütfen tekrar deneyin.');
-                }
-              });
-            }
-          }, 60000);
-        } else {
-          throw new Error('OAuth URL açılamadı');
-        }
-      } else if (!data.url) {
-        throw new Error('OAuth URL alınamadı');
+      console.log('Opening Twitter/X OAuth in app browser:', data.url);
+
+      // OAuth URL'ini uygulama içinde aç
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+
+      console.log('WebBrowser result:', result.type);
+
+      if (result.type === 'success' && result.url) {
+        // Deep link handler otomatik olarak işleyecek
+        // Session kontrolü yap
+        setTimeout(async () => {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            setOauthLoading(false);
+            setLoading(false);
+            await checkProfileAndNavigate(session.user.id);
+          } else {
+            setOauthLoading(false);
+            setLoading(false);
+            Alert.alert('Hata', 'Giriş tamamlanamadı. Lütfen tekrar deneyin.');
+          }
+        }, 2000);
+      } else if (result.type === 'cancel') {
+        console.log('Twitter/X giriş iptal edildi');
+        setLoading(false);
+        setOauthLoading(false);
+      } else {
+        throw new Error('Twitter/X giriş başarısız');
       }
     } catch (error: any) {
       console.error('Error during Twitter/X login:', error);
@@ -421,72 +432,48 @@ export default function LoginScreen() {
     setLoading(true);
     setOauthLoading(true);
     try {
-      console.log('Starting Apple OAuth login...');
+      console.log('Starting Apple native login...');
       
-      // OAuth provider'lar Supabase callback URL'ini kullanmalı, ama redirect_to ile web callback sayfasına yönlendir
-      // Web callback sayfası oradan deep link'e yönlendirecek
-      const deepLinkUrl = 'mytrabzon://auth/callback';
-      const webCallbackUrl = `https://www.litxtech.com/auth/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`;
-      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-      const redirectUrl = `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(webCallbackUrl)}`;
+      // Apple native authentication kullan
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
 
-      console.log('Apple redirect URL:', redirectUrl);
-      console.log('Platform:', Platform.OS);
-      console.log('Deep link URL:', deepLinkUrl);
+      console.log('Apple credential received:', {
+        user: credential.user,
+        email: credential.email,
+        identityToken: !!credential.identityToken,
+      });
 
-      // Supabase OAuth flow kullan (signInWithIdToken Expo Go'da çalışmıyor)
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      if (!credential.identityToken) {
+        throw new Error('Apple identity token alınamadı');
+      }
+
+      // Supabase'e identity token ile giriş yap
+      const { data, error } = await supabase.auth.signInWithIdToken({
         provider: 'apple',
-        options: {
-          redirectTo: redirectUrl,
-          skipBrowserRedirect: true, // true - OAuth URL'ini direkt aç, Supabase callback'i deep link handler yakalayacak
-        },
+        token: credential.identityToken,
       });
 
       if (error) {
-        console.error('Apple OAuth error:', error);
+        console.error('Supabase Apple sign in error:', error);
         throw error;
       }
 
-      console.log('Apple OAuth URL received:', data?.url ? 'Yes' : 'No');
-
-      // iOS'ta OAuth URL'ini aç - Supabase callback URL'i açılacak
-      if (data.url) {
-        console.log('Opening OAuth URL:', data.url);
-        const canOpen = await Linking.canOpenURL(data.url);
-        console.log('Can open Apple URL:', canOpen);
-        
-        if (canOpen) {
-          await Linking.openURL(data.url);
-          console.log('Apple OAuth URL opened, waiting for deep link callback...');
-          
-          // Deep link handler otomatik olarak callback'i işleyecek
-          // Timeout ekle - eğer 60 saniye içinde callback gelmezse hata göster
-          setTimeout(() => {
-            if (oauthLoading) {
-              console.log('Apple OAuth timeout - checking final session state');
-              supabase.auth.getSession().then(({ data: { session } }) => {
-                if (session?.user) {
-                  setOauthLoading(false);
-                  setLoading(false);
-                  checkProfileAndNavigate(session.user.id);
-                } else {
-                  setOauthLoading(false);
-                  setLoading(false);
-                  Alert.alert('Zaman Aşımı', 'Giriş işlemi zaman aşımına uğradı. Lütfen tekrar deneyin.');
-                }
-              });
-            }
-          }, 60000);
-        } else {
-          throw new Error('Apple OAuth URL açılamadı');
-        }
-      } else if (!data.url) {
-        throw new Error('Apple OAuth URL alınamadı');
+      if (data.user) {
+        console.log('Apple login successful:', data.user.id);
+        setOauthLoading(false);
+        setLoading(false);
+        await checkProfileAndNavigate(data.user.id);
+      } else {
+        throw new Error('Kullanıcı bilgisi alınamadı');
       }
     } catch (error: any) {
       // Kullanıcı iptal ettiyse hata gösterme
-      if (error.code === 'ERR_CANCELED' || error.message?.includes('canceled')) {
+      if (error.code === 'ERR_CANCELED' || error.code === 'ERR_REQUEST_CANCELED' || error.message?.includes('canceled')) {
         console.log('Apple giriş iptal edildi');
       } else {
         console.error('Error during Apple login:', error);
