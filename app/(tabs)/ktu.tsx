@@ -34,19 +34,19 @@ export default function KTUScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   // Öğrenci bilgilerini getir
-  const { data: studentInfo, isLoading: studentLoading, refetch: refetchStudent } = trpc.ktu.getStudentInfo.useQuery(
+  const { data: studentInfo, isLoading: studentLoading, refetch: refetchStudent } = (trpc as any).ktu.getStudentInfo.useQuery(
     undefined,
     { enabled: !!user?.id }
   );
 
   // Son duyuruları getir
-  const { data: announcementsData, isLoading: announcementsLoading, refetch: refetchAnnouncements } = trpc.ktu.getAnnouncements.useQuery({
+  const { data: announcementsData, isLoading: announcementsLoading, refetch: refetchAnnouncements } = (trpc as any).ktu.getAnnouncements.useQuery({
     limit: 5,
     offset: 0,
   });
 
   // Yaklaşan etkinlikleri getir
-  const { data: eventsData, isLoading: eventsLoading, refetch: refetchEvents } = trpc.ktu.getEvents.useQuery({
+  const { data: eventsData, isLoading: eventsLoading, refetch: refetchEvents } = (trpc as any).ktu.getEvents.useQuery({
     limit: 5,
     offset: 0,
   });
@@ -411,6 +411,11 @@ const styles = StyleSheet.create({
   },
   statusContent: {
     flex: 1,
+  },
+  statusText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    marginLeft: SPACING.sm,
   },
   statusTitle: {
     fontSize: FONT_SIZES.md,
