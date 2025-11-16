@@ -410,11 +410,7 @@ export default function LoginScreen() {
         provider: 'apple',
         options: {
           redirectTo: redirectUrl,
-          skipBrowserRedirect: true, // iOS'ta her zaman true
-          // Query parameters ekle
-          queryParams: {
-            redirect_to: redirectUrl,
-          },
+          skipBrowserRedirect: true, // iOS'ta true - Supabase callback URL'ini açmaz, direkt deep link'e yönlendirir
         },
       });
 
