@@ -76,21 +76,21 @@ export default function MatchScreen() {
 
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const startPolling = () => {
+  const startPolling = useCallback(() => {
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
     }
     pollingIntervalRef.current = setInterval(() => {
       checkMatchQuery.refetch();
     }, 2000);
-  };
+  }, [checkMatchQuery]);
 
-  const stopPolling = () => {
+  const stopPolling = useCallback(() => {
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
       pollingIntervalRef.current = null;
     }
-  };
+  }, []);
 
 
   useEffect(() => {
