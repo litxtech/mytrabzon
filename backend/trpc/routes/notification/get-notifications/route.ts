@@ -17,7 +17,7 @@ export const getNotificationsProcedure = protectedProcedure
         .from('notifications')
         .select(`
           *,
-          event:events(id, title, category, severity, district)
+          event:events(id, title, category, severity, district, media_urls, description)
         `, { count: 'exact' })
         .eq('user_id', user.id)
         .eq('is_deleted', false)

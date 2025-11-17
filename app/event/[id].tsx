@@ -282,14 +282,24 @@ export default function EventDetailScreen() {
             <ScrollView style={styles.commentsList}>
               {commentsData.comments.map((comment: any) => (
                 <View key={comment.id} style={styles.commentItem}>
-                  <Image
-                    source={{ uri: comment.user?.avatar_url || 'https://via.placeholder.com/32' }}
-                    style={styles.commentAvatar}
-                  />
+                  <TouchableOpacity
+                    onPress={() => comment.user?.id && router.push(`/profile/${comment.user.id}` as any)}
+                    activeOpacity={0.7}
+                  >
+                    <Image
+                      source={{ uri: comment.user?.avatar_url || 'https://via.placeholder.com/32' }}
+                      style={styles.commentAvatar}
+                    />
+                  </TouchableOpacity>
                   <View style={styles.commentContent}>
-                    <Text style={[styles.commentAuthor, { color: theme.colors.text }]}>
-                      {comment.user?.full_name || 'Bilinmeyen'}
-                    </Text>
+                    <TouchableOpacity
+                      onPress={() => comment.user?.id && router.push(`/profile/${comment.user.id}` as any)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.commentAuthor, { color: theme.colors.text }]}>
+                        {comment.user?.full_name || 'Bilinmeyen'}
+                      </Text>
+                    </TouchableOpacity>
                     <Text style={[styles.commentText, { color: theme.colors.text }]}>
                       {comment.content}
                     </Text>

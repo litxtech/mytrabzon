@@ -10,6 +10,7 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,6 +19,7 @@ import { trpc } from '@/lib/trpc';
 import { useRouter } from 'expo-router';
 import { formatTimeAgo } from '@/lib/time-utils';
 import { Footer } from '@/components/Footer';
+import { Video, ResizeMode } from 'expo-av';
 
 type NotificationType = 'EVENT' | 'SYSTEM' | 'MESSAGE' | 'RESERVATION' | 'FOOTBALL' | 'all';
 
@@ -233,9 +235,72 @@ export default function NotificationsScreen() {
                   </Text>
                   {!item.read_at && <View style={[styles.unreadDot, { backgroundColor: theme.colors.primary }]} />}
                 </View>
-                <Text style={[styles.notificationMessage, { color: theme.colors.textLight }]} numberOfLines={2}>
-                  {item.body}
+                <Text style={[styles.notificationMessage, { color: theme.colors.textLight }]} numberOfLines={3}>
+                  {item.body || item.message}
                 </Text>
+                
+                {/* Event medya önizlemesi */}
+                {item.type === 'EVENT' && item.event?.media_urls && item.event.media_urls.length > 0 && (
+                  <View style={styles.mediaPreview}>
+                    {(() => {
+                      const firstMedia = item.event.media_urls[0];
+                      const isVideo = firstMedia?.match(/\.(mp4|mov|avi|webm)$/i);
+                      
+                      if (isVideo) {
+                        return (
+                          <Video
+                            source={{ uri: firstMedia }}
+                            style={styles.previewVideo}
+                            resizeMode={ResizeMode.COVER}
+                            shouldPlay={false}
+                            isMuted={true}
+                            useNativeControls={false}
+                          />
+                        );
+                      } else {
+                        return (
+                          <Image
+                            source={{ uri: firstMedia }}
+                            style={styles.previewImage}
+                            contentFit="cover"
+                          />
+                        );
+                      }
+                    })()}
+                  </View>
+                )}
+                
+                {/* Data'dan medya URL'leri kontrol et (fallback) */}
+                {item.type === 'EVENT' && !item.event?.media_urls && item.data?.media_urls && item.data.media_urls.length > 0 && (
+                  <View style={styles.mediaPreview}>
+                    {(() => {
+                      const firstMedia = item.data.media_urls[0];
+                      const isVideo = firstMedia?.match(/\.(mp4|mov|avi|webm)$/i);
+                      
+                      if (isVideo) {
+                        return (
+                          <Video
+                            source={{ uri: firstMedia }}
+                            style={styles.previewVideo}
+                            resizeMode={ResizeMode.COVER}
+                            shouldPlay={false}
+                            isMuted={true}
+                            useNativeControls={false}
+                          />
+                        );
+                      } else {
+                        return (
+                          <Image
+                            source={{ uri: firstMedia }}
+                            style={styles.previewImage}
+                            contentFit="cover"
+                          />
+                        );
+                      }
+                    })()}
+                  </View>
+                )}
+                
                 <View style={styles.notificationFooter}>
                   <Text style={[styles.notificationTime, { color: theme.colors.textLight }]}>
                     {formatTimeAgo(item.created_at)}
@@ -410,6 +475,24 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
     marginBottom: 4,
     lineHeight: 18,
+  },
+  mediaPreview: {
+    width: '100%',
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.xs,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: COLORS.border,
+  },
+  previewImage: {
+    width: '100%',
+    height: 120,
+    borderRadius: 8,
+  },
+  previewVideo: {
+    width: '100%',
+    height: 120,
+    borderRadius: 8,
   },
   notificationFooter: {
     flexDirection: 'row',

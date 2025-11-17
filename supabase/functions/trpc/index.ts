@@ -6840,7 +6840,7 @@ const appRouter = createTRPCRouter({
           .from('notifications')
           .select(`
             *,
-            event:events(id, title, category, severity, district)
+            event:events(id, title, category, severity, district, media_urls, description)
           `, { count: 'exact' })
           .eq('user_id', user.id)
           .eq('is_deleted', false)
@@ -7240,7 +7240,12 @@ async function createNotificationsForEvent(
       type: 'EVENT',
       title: event.title,
       message: event.description || `${event.category} - ${district}`,
-      data: { event_id: event.id, severity, category: event.category },
+      data: { 
+        event_id: event.id, 
+        severity, 
+        category: event.category,
+        media_urls: event.media_urls || [], // Medya URL'lerini ekle
+      },
       push_sent: false,
     }));
 
