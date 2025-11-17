@@ -42,7 +42,7 @@ export const createEventProcedure = protectedProcedure
           description: input.description,
           category: input.category,
           severity: input.severity,
-          district: input.district,
+          district: input.district || null,
           city: input.city,
           latitude: input.latitude,
           longitude: input.longitude,
@@ -67,7 +67,7 @@ export const createEventProcedure = protectedProcedure
       // Bu işlem Supabase Edge Function'da yapılabilir, şimdilik basit versiyon
       console.log('📢 Event created:', event.id, 'Severity:', input.severity);
       try {
-        await createNotificationsForEvent(supabase, event, input.severity, input.district, input.city);
+        await createNotificationsForEvent(supabase, event, input.severity, input.district || '', input.city);
       } catch (notificationError) {
         console.error('❌ Notification creation failed:', notificationError);
         // Bildirim hatası olsa bile event oluşturuldu, devam et
@@ -100,27 +100,37 @@ async function createNotificationsForEvent(
     targetUsers = data || [];
     console.log('📢 CRITICAL: Found', targetUsers.length, 'users in', city);
   } else if (severity === 'HIGH') {
-    // Sadece ilçe
-    const { data, error } = await supabase
+    // Sadece ilçe - eğer district null veya boş ise tüm şehre gönder
+    let query = supabase
       .from('profiles')
       .select('id')
-      .eq('district', district)
       .eq('city', city)
       .eq('is_active', true)
-      .neq('id', event.user_id); // Event oluşturan kullanıcıyı hariç tut
+      .neq('id', event.user_id);
+    
+    if (district && district.trim() !== '' && district !== 'Tümü') {
+      query = query.eq('district', district);
+    }
+    
+    const { data, error } = await query;
     if (error) {
       console.error('❌ HIGH severity query error:', error);
     }
     targetUsers = data || [];
-    console.log('📢 HIGH: Found', targetUsers.length, 'users in', district, city);
+    console.log('📢 HIGH: Found', targetUsers.length, 'users in', district || 'all districts', city);
   } else if (severity === 'NORMAL') {
-    // İlçe + ilgi alanları
-    const { data: districtUsers } = await supabase
+    // İlçe + ilgi alanları - eğer district null veya boş ise tüm şehre gönder
+    let districtQuery = supabase
       .from('profiles')
       .select('id')
-      .eq('district', district)
       .eq('city', city)
       .eq('is_active', true);
+    
+    if (district && district.trim() !== '' && district !== 'Tümü') {
+      districtQuery = districtQuery.eq('district', district);
+    }
+    
+    const { data: districtUsers } = await districtQuery;
 
     const { data: interestUsers } = await supabase
       .from('user_interests')

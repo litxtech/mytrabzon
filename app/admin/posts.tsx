@@ -30,7 +30,7 @@ export default function AdminPostsScreen() {
     offset: 0,
   });
 
-  const deletePostMutation = trpc.post.deletePost.useMutation({
+  const deletePostMutation = trpc.admin.deletePost.useMutation({
     onSuccess: () => {
       refetch();
       Alert.alert('Başarılı', 'Gönderi silindi');

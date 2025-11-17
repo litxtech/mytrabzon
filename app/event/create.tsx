@@ -177,6 +177,9 @@ export default function CreateEventScreen() {
       return;
     }
 
+    // "Tümü" seçildiyse district'i null yap (backend'de tüm ilçelere gönderilecek)
+    const districtToSend = formData.district === 'Tümü' ? null : formData.district;
+
     setLoading(true);
     setUploading(true);
 
@@ -199,7 +202,7 @@ export default function CreateEventScreen() {
         description: formData.description,
         category: formData.category as any,
         severity: formData.severity,
-        district: formData.district,
+        district: districtToSend || '',
         city: formData.city,
         latitude: formData.latitude,
         longitude: formData.longitude,
@@ -245,6 +248,18 @@ export default function CreateEventScreen() {
           <Text style={styles.headerSubtitle}>
             Trabzon'da ne olup bittiğini paylaş
           </Text>
+        </View>
+
+        {/* Uyarı Mesajı */}
+        <View style={styles.warningBox}>
+          <AlertCircle size={20} color={COLORS.warning} />
+          <View style={styles.warningContent}>
+            <Text style={styles.warningTitle}>⚠️ Önemli Uyarı</Text>
+            <Text style={styles.warningText}>
+              Bu bölüm sadece haber değeri taşıyan gönderiler için kullanılmalıdır. 
+              Şahsi veya eğlence amaçlı kullanım yasaktır. Kurallara uymayan kullanıcılar banlanacaktır.
+            </Text>
+          </View>
         </View>
 
         {/* Başlık */}
@@ -412,6 +427,25 @@ export default function CreateEventScreen() {
           {showDistrictPicker && formData.city && (
             <View style={styles.pickerContainer}>
               <ScrollView style={styles.pickerScroll} nestedScrollEnabled>
+                <TouchableOpacity
+                  style={[
+                    styles.pickerOption,
+                    formData.district === 'Tümü' && styles.pickerOptionActive,
+                  ]}
+                  onPress={() => {
+                    setFormData({ ...formData, district: 'Tümü' });
+                    setShowDistrictPicker(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.pickerOptionText,
+                      formData.district === 'Tümü' && styles.pickerOptionTextActive,
+                    ]}
+                  >
+                    🌍 Tümü (Tüm İlçelere Paylaş)
+                  </Text>
+                </TouchableOpacity>
                 {availableDistricts.map((district) => (
                   <TouchableOpacity
                     key={district}
@@ -551,6 +585,30 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
     textAlign: 'center',
+  },
+  warningBox: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.warning + '15',
+    borderWidth: 1,
+    borderColor: COLORS.warning + '40',
+    borderRadius: 12,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    gap: SPACING.sm,
+  },
+  warningContent: {
+    flex: 1,
+  },
+  warningTitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
+    color: COLORS.warning,
+    marginBottom: SPACING.xs,
+  },
+  warningText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    lineHeight: 20,
   },
   section: {
     marginBottom: SPACING.lg,

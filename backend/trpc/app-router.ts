@@ -47,9 +47,12 @@ import { checkFollowStatusProcedure } from "./routes/user/check-follow-status/ro
 import { getFollowersProcedure } from "./routes/user/get-followers/route";
 import { getFollowingProcedure } from "./routes/user/get-following/route";
 import { getFollowStatsProcedure } from "./routes/user/get-follow-stats/route";
+import { reportUserProcedure } from "./routes/user/report-user/route";
 import { checkAdminProcedure } from "./routes/admin/check-admin/route";
 import { getUsersProcedure } from "./routes/admin/get-users/route";
 import { deleteUsersProcedure } from "./routes/admin/delete-users/route";
+import { adminDeletePostProcedure } from "./routes/admin/delete-post/route";
+import { adminDeleteCommentProcedure } from "./routes/admin/delete-comment/route";
 import { banUserProcedure } from "./routes/admin/ban-user/route";
 import { unbanUserProcedure } from "./routes/admin/unban-user/route";
 import { giveBlueTickProcedure } from "./routes/admin/give-blue-tick/route";
@@ -108,6 +111,7 @@ export const appRouter = createTRPCRouter({
     getFollowers: getFollowersProcedure,
     getFollowing: getFollowingProcedure,
     getFollowStats: getFollowStatsProcedure,
+    reportUser: reportUserProcedure,
   }),
   chat: createTRPCRouter({
     getRooms: getRoomsProcedure,
@@ -172,6 +176,8 @@ export const appRouter = createTRPCRouter({
     rejectKyc: rejectKycProcedure,
     sendNotification: sendNotificationProcedure,
     deleteUser: deleteUsersProcedure,
+    deletePost: adminDeletePostProcedure,
+    deleteComment: adminDeleteCommentProcedure,
   }),
   kyc: createTRPCRouter({
     create: createKycProcedure,

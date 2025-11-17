@@ -30,7 +30,7 @@ export default function AdminCommentsScreen() {
     offset: 0,
   });
 
-  const deleteCommentMutation = trpc.post.deleteComment.useMutation({
+  const deleteCommentMutation = trpc.admin.deleteComment.useMutation({
     onSuccess: () => {
       refetch();
       Alert.alert('Başarılı', 'Yorum silindi');
