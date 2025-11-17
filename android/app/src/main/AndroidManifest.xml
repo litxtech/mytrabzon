@@ -32,18 +32,25 @@
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>
       </intent-filter>
+      <!-- Deep Links - Custom Schemes -->
       <intent-filter>
         <action android:name="android.intent.action.VIEW"/>
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
-        <data android:scheme="mytrabzon"/>
-      </intent-filter>
-      <intent-filter android:autoVerify="true" data-generated="true">
-        <action android:name="android.intent.action.VIEW"/>
         <data android:scheme="mytrabzon" android:host="*"/>
-        <data android:scheme="litxtech" android:host="*"/>
-        <category android:name="android.intent.category.BROWSABLE"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
         <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="litxtech" android:host="*"/>
+      </intent-filter>
+      <!-- App Links - HTTPS (for web redirects) -->
+      <intent-filter android:autoVerify="true">
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="https" android:host="www.litxtech.com" android:pathPrefix="/auth/callback"/>
       </intent-filter>
     </activity>
   </application>

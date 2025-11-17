@@ -379,6 +379,33 @@ function FullScreenVideoPlayer({
     }
   }, []);
 
+  // Yorum paneli açıldığında animasyonu başlat
+  useEffect(() => {
+    if (showComments) {
+      // Önce başlangıç pozisyonuna ayarla
+      commentSheetY.setValue(SCREEN_HEIGHT);
+      // Sonra animasyonu başlat
+      const timer = setTimeout(() => {
+        Animated.spring(commentSheetY, {
+          toValue: SCREEN_HEIGHT - COMMENT_SHEET_HEIGHT,
+          useNativeDriver: true,
+          tension: 50,
+          friction: 7,
+        }).start();
+      }, 50);
+      return () => clearTimeout(timer);
+    } else {
+      // Kapanırken animasyonu başlat
+      Animated.spring(commentSheetY, {
+        toValue: SCREEN_HEIGHT,
+        useNativeDriver: true,
+        tension: 50,
+        friction: 7,
+      }).start();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showComments]);
+
   useEffect(() => {
     return () => {
       if (controlsTimeout.current) {
@@ -387,6 +414,8 @@ function FullScreenVideoPlayer({
     };
   }, []);
 
+  const hasStartedRef = useRef(false);
+  
   const handlePlaybackStatusUpdate = (status: AVPlaybackStatus) => {
     if (status.isLoaded) {
       setIsLoading(false);
@@ -395,8 +424,9 @@ function FullScreenVideoPlayer({
       setDuration(status.durationMillis || 0);
       setPosition(status.positionMillis || 0);
       
-      // İlk yüklemede otomatik başlat
-      if (!status.isPlaying && !status.didJustFinish && !isLoading) {
+      // Sadece ilk yüklemede ve henüz başlamadıysa otomatik başlat
+      if (!hasStartedRef.current && !status.isPlaying && !status.didJustFinish && !isLoading) {
+        hasStartedRef.current = true;
         setTimeout(() => {
           videoRef.current?.playAsync().catch(console.error);
         }, 200);
@@ -465,14 +495,7 @@ function FullScreenVideoPlayer({
   };
 
   const handleCloseComments = () => {
-    Animated.spring(commentSheetY, {
-      toValue: SCREEN_HEIGHT,
-      useNativeDriver: true,
-      tension: 50,
-      friction: 7,
-    }).start(() => {
-      setShowComments(false);
-    });
+    setShowComments(false);
   };
 
   // Yorum paneli için pan responder (sadece drag handle için - aşağı çekme)
@@ -484,15 +507,16 @@ function FullScreenVideoPlayer({
       },
       onPanResponderMove: (_, gestureState) => {
         if (gestureState.dy > 0) {
-          commentSheetY.setValue(COMMENT_SHEET_HEIGHT + gestureState.dy);
+          const newY = SCREEN_HEIGHT - COMMENT_SHEET_HEIGHT + gestureState.dy;
+          commentSheetY.setValue(Math.min(newY, SCREEN_HEIGHT));
         }
       },
       onPanResponderRelease: (_, gestureState) => {
         if (gestureState.dy > 100) {
-          handleCloseComments();
+          setShowComments(false);
         } else {
           Animated.spring(commentSheetY, {
-            toValue: COMMENT_SHEET_HEIGHT,
+            toValue: SCREEN_HEIGHT - COMMENT_SHEET_HEIGHT,
             useNativeDriver: true,
             tension: 50,
             friction: 7,
@@ -605,19 +629,7 @@ function FullScreenVideoPlayer({
             style={styles.actionButtonLarge}
             onPress={() => {
               console.log('Yorum butonuna basıldı, panel açılıyor...');
-              // Önce commentSheetY'yi başlangıç pozisyonuna ayarla (ekranın altı)
-              commentSheetY.setValue(SCREEN_HEIGHT);
-              // State'i güncelle
               setShowComments(true);
-              // Küçük bir delay ile animasyonu başlat (render için)
-              requestAnimationFrame(() => {
-                Animated.spring(commentSheetY, {
-                  toValue: COMMENT_SHEET_HEIGHT, // Ekranın yarısına kadar açılır
-                  useNativeDriver: true,
-                  tension: 50,
-                  friction: 7,
-                }).start();
-              });
             }}
           >
             <MessageCircle size={32} color={COLORS.white} />
@@ -663,15 +675,16 @@ function FullScreenVideoPlayer({
               transform: [{ translateY: commentSheetY }],
               height: COMMENT_SHEET_HEIGHT,
               backgroundColor: 'rgba(0, 0, 0, 0.75)', // Şeffaf - video görünür
+              zIndex: 1000,
             },
           ]}
         >
           {/* Drag Handle - Sadece burada pan responder çalışır */}
-          <View style={styles.dragHandleContainer} {...dragHandlePanResponder.panHandlers}>
+          <View style={styles.dragHandleContainer} {...dragHandlePanResponder.panHandlers} pointerEvents="auto">
             <View style={[styles.dragHandle, { backgroundColor: COLORS.white }]} />
           </View>
           
-          <View style={[styles.commentSheetHeader, { borderBottomColor: 'rgba(255, 255, 255, 0.1)' }]}>
+          <View style={[styles.commentSheetHeader, { borderBottomColor: 'rgba(255, 255, 255, 0.1)' }]} pointerEvents="auto">
             <Text style={[styles.commentSheetTitle, { color: COLORS.white }]}>
               Yorumlar ({commentCount || 0})
             </Text>
@@ -679,7 +692,7 @@ function FullScreenVideoPlayer({
               <X size={24} color={COLORS.white} />
             </TouchableOpacity>
           </View>
-          <View style={styles.commentSheetContent}>
+          <View style={styles.commentSheetContent} pointerEvents="auto">
             <CommentSheet postId={postId} />
           </View>
         </Animated.View>
@@ -697,6 +710,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     position: 'relative',
+    marginTop: 0,
+    marginBottom: 0,
   },
   previewVideo: {
     width: '100%',
@@ -786,6 +801,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 15,
     overflow: 'hidden',
+    zIndex: 1000,
   },
   commentSheetContent: {
     flex: 1,

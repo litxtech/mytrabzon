@@ -50,6 +50,8 @@ export const createEventProcedure = protectedProcedure
           audio_url: input.audio_url,
           start_date: now.toISOString(), // start_date eklendi
           expires_at: expiresAt.toISOString(),
+          is_active: true, // Açıkça set et
+          is_deleted: false, // Açıkça set et
         })
         .select()
         .single();
@@ -63,7 +65,13 @@ export const createEventProcedure = protectedProcedure
 
       // Algoritma: Etkilenecek kullanıcıları bul ve bildirim oluştur
       // Bu işlem Supabase Edge Function'da yapılabilir, şimdilik basit versiyon
-      await createNotificationsForEvent(supabase, event, input.severity, input.district, input.city);
+      console.log('📢 Event created:', event.id, 'Severity:', input.severity);
+      try {
+        await createNotificationsForEvent(supabase, event, input.severity, input.district, input.city);
+      } catch (notificationError) {
+        console.error('❌ Notification creation failed:', notificationError);
+        // Bildirim hatası olsa bile event oluşturuldu, devam et
+      }
 
       return event;
     });
@@ -80,21 +88,31 @@ async function createNotificationsForEvent(
 
   if (severity === 'CRITICAL') {
     // Tüm şehir
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('id')
       .eq('city', city)
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .neq('id', event.user_id); // Event oluşturan kullanıcıyı hariç tut
+    if (error) {
+      console.error('❌ CRITICAL severity query error:', error);
+    }
     targetUsers = data || [];
+    console.log('📢 CRITICAL: Found', targetUsers.length, 'users in', city);
   } else if (severity === 'HIGH') {
     // Sadece ilçe
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('id')
       .eq('district', district)
       .eq('city', city)
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .neq('id', event.user_id); // Event oluşturan kullanıcıyı hariç tut
+    if (error) {
+      console.error('❌ HIGH severity query error:', error);
+    }
     targetUsers = data || [];
+    console.log('📢 HIGH: Found', targetUsers.length, 'users in', district, city);
   } else if (severity === 'NORMAL') {
     // İlçe + ilgi alanları
     const { data: districtUsers } = await supabase
@@ -113,16 +131,23 @@ async function createNotificationsForEvent(
     const interestUserIds = (interestUsers || []).map((u: any) => u.user_id);
     const allUserIds = [...new Set([...districtUserIds, ...interestUserIds])];
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('id')
       .in('id', allUserIds)
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .neq('id', event.user_id); // Event oluşturan kullanıcıyı hariç tut
+    if (error) {
+      console.error('❌ NORMAL severity query error:', error);
+    }
     targetUsers = data || [];
+    console.log('📢 NORMAL: Found', targetUsers.length, 'users (district:', districtUserIds.length, 'interest:', interestUserIds.length, ')');
   }
   // LOW severity için push bildirim yok, sadece feed'de görünür
 
   // Her kullanıcı için bildirim oluştur
+  console.log('📢 Target users found:', targetUsers.length, 'Severity:', severity);
+  
   if (targetUsers.length > 0 && severity !== 'LOW') {
     const notifications = targetUsers.map((user: any) => ({
       user_id: user.id,
@@ -134,14 +159,17 @@ async function createNotificationsForEvent(
       push_sent: false,
     }));
 
+    console.log('📢 Creating notifications:', notifications.length);
     const { data: insertedNotifications, error: insertError } = await supabase
       .from('notifications')
       .insert(notifications)
       .select('id, user_id');
 
     if (insertError) {
-      console.error('Notification insert error:', insertError);
+      console.error('❌ Notification insert error:', insertError);
       // Bildirim hatası olsa bile event oluşturuldu, devam et
+    } else {
+      console.log('✅ Notifications created:', insertedNotifications?.length || 0);
     }
 
     // Push bildirimleri gönder (Expo Push API)

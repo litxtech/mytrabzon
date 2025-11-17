@@ -1,33 +1,12 @@
 import { protectedProcedure } from "../../../create-context";
 import { z } from "zod";
-
-// Admin kontrolü helper
-async function checkAdmin(supabase: any, userId: string) {
-  // Özel admin bypass
-  const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
-  if (userId === SPECIAL_ADMIN_ID) {
-    return { role: 'super_admin' };
-  }
-
-  const { data: adminUser } = await supabase
-    .from("admin_users")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("is_active", true)
-    .single();
-  
-  if (!adminUser) {
-    throw new Error("Unauthorized: Admin access required");
-  }
-  
-  return adminUser;
-}
+import { ensureAdmin } from "./utils";
 
 export const getUsersProcedure = protectedProcedure
   .input(
     z.object({
       search: z.string().optional(),
-      filter: z.enum(['all', 'today', 'banned', 'blueTick']).default('all'),
+      filter: z.enum(['all', 'today', 'banned', 'blueTick', 'hidden', 'live']).default('all'),
       limit: z.number().min(1).max(100).default(20),
       offset: z.number().min(0).default(0),
     })
@@ -37,14 +16,27 @@ export const getUsersProcedure = protectedProcedure
     
     if (!user) throw new Error("Unauthorized");
     
-    await checkAdmin(supabase, user.id);
+    await ensureAdmin(supabase, user.id);
+
+    const [
+      { count: totalUsers },
+      { count: liveUsers },
+      { count: bannedUsers },
+      { count: hiddenUsers },
+    ] = await Promise.all([
+      supabase.from("profiles").select("id", { count: "exact", head: true }),
+      supabase.from("profiles").select("id", { count: "exact", head: true }).eq("is_online", true),
+      supabase.from("user_bans").select("id", { count: "exact", head: true }).eq("is_active", true),
+      supabase.from("hidden_users").select("id", { count: "exact", head: true }),
+    ]);
     
     let query = supabase
       .from("profiles")
       .select(`
         *,
         blue_ticks!left(id, verified_at, verification_type, is_active),
-        user_bans!left(id, reason, ban_type, ban_until, is_active)
+        user_bans!left(id, reason, ban_type, ban_until, is_active),
+        hidden_users!left(id, hidden_at)
       `, { count: "exact" });
     
     // Filtreler
@@ -80,6 +72,21 @@ export const getUsersProcedure = protectedProcedure
         // Mavi tikli kullanıcı yoksa boş sonuç döndür
         query = query.eq('id', '00000000-0000-0000-0000-000000000000');
       }
+    } else if (input.filter === 'hidden') {
+      // Gizli kullanıcıları bulmak için subquery kullan
+      const { data: hiddenUserIds } = await supabase
+        .from('hidden_users')
+        .select('user_id');
+      
+      if (hiddenUserIds && hiddenUserIds.length > 0) {
+        const userIds = hiddenUserIds.map(h => h.user_id);
+        query = query.in('id', userIds);
+      } else {
+        // Gizli kullanıcı yoksa boş sonuç döndür
+        query = query.eq('id', '00000000-0000-0000-0000-000000000000');
+      }
+    } else if (input.filter === 'live') {
+      query = query.eq('is_online', true);
     }
     
     if (input.search) {
@@ -97,6 +104,12 @@ export const getUsersProcedure = protectedProcedure
     return {
       users: data || [],
       total: count || 0,
+      stats: {
+        totalUsers: totalUsers ?? 0,
+        liveUsers: liveUsers ?? 0,
+        bannedUsers: bannedUsers ?? 0,
+        hiddenUsers: hiddenUsers ?? 0,
+      },
     };
   });
 

@@ -98,18 +98,94 @@ export default function UserProfileScreen() {
     { enabled: !!id }
   );
 
+  // Query client ve utils
+  const utils = trpc.useUtils();
+
   // Takip/Takipten çık mutation'ları
   const followMutation = trpc.user.follow.useMutation({
-    onSuccess: () => {
-      refetchFollowStatus();
-      refetchFollowStats(); // Takipçi sayısını güncelle
+    onMutate: async () => {
+      // Optimistic update - anında güncelle (takip edilen kullanıcının takipçi sayısı)
+      utils.user.getFollowStats.setData({ user_id: id! }, (old) => {
+        if (!old) return { followers_count: 1, following_count: 0 };
+        return {
+          ...old,
+          followers_count: (old.followers_count || 0) + 1,
+        };
+      });
+      
+      // Kendi profilimizin takip sayısını da güncelle
+      if (currentUser?.id) {
+        utils.user.getFollowStats.setData({ user_id: currentUser.id }, (old) => {
+          if (!old) return { followers_count: 0, following_count: 1 };
+          return {
+            ...old,
+            following_count: (old.following_count || 0) + 1,
+          };
+        });
+      }
+    },
+    onSuccess: async () => {
+      // Takip durumunu güncelle
+      await refetchFollowStatus();
+      
+      // Tüm ilgili query'leri invalidate et
+      await utils.user.getFollowStats.invalidate({ user_id: id! });
+      if (currentUser?.id) {
+        await utils.user.getFollowStats.invalidate({ user_id: currentUser.id });
+      }
+      
+      // Refetch yap
+      await refetchFollowStats();
+    },
+    onError: () => {
+      // Hata durumunda optimistic update'i geri al
+      utils.user.getFollowStats.invalidate({ user_id: id! });
+      if (currentUser?.id) {
+        utils.user.getFollowStats.invalidate({ user_id: currentUser.id });
+      }
     },
   });
 
   const unfollowMutation = trpc.user.unfollow.useMutation({
-    onSuccess: () => {
-      refetchFollowStatus();
-      refetchFollowStats(); // Takipçi sayısını güncelle
+    onMutate: async () => {
+      // Optimistic update - anında güncelle (takip edilen kullanıcının takipçi sayısı)
+      utils.user.getFollowStats.setData({ user_id: id! }, (old) => {
+        if (!old) return { followers_count: 0, following_count: 0 };
+        return {
+          ...old,
+          followers_count: Math.max((old.followers_count || 0) - 1, 0),
+        };
+      });
+      
+      // Kendi profilimizin takip sayısını da güncelle
+      if (currentUser?.id) {
+        utils.user.getFollowStats.setData({ user_id: currentUser.id }, (old) => {
+          if (!old) return { followers_count: 0, following_count: 0 };
+          return {
+            ...old,
+            following_count: Math.max((old.following_count || 0) - 1, 0),
+          };
+        });
+      }
+    },
+    onSuccess: async () => {
+      // Takip durumunu güncelle
+      await refetchFollowStatus();
+      
+      // Tüm ilgili query'leri invalidate et ve refetch yap
+      await Promise.all([
+        utils.user.getFollowStats.invalidate({ user_id: id! }),
+        currentUser?.id ? utils.user.getFollowStats.invalidate({ user_id: currentUser.id }) : Promise.resolve(),
+        refetchFollowStats(),
+        utils.user.getProfile.invalidate({ userId: id! }),
+      ]);
+    },
+    onError: () => {
+      // Hata durumunda optimistic update'i geri al
+      utils.user.getFollowStats.invalidate({ user_id: id! });
+      if (currentUser?.id) {
+        utils.user.getFollowStats.invalidate({ user_id: currentUser.id });
+      }
     },
   });
 

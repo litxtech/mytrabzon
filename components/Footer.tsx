@@ -75,7 +75,7 @@ MyTrabzon; sosyal medya, mesajlaşma, üniversite ortamı, spor/halı saha yöne
 
 E-posta/şifre ile kayıt ve giriş
 
-Google ve X (Twitter) ile sosyal giriş seçenekleri
+Google ve Apple ile sosyal giriş seçenekleri
 
 Magic Link ile hızlı giriş
 

@@ -247,10 +247,12 @@ export default function SettingsScreen() {
           {renderSection('Gizlilik', <Shield size={20} color={theme.colors.primary} />)}
           
           {renderToggle(
-            'Profil Görünürlüğü',
-            settings.privacy.profileVisible,
-            (value) => setSettings({ ...settings, privacy: { ...settings.privacy, profileVisible: value } }),
-            'Profilinizi herkes görebilir'
+            'Gizli Mod',
+            !settings.privacy.profileVisible,
+            (value) => {
+              setSettings({ ...settings, privacy: { ...settings.privacy, profileVisible: !value } });
+            },
+            !settings.privacy.profileVisible ? 'Profiliniz gizli - Admin panelinde görüneceksiniz' : 'Profiliniz herkese görünür'
           )}
           
           {renderToggle(

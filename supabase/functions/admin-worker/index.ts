@@ -52,6 +52,7 @@ const adminRouter = createTRPCRouter({
     .input(
       z.object({
         search: z.string().optional(),
+        filter: z.enum(['all', 'today', 'banned', 'blueTick', 'hidden']).optional().default('all'),
         limit: z.number().min(1).max(100).default(20),
         offset: z.number().min(0).default(0),
       })
@@ -68,12 +69,24 @@ const adminRouter = createTRPCRouter({
         .select(
           `*,
           blue_ticks!left(id, verified_at, verification_type),
-          user_bans!left(id, reason, ban_type, ban_until, is_active)
+          user_bans!left(id, reason, ban_type, ban_until, is_active),
+          hidden_users!left(id, hidden_at)
         `,
           { count: "exact" }
         )
         .order("created_at", { ascending: false })
         .range(input.offset, input.offset + input.limit - 1);
+
+      // Filter logic
+      if (input.filter === 'today') {
+        query = query.gte('created_at', new Date().toISOString().split('T')[0]);
+      } else if (input.filter === 'banned') {
+        query = query.not('user_bans', 'is', null);
+      } else if (input.filter === 'blueTick') {
+        query = query.not('blue_ticks', 'is', null);
+      } else if (input.filter === 'hidden') {
+        query = query.not('hidden_users', 'is', null);
+      }
 
       if (input.search) {
         query = query.or(`full_name.ilike.%${input.search}%,email.ilike.%${input.search}%`);

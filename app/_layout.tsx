@@ -1,11 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useCallback } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { trpc, trpcClient } from "@/lib/trpc";
 import { AuthContext } from "@/contexts/AuthContext";
 import { ChatContext } from "@/contexts/ChatContext";
-import { StyleSheet, Linking } from "react-native";
+import { StyleSheet, Linking, Alert } from "react-native";
 import * as Notifications from 'expo-notifications';
 import { registerForPushNotifications, addNotificationResponseReceivedListener } from "@/lib/notifications";
 import { supabase } from "@/lib/supabase";
@@ -78,6 +78,22 @@ export default function RootLayout() {
   const responseListener = useRef<Notifications.Subscription | null>(null);
   const deepLinkListener = useRef<{ remove: () => void } | null>(null);
   const router = useRouter();
+  const handleCallNavigation = useCallback((callData: any) => {
+    if (!callData?.callerId) {
+      return;
+    }
+
+    router.push({
+      pathname: '/call/[userId]',
+      params: {
+        userId: callData.callerId,
+        userName: callData.callerName || 'Kullanıcı',
+        userAvatar: callData.callerAvatar || '',
+        callType: callData.callType || 'audio',
+        sessionId: callData.sessionId || '',
+      },
+    } as any);
+  }, [router]);
 
   useEffect(() => {
 
@@ -154,8 +170,27 @@ export default function RootLayout() {
           }
 
           // Callback (OAuth) - Deep link formatı: mytrabzon://auth/callback?access_token=xxx&refresh_token=xxx
+          // Veya hash fragment: mytrabzon://auth/callback#access_token=xxx&refresh_token=xxx
           if (url.includes('callback')) {
             console.log('OAuth callback received (deep link):', url);
+            
+            // Hash fragment'i de kontrol et (# ile başlayan kısım)
+            const hashIndex = url.indexOf('#');
+            if (hashIndex !== -1) {
+              const hashPart = url.substring(hashIndex + 1);
+              const hashPairs = hashPart.split('&');
+              for (const pair of hashPairs) {
+                const [key, value] = pair.split('=');
+                if (key && value) {
+                  try {
+                    params[decodeURIComponent(key)] = decodeURIComponent(value);
+                  } catch (e) {
+                    params[key] = value;
+                  }
+                }
+              }
+            }
+            
             const accessToken = params.access_token;
             const refreshToken = params.refresh_token;
             const code = params.code; // OAuth code (eğer varsa)
@@ -287,25 +322,54 @@ export default function RootLayout() {
           let redirectTo: string | null = null;
           let code: string | null = null;
           
-          try {
-            // URL parse etmeyi dene
-            const urlObj = new URL(url);
-            accessToken = urlObj.searchParams.get('access_token');
-            refreshToken = urlObj.searchParams.get('refresh_token');
-            redirectTo = urlObj.searchParams.get('redirect_to');
-            code = urlObj.searchParams.get('code');
-          } catch (urlError) {
-            // URL parse hatası - manuel parse
-            console.log('URL parse failed, using manual parsing');
-            const accessTokenMatch = url.match(/[?&]access_token=([^&]+)/);
-            const refreshTokenMatch = url.match(/[?&]refresh_token=([^&]+)/);
-            const redirectToMatch = url.match(/[?&]redirect_to=([^&]+)/);
-            const codeMatch = url.match(/[?&]code=([^&]+)/);
-            
-            if (accessTokenMatch) accessToken = decodeURIComponent(accessTokenMatch[1]);
-            if (refreshTokenMatch) refreshToken = decodeURIComponent(refreshTokenMatch[1]);
-            if (redirectToMatch) redirectTo = decodeURIComponent(redirectToMatch[1]);
-            if (codeMatch) code = decodeURIComponent(codeMatch[1]);
+          // Hash fragment'i kontrol et (# ile başlayan kısım - Supabase OAuth formatı)
+          const hashIndex = url.indexOf('#');
+          if (hashIndex !== -1) {
+            const hashPart = url.substring(hashIndex + 1);
+            const hashPairs = hashPart.split('&');
+            for (const pair of hashPairs) {
+              const [key, value] = pair.split('=');
+              if (key && value) {
+                try {
+                  const decodedKey = decodeURIComponent(key);
+                  const decodedValue = decodeURIComponent(value);
+                  if (decodedKey === 'access_token') accessToken = decodedValue;
+                  if (decodedKey === 'refresh_token') refreshToken = decodedValue;
+                  if (decodedKey === 'code') code = decodedValue;
+                  if (decodedKey === 'redirect_to') redirectTo = decodedValue;
+                } catch (e) {
+                  // Decode hatası - raw value kullan
+                  if (key === 'access_token') accessToken = value;
+                  if (key === 'refresh_token') refreshToken = value;
+                  if (key === 'code') code = value;
+                  if (key === 'redirect_to') redirectTo = value;
+                }
+              }
+            }
+          }
+          
+          // Hash fragment yoksa query string'i kontrol et
+          if (!accessToken && !refreshToken && !code) {
+            try {
+              // URL parse etmeyi dene
+              const urlObj = new URL(url);
+              accessToken = urlObj.searchParams.get('access_token');
+              refreshToken = urlObj.searchParams.get('refresh_token');
+              redirectTo = urlObj.searchParams.get('redirect_to');
+              code = urlObj.searchParams.get('code');
+            } catch (urlError) {
+              // URL parse hatası - manuel parse
+              console.log('URL parse failed, using manual parsing');
+              const accessTokenMatch = url.match(/[?&]access_token=([^&]+)/);
+              const refreshTokenMatch = url.match(/[?&]refresh_token=([^&]+)/);
+              const redirectToMatch = url.match(/[?&]redirect_to=([^&]+)/);
+              const codeMatch = url.match(/[?&]code=([^&]+)/);
+              
+              if (accessTokenMatch) accessToken = decodeURIComponent(accessTokenMatch[1]);
+              if (refreshTokenMatch) refreshToken = decodeURIComponent(refreshTokenMatch[1]);
+              if (redirectToMatch) redirectTo = decodeURIComponent(redirectToMatch[1]);
+              if (codeMatch) code = decodeURIComponent(codeMatch[1]);
+            }
           }
           
           console.log('Tokens from Supabase callback:', { 
@@ -454,7 +518,20 @@ export default function RootLayout() {
     // Bildirim geldiğinde
     try {
       notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+        const data = notification.request.content.data;
         console.log('Notification received:', notification);
+
+        if (data?.type === 'call') {
+          const title = data?.callerName ? `${data.callerName} arıyor` : 'Gelen arama';
+          const message = data?.callType === 'video' ? 'Görüntülü arama' : 'Sesli arama';
+          Alert.alert(title, message, [
+            { text: 'Reddet', style: 'cancel' },
+            {
+              text: 'Yanıtla',
+              onPress: () => handleCallNavigation(data),
+            },
+          ]);
+        }
       });
     } catch (err: any) {
       console.log('Notification listener setup failed (normal in Expo Go):', err.message);
@@ -466,6 +543,11 @@ export default function RootLayout() {
         const data = response.notification.request.content.data;
         console.log('Notification response:', data);
         
+        if (data?.type === 'call') {
+          handleCallNavigation(data);
+          return;
+        }
+
         // Bildirim tipine göre yönlendirme
         if (data?.type === 'match') {
           router.push(`/football/match/${data.matchId}` as any);
@@ -510,7 +592,7 @@ export default function RootLayout() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [handleCallNavigation]);
 
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>

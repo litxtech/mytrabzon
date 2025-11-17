@@ -50,6 +50,7 @@ export default function ChatRoomScreen() {
   const [isEditingMessage, setIsEditingMessage] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [editMessageText, setEditMessageText] = useState('');
+  const [pendingCallType, setPendingCallType] = useState<'audio' | 'video' | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const utils = trpc.useUtils();
@@ -88,6 +89,43 @@ export default function ChatRoomScreen() {
   const otherUser = room?.type === 'direct' 
     ? ((room as any).other_user || room.members?.find((m: any) => m.user_id !== user?.id)?.user) 
     : null;
+  const handleStartCall = useCallback(async (type: 'audio' | 'video') => {
+    if (!room || !otherUser) {
+      Alert.alert('Hata', 'Arama başlatmak için sohbet bilgisi bulunamadı');
+      return;
+    }
+
+    const targetId = (otherUser as any).id || (otherUser as any).user_id;
+
+    if (!targetId) {
+      Alert.alert('Hata', 'Hedef kullanıcı bulunamadı');
+      return;
+    }
+
+    try {
+      setPendingCallType(type);
+      const result = await startCallMutation.mutateAsync({
+        roomId: room.id,
+        targetUserId: targetId,
+        callType: type,
+      });
+
+      router.push({
+        pathname: '/call/[userId]',
+        params: {
+          userId: targetId,
+          userName: (otherUser as any).full_name || 'Kullanıcı',
+          userAvatar: (otherUser as any).avatar_url || '',
+          callType: type,
+          sessionId: result.sessionId || '',
+        },
+      } as any);
+    } catch (error: any) {
+      Alert.alert('Hata', error?.message || 'Arama başlatılamadı');
+    } finally {
+      setPendingCallType(null);
+    }
+  }, [otherUser, room, router, startCallMutation]);
 
   // Grup post'larını al (sadece grup ise)
   const isGroup = room?.type === 'group';
@@ -117,6 +155,7 @@ export default function ChatRoomScreen() {
   });
 
   const markAsReadMutation = trpc.chat.markAsRead.useMutation();
+  const startCallMutation = trpc.chat.startCall.useMutation();
 
   const { data: allUsersData } = trpc.user.getAllUsers.useQuery({
     search: addMembersSearch || undefined,
@@ -712,35 +751,25 @@ export default function ChatRoomScreen() {
                 <>
                   <TouchableOpacity
                     style={styles.headerButton}
-                    onPress={() => {
-                      router.push({
-                        pathname: '/call/[userId]',
-                        params: {
-                          userId: (otherUser as any).id || (otherUser as any).user_id,
-                          userName: (otherUser as any).full_name || 'Kullanıcı',
-                          userAvatar: (otherUser as any).avatar_url || '',
-                          callType: 'audio',
-                        },
-                      } as any);
-                    }}
+                    onPress={() => handleStartCall('audio')}
+                    disabled={startCallMutation.isPending}
                   >
-                    <Phone size={22} color={COLORS.primary} />
+                    {startCallMutation.isPending && pendingCallType === 'audio' ? (
+                      <ActivityIndicator size="small" color={COLORS.primary} />
+                    ) : (
+                      <Phone size={22} color={COLORS.primary} />
+                    )}
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.headerButton}
-                    onPress={() => {
-                      router.push({
-                        pathname: '/call/[userId]',
-                        params: {
-                          userId: (otherUser as any).id || (otherUser as any).user_id,
-                          userName: (otherUser as any).full_name || 'Kullanıcı',
-                          userAvatar: (otherUser as any).avatar_url || '',
-                          callType: 'video',
-                        },
-                      } as any);
-                    }}
+                    onPress={() => handleStartCall('video')}
+                    disabled={startCallMutation.isPending}
                   >
-                    <VideoIcon size={22} color={COLORS.primary} />
+                    {startCallMutation.isPending && pendingCallType === 'video' ? (
+                      <ActivityIndicator size="small" color={COLORS.primary} />
+                    ) : (
+                      <VideoIcon size={22} color={COLORS.primary} />
+                    )}
                   </TouchableOpacity>
                 </>
               )}

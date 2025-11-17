@@ -85,10 +85,10 @@ export default function FeedScreen() {
       offset: 0,
     },
     {
-      staleTime: 2 * 60 * 1000, // 2 dakika
-      gcTime: 10 * 60 * 1000, // 10 dakika
-      refetchOnMount: false, // Cache'den kullan
-      refetchOnWindowFocus: false,
+      staleTime: 30 * 1000, // 30 saniye (daha sık refresh)
+      gcTime: 5 * 60 * 1000, // 5 dakika
+      refetchOnMount: true, // Her mount'ta refetch et
+      refetchOnWindowFocus: true, // Focus olduğunda refetch et
     }
   );
 
@@ -318,8 +318,8 @@ export default function FeedScreen() {
                   likeCount={0}
                   commentCount={0}
                   shareCount={0}
-                  onLike={() => {}}
-                  onComment={() => {}}
+                  onLike={() => router.push(`/event/${event.id}` as any)}
+                  onComment={() => router.push(`/event/${event.id}` as any)}
                   onShare={() => {}}
                   onTag={() => {}}
                   autoPlay={true}
@@ -341,13 +341,46 @@ export default function FeedScreen() {
                   contentFit="cover"
                   transition={200}
                   cachePolicy="memory-disk"
-                  priority="normal"
+                  priority="high"
+                  recyclingKey={firstMedia}
+                  allowDownscaling={false}
                   placeholder={{ blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.' }}
                 />
               </TouchableOpacity>
             )}
           </>
         )}
+
+        {/* Event Actions - Like ve Comment */}
+        <View style={styles.postActions}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push(`/event/${event.id}` as any)}
+          >
+            <Heart size={20} color={theme.colors.textLight} />
+            <Text style={[styles.actionText, { color: theme.colors.textLight }]}>
+              Beğen
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push(`/event/${event.id}` as any)}
+          >
+            <MessageCircle size={20} color={theme.colors.textLight} />
+            <Text style={[styles.actionText, { color: theme.colors.textLight }]}>
+              Yorum
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push(`/event/${event.id}` as any)}
+          >
+            <Share2 size={20} color={theme.colors.textLight} />
+            <Text style={[styles.actionText, { color: theme.colors.textLight }]}>
+              Paylaş
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }, [router, theme, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible]);
@@ -495,7 +528,9 @@ export default function FeedScreen() {
                   contentFit="cover"
                   transition={200}
                   cachePolicy="memory-disk"
-                  priority="normal"
+                  priority="high"
+                  recyclingKey={firstMedia.path}
+                  allowDownscaling={false}
                   placeholder={{ blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.' }}
                 />
               </TouchableOpacity>
@@ -595,7 +630,7 @@ export default function FeedScreen() {
           contentContainerStyle={styles.feedList}
           refreshControl={
             <RefreshControl 
-              refreshing={false} 
+              refreshing={isLoading || eventsLoading} 
               onRefresh={() => {
                 refetch();
                 refetchEvents();
@@ -672,6 +707,9 @@ export default function FeedScreen() {
                 style={styles.fullScreenImage}
                 contentFit="contain"
                 transition={200}
+                cachePolicy="memory-disk"
+                priority="high"
+                allowDownscaling={false}
               />
             )}
           </ScrollView>
@@ -874,19 +912,25 @@ const styles = StyleSheet.create({
     width: '100%',
     marginHorizontal: 0,
     paddingHorizontal: 0,
+    marginTop: 0,
+    marginBottom: 0,
   },
   postImage: {
     width: '100%',
     height: undefined,
     aspectRatio: 1,
-    maxHeight: 500,
+    maxHeight: Dimensions.get('window').height * 0.7,
     marginHorizontal: 0,
     paddingHorizontal: 0,
+    marginTop: 0,
+    marginBottom: 0,
   },
   videoContainer: {
     width: '100%',
     marginHorizontal: 0,
     paddingHorizontal: 0,
+    marginTop: 0,
+    marginBottom: 0,
   },
   fullScreenModal: {
     flex: 1,
@@ -917,10 +961,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: Dimensions.get('window').width,
     height: Dimensions.get('window').height,
+    paddingTop: 0,
   },
   fullScreenImage: {
     width: Dimensions.get('window').width,
     height: Dimensions.get('window').height,
+    marginTop: 0,
   },
   mediaCountBadge: {
     position: 'absolute' as const,

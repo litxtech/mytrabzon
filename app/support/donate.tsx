@@ -9,7 +9,6 @@ const DONATION_AMOUNTS = [
   { amount: 89, label: 'Bir Kahve', color: '#FFD700', badgeColor: 'yellow' },
   { amount: 139, label: 'İki Kahve', color: '#4CAF50', badgeColor: 'green' },
   { amount: 339, label: 'Üç Kahve', color: '#2196F3', badgeColor: 'blue' },
-  { amount: 3000, label: 'Özel Destek', color: '#F44336', badgeColor: 'red' },
 ];
 
 function DonateScreenContent() {
@@ -63,7 +62,6 @@ function DonateScreenContent() {
                     {option.badgeColor === 'yellow' && '🌟'}
                     {option.badgeColor === 'green' && '💚'}
                     {option.badgeColor === 'blue' && '💙'}
-                    {option.badgeColor === 'red' && '❤️'}
                     {' '}Destekçi
                   </Text>
                 </View>

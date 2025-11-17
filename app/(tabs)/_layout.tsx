@@ -1,5 +1,5 @@
 import { Tabs, useRouter } from "expo-router";
-import { Home, MessageCircle, Bell, User, GraduationCap, Trophy, Heart } from "lucide-react-native";
+import { Home, MessageCircle, Bell, User, GraduationCap, Trophy } from "lucide-react-native";
 import React, { useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -68,13 +68,6 @@ export default function TabLayout() {
         options={{
           title: "Halı Saha",
           tabBarIcon: ({ color }) => <Trophy size={24} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="match"
-        options={{
-          title: "Eşleş",
-          tabBarIcon: ({ color }) => <Heart size={24} color={color} />,
         }}
       />
       <Tabs.Screen

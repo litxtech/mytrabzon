@@ -71,8 +71,14 @@ export default function CreateEventScreen() {
     longitude: undefined as number | undefined,
   });
 
+  const utils = trpc.useUtils();
+  
   const createEventMutation = trpc.event.createEvent.useMutation({
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Feed'deki event query'sini invalidate et ve refetch et
+      await utils.event.getEvents.invalidate();
+      // Tüm parametrelerle invalidate et
+      await utils.event.getEvents.invalidate(undefined);
       Alert.alert('Başarılı', 'Olay başarıyla oluşturuldu!');
       router.back();
     },
@@ -139,22 +145,19 @@ export default function CreateEventScreen() {
     const fileExt = uri.split('.').pop()?.toLowerCase() || (type === 'video' ? 'mp4' : 'jpg');
     const fileName = `${user.id}/events/${type}_${Date.now()}.${fileExt}`;
     
-    const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
+    // Fetch ile blob olarak al ve direkt upload et (base64 yerine)
+    const response = await fetch(uri);
+    const blob = await response.blob();
     
-    const base64Data = base64.replace(/^data:image\/\w+;base64,/, '');
-    const binaryString = atob(base64Data);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-
     const mimeType = type === 'video' 
       ? 'video/mp4' 
       : fileExt === 'png' 
       ? 'image/png' 
       : 'image/jpeg';
+
+    // Blob'u ArrayBuffer'a çevir
+    const arrayBuffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
 
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('posts')

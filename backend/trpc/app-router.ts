@@ -49,6 +49,7 @@ import { getFollowingProcedure } from "./routes/user/get-following/route";
 import { getFollowStatsProcedure } from "./routes/user/get-follow-stats/route";
 import { checkAdminProcedure } from "./routes/admin/check-admin/route";
 import { getUsersProcedure } from "./routes/admin/get-users/route";
+import { deleteUsersProcedure } from "./routes/admin/delete-users/route";
 import { banUserProcedure } from "./routes/admin/ban-user/route";
 import { unbanUserProcedure } from "./routes/admin/unban-user/route";
 import { giveBlueTickProcedure } from "./routes/admin/give-blue-tick/route";
@@ -170,6 +171,7 @@ export const appRouter = createTRPCRouter({
     approveKyc: approveKycProcedure,
     rejectKyc: rejectKycProcedure,
     sendNotification: sendNotificationProcedure,
+    deleteUser: deleteUsersProcedure,
   }),
   kyc: createTRPCRouter({
     create: createKycProcedure,

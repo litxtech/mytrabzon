@@ -25,6 +25,7 @@ export default function FootballScreen() {
   const { user } = useAuth();
   const { theme } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedCity, setSelectedCity] = useState<'all' | 'Trabzon' | 'Giresun'>('all');
 
   // Kullanıcı profilini getir (şehir bilgisi için)
   const { data: userProfile } = trpc.user.getProfile.useQuery(
@@ -32,9 +33,11 @@ export default function FootballScreen() {
     { enabled: !!user?.id }
   );
 
-  // Bugünün maçlarını getir - kullanıcının şehrine göre
+  const queryCity = selectedCity === 'all' ? undefined : selectedCity;
+
+  // Bugünün maçlarını getir
   const { data: todayMatches, isLoading, refetch } = (trpc as any).football.getTodayMatches.useQuery(
-    { city: (userProfile?.city as 'Trabzon' | 'Giresun') || 'Trabzon' },
+    { city: queryCity },
     { 
       enabled: !!user,
       staleTime: 30 * 1000, // 30 saniye
@@ -164,6 +167,28 @@ export default function FootballScreen() {
         </TouchableOpacity>
       </View>
 
+      <View style={styles.cityFilterContainer}>
+        {(['all', 'Trabzon', 'Giresun'] as const).map((cityOption) => (
+          <TouchableOpacity
+            key={cityOption}
+            style={[
+              styles.cityFilterChip,
+              selectedCity === cityOption && { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+            ]}
+            onPress={() => setSelectedCity(cityOption)}
+          >
+            <Text
+              style={[
+                styles.cityFilterText,
+                selectedCity === cityOption ? { color: COLORS.white } : { color: theme.colors.text },
+              ]}
+            >
+              {cityOption === 'all' ? 'Tüm Şehirler' : cityOption}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <View style={styles.titleContainer}>
         <Calendar size={24} color={theme.colors.primary} />
         <Text style={[styles.title, { color: theme.colors.text }]}>Bugün Maç Var mı?</Text>
@@ -230,6 +255,26 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  cityFilterContainer: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+  },
+  cityFilterChip: {
+    flex: 1,
+    paddingVertical: SPACING.xs,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+  },
+  cityFilterText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.text,
   },
   titleContainer: {
     flexDirection: 'row',

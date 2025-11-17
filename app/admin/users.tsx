@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -12,12 +12,12 @@ import {
   Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Search, Ban, ShieldCheck, XCircle, CheckCircle2 } from 'lucide-react-native';
+import { ArrowLeft, Search, Ban, ShieldCheck, XCircle, CheckCircle2, EyeOff, Square, CheckSquare, Trash2 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { trpc } from '../../lib/trpc';
 
-type FilterType = 'all' | 'today' | 'banned' | 'blueTick';
+type FilterType = 'all' | 'today' | 'banned' | 'blueTick' | 'hidden' | 'live';
 
 export default function AdminUsersScreen() {
   const router = useRouter();
@@ -25,6 +25,7 @@ export default function AdminUsersScreen() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
 
   const { data, isLoading, refetch } = trpc.admin.getUsers.useQuery({
     search: search || undefined,
@@ -73,11 +74,26 @@ export default function AdminUsersScreen() {
     },
   });
 
+  const deleteUsersMutation = trpc.admin.deleteUser.useMutation({
+    onSuccess: (resp) => {
+      refetch();
+      setSelectedUsers(new Set());
+      Alert.alert('Başarılı', `${resp.deleted} kullanıcı silindi`);
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message);
+    },
+  });
+
   const onRefresh = async () => {
     setRefreshing(true);
     await refetch();
     setRefreshing(false);
   };
+
+  useEffect(() => {
+    setSelectedUsers(new Set());
+  }, [filter, search]);
 
   const handleBan = (userId: string, fullName: string) => {
     Alert.alert(
@@ -124,6 +140,45 @@ export default function AdminUsersScreen() {
     }
   };
 
+  const toggleSelection = (userId: string) => {
+    setSelectedUsers((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedUsers.size === 0) return;
+    const ids = Array.from(selectedUsers);
+    Alert.alert(
+      'Kullanıcıları Sil',
+      `${ids.length} kullanıcıyı tamamen silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: () => deleteUsersMutation.mutate({ userIds: ids }),
+        },
+      ],
+    );
+  };
+
+  const stats = data?.stats;
+  const filters: { key: FilterType; label: string }[] = [
+    { key: 'all', label: 'Tümü' },
+    { key: 'today', label: 'Bugün' },
+    { key: 'live', label: 'Canlı' },
+    { key: 'banned', label: 'Banlı' },
+    { key: 'blueTick', label: 'Mavi Tik' },
+    { key: 'hidden', label: 'Gizli' },
+  ];
+
   if (isLoading && !data) {
     return (
       <View style={[styles.container, styles.centerContent, { paddingTop: insets.top }]}>
@@ -140,7 +195,38 @@ export default function AdminUsersScreen() {
           <ArrowLeft size={24} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Kullanıcı Yönetimi</Text>
-        <View style={styles.placeholder} />
+        {selectedUsers.size > 0 ? (
+          <TouchableOpacity
+            style={[styles.deleteButton, deleteUsersMutation.isPending && styles.buttonDisabled]}
+            onPress={handleDeleteSelected}
+            disabled={deleteUsersMutation.isPending}
+          >
+            {deleteUsersMutation.isPending ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <>
+                <Trash2 size={16} color={COLORS.white} />
+                <Text style={styles.deleteButtonText}>Sil ({selectedUsers.size})</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.placeholder} />
+        )}
+      </View>
+
+      <View style={styles.statsContainer}>
+        {[
+          { label: 'Toplam', value: stats?.totalUsers ?? 0 },
+          { label: 'Canlı', value: stats?.liveUsers ?? 0 },
+          { label: 'Banlı', value: stats?.bannedUsers ?? 0 },
+          { label: 'Gizli', value: stats?.hiddenUsers ?? 0 },
+        ].map((stat) => (
+          <View key={stat.label} style={styles.statCard}>
+            <Text style={styles.statValue}>{stat.value}</Text>
+            <Text style={styles.statLabel}>{stat.label}</Text>
+          </View>
+        ))}
       </View>
 
       <View style={styles.searchContainer}>
@@ -154,41 +240,19 @@ export default function AdminUsersScreen() {
         />
       </View>
 
-      {/* Filtre Butonları */}
       <View style={styles.filterContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-          <TouchableOpacity
-            style={[styles.filterButton, filter === 'all' && styles.filterButtonActive]}
-            onPress={() => setFilter('all')}
-          >
-            <Text style={[styles.filterButtonText, filter === 'all' && styles.filterButtonTextActive]}>
-              Tümü
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterButton, filter === 'today' && styles.filterButtonActive]}
-            onPress={() => setFilter('today')}
-          >
-            <Text style={[styles.filterButtonText, filter === 'today' && styles.filterButtonTextActive]}>
-              Bugünkü Kayıtlar
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterButton, filter === 'banned' && styles.filterButtonActive]}
-            onPress={() => setFilter('banned')}
-          >
-            <Text style={[styles.filterButtonText, filter === 'banned' && styles.filterButtonTextActive]}>
-              Banlı Kullanıcılar
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterButton, filter === 'blueTick' && styles.filterButtonActive]}
-            onPress={() => setFilter('blueTick')}
-          >
-            <Text style={[styles.filterButtonText, filter === 'blueTick' && styles.filterButtonTextActive]}>
-              Mavi Tikli
-            </Text>
-          </TouchableOpacity>
+          {filters.map(({ key, label }) => (
+            <TouchableOpacity
+              key={key}
+              style={[styles.filterButton, filter === key && styles.filterButtonActive]}
+              onPress={() => setFilter(key)}
+            >
+              <Text style={[styles.filterButtonText, filter === key && styles.filterButtonTextActive]}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </ScrollView>
       </View>
 
@@ -199,11 +263,14 @@ export default function AdminUsersScreen() {
       >
         {data?.users && data.users.length > 0 ? (
           data.users.map((user: any) => {
-            // user_bans ve blue_ticks array veya object olabilir
+            // user_bans, blue_ticks ve hidden_users array veya object olabilir
             const userBans = Array.isArray(user.user_bans) ? user.user_bans : (user.user_bans ? [user.user_bans] : []);
             const blueTicks = Array.isArray(user.blue_ticks) ? user.blue_ticks : (user.blue_ticks ? [user.blue_ticks] : []);
+            const hiddenUsers = Array.isArray(user.hidden_users) ? user.hidden_users : (user.hidden_users ? [user.hidden_users] : []);
             const isBanned = userBans.length > 0 && userBans[0]?.is_active;
             const hasBlueTick = blueTicks.length > 0 && blueTicks[0]?.is_active;
+            const isHidden = hiddenUsers.length > 0;
+            const isSelected = selectedUsers.has(user.id);
 
             return (
               <TouchableOpacity
@@ -211,6 +278,19 @@ export default function AdminUsersScreen() {
                 style={styles.userCard}
                 onPress={() => router.push(`/admin/user-detail/${user.id}` as any)}
               >
+                <TouchableOpacity
+                  style={styles.selectionColumn}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    toggleSelection(user.id);
+                  }}
+                >
+                  {isSelected ? (
+                    <CheckSquare size={20} color={COLORS.primary} />
+                  ) : (
+                    <Square size={20} color={COLORS.textLight} />
+                  )}
+                </TouchableOpacity>
                 <Image
                   source={{ uri: user.avatar_url || 'https://via.placeholder.com/50' }}
                   style={styles.avatar}
@@ -235,6 +315,14 @@ export default function AdminUsersScreen() {
                       <Text style={styles.bannedText}>
                         Banlı - {userBans[0].ban_type === 'permanent' ? 'Kalıcı' : 'Geçici'}
                         {userBans[0].ban_until && ` (${new Date(userBans[0].ban_until).toLocaleDateString('tr-TR')})`}
+                      </Text>
+                    </View>
+                  )}
+                  {isHidden && (
+                    <View style={styles.hiddenBadge}>
+                      <EyeOff size={14} color="#FFA500" />
+                      <Text style={styles.hiddenText}>
+                        Gizli - {hiddenUsers[0]?.hidden_at ? new Date(hiddenUsers[0].hidden_at).toLocaleDateString('tr-TR') : 'Bilinmiyor'}
                       </Text>
                     </View>
                   )}
@@ -323,6 +411,23 @@ const styles = StyleSheet.create({
   placeholder: {
     width: 40,
   },
+  deleteButton: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: 20,
+    backgroundColor: COLORS.error,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  deleteButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '700',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
   searchContainer: {
     backgroundColor: COLORS.white,
     flexDirection: 'row',
@@ -337,6 +442,31 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    gap: SPACING.sm,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  statValue: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  statLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+    marginTop: 2,
   },
   scrollView: {
     flex: 1,
@@ -359,6 +489,10 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     marginRight: SPACING.md,
+  },
+  selectionColumn: {
+    paddingRight: SPACING.sm,
+    alignItems: 'center',
   },
   userInfo: {
     flex: 1,
@@ -402,6 +536,22 @@ const styles = StyleSheet.create({
   bannedText: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.error,
+    fontWeight: '600',
+  },
+  hiddenBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.xs,
+    backgroundColor: '#FFA50020',
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: 2,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  hiddenText: {
+    fontSize: FONT_SIZES.xs,
+    color: '#FFA500',
     fontWeight: '600',
   },
   actions: {

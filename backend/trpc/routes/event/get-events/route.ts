@@ -15,12 +15,11 @@ export const getEventsProcedure = publicProcedure
     .query(async ({ ctx, input }) => {
       const { supabase } = ctx;
 
+      console.log('📢 getEvents called with:', input);
+      
       let query = supabase
         .from('events')
-        .select(`
-          *,
-          user:profiles!events_user_id_fkey(id, full_name, avatar_url, username)
-        `, { count: 'exact' })
+        .select(`*`, { count: 'exact' })
         .eq('is_active', true)
         .eq('is_deleted', false)
         .gt('expires_at', new Date().toISOString())
@@ -43,11 +42,37 @@ export const getEventsProcedure = publicProcedure
       const { data, error, count } = await query;
 
       if (error) {
+        console.error('❌ getEvents error:', error);
         throw new Error(error.message);
       }
 
+      let events = data || [];
+
+      if (events.length > 0) {
+        const userIds = [...new Set(events.map((event: any) => event.user_id).filter(Boolean))];
+
+        if (userIds.length > 0) {
+          const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('id, full_name, avatar_url, username')
+            .in('id', userIds);
+
+          if (profileError) {
+            console.error('❌ getEvents profile load error:', profileError);
+          } else if (profileData) {
+            const profileMap = new Map(profileData.map((profile: any) => [profile.id, profile]));
+            events = events.map((event: any) => ({
+              ...event,
+              user: profileMap.get(event.user_id) || null,
+            }));
+          }
+        }
+      }
+
+      console.log('✅ getEvents returned:', events.length, 'events');
+
       return {
-        events: data || [],
+        events,
         total: count || 0,
         hasMore: count ? input.offset + input.limit < count : false,
       };

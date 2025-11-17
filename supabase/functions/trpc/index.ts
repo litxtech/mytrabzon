@@ -24,6 +24,11 @@ function base64ToUint8Array(base64: string): Uint8Array {
   return bytes;
 }
 
+function generateCallChannelName(userId1: string, userId2: string): string {
+  const sorted = [userId1, userId2].sort();
+  return `call_${sorted[0]}_${sorted[1]}`;
+}
+
 const appRouter = createTRPCRouter({
   example: createTRPCRouter({
     hi: publicProcedure.query(() => {
@@ -2018,6 +2023,178 @@ const appRouter = createTRPCRouter({
         return { success: true, deletedCount: 'all' };
       }),
 
+    startCall: protectedProcedure
+      .input(
+        z.object({
+          roomId: z.string().uuid(),
+          targetUserId: z.string().uuid(),
+          callType: z.enum(['audio', 'video']),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const callerId = ctx.user.id;
+        const { supabase } = ctx;
+
+        if (callerId === input.targetUserId) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Kendinizi arayamazsınız',
+          });
+        }
+
+        const { data: room, error: roomError } = await supabase
+          .from('chat_rooms')
+          .select('id, type')
+          .eq('id', input.roomId)
+          .single();
+
+        if (roomError || !room) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Sohbet bulunamadı' });
+        }
+
+        if (room.type !== 'direct') {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Sesli/görüntülü arama sadece bire bir sohbetlerde kullanılabilir',
+          });
+        }
+
+        const { data: members, error: membersError } = await supabase
+          .from('chat_members')
+          .select('user_id')
+          .eq('room_id', input.roomId);
+
+        if (membersError) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Sohbet üyeleri alınamadı',
+          });
+        }
+
+        const memberIds = (members || []).map((m) => m.user_id);
+
+        if (!memberIds.includes(callerId) || !memberIds.includes(input.targetUserId)) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Bu sohbet üzerinde arama başlatma yetkiniz yok',
+          });
+        }
+
+        const channelName = generateCallChannelName(callerId, input.targetUserId);
+        const [, user1Id, user2Id] = channelName.split('_');
+
+        if (!user1Id || !user2Id) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Arama kanalı oluşturulamadı',
+          });
+        }
+
+        const { data: activeSession } = await supabase
+          .from('match_sessions')
+          .select('*')
+          .eq('channel_name', channelName)
+          .is('ended_at', null)
+          .maybeSingle();
+
+        let session = activeSession;
+
+        if (!session) {
+          const { data: newSession, error: sessionError } = await supabase
+            .from('match_sessions')
+            .insert({
+              user1_id: user1Id,
+              user2_id: user2Id,
+              channel_name: channelName,
+              started_at: new Date().toISOString(),
+            })
+            .select('*')
+            .single();
+
+          if (sessionError || !newSession) {
+            console.error('startCall session error:', sessionError);
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'Arama oturumu oluşturulamadı',
+            });
+          }
+
+          session = newSession;
+        }
+
+        const callMessage =
+          input.callType === 'video' ? '📹 Görüntülü arama başlattı' : '📞 Sesli arama başlattı';
+
+        await supabase
+          .from('messages')
+          .insert({
+            room_id: input.roomId,
+            user_id: callerId,
+            content: callMessage,
+          });
+
+        await supabase
+          .from('chat_rooms')
+          .update({ last_message_at: new Date().toISOString() })
+          .eq('id', input.roomId);
+
+        const { data: callerProfile } = await supabase
+          .from('profiles')
+          .select('full_name, avatar_url')
+          .eq('id', callerId)
+          .maybeSingle();
+
+        const { data: targetProfile } = await supabase
+          .from('profiles')
+          .select('push_token')
+          .eq('id', input.targetUserId)
+          .maybeSingle();
+
+        if (targetProfile?.push_token) {
+          const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+          const callTitle = input.callType === 'video' ? 'Görüntülü Arama' : 'Sesli Arama';
+          const callBody = `${callerProfile?.full_name || 'Bir kullanıcı'} sizi ${
+            input.callType === 'video' ? 'görüntülü' : 'sesli'
+          } arıyor`;
+
+          const payload = {
+            to: targetProfile.push_token,
+            sound: 'default',
+            title: callTitle,
+            body: callBody,
+            data: {
+              type: 'call',
+              callType: input.callType,
+              callerId,
+              callerName: callerProfile?.full_name || '',
+              callerAvatar: callerProfile?.avatar_url || '',
+              sessionId: session.id,
+              roomId: input.roomId,
+              channelName,
+            },
+          };
+
+          try {
+            await fetch(expoPushUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'Accept-Encoding': 'gzip, deflate',
+              },
+              body: JSON.stringify(payload),
+            });
+          } catch (pushError) {
+            console.error('Call push notification error:', pushError);
+          }
+        }
+
+        return {
+          sessionId: session.id,
+          channelName,
+        };
+      }),
+
     leaveRoom: protectedProcedure
       .input(z.object({ roomId: z.string().uuid() }))
       .mutation(async ({ ctx, input }) => {
@@ -2658,8 +2835,9 @@ const appRouter = createTRPCRouter({
             field:football_fields(id, name, district, address),
             organizer:profiles!matches_organizer_id_fkey(id, full_name, avatar_url)
           `, { count: 'exact' })
-          .eq('match_date', today)
+          .gte('match_date', today)
           .in('status', ['scheduled', 'looking_for_opponent', 'looking_for_players'])
+          .order('match_date', { ascending: true })
           .order('start_time', { ascending: true })
           .range(input.offset, input.offset + input.limit - 1);
 
@@ -2777,8 +2955,42 @@ const appRouter = createTRPCRouter({
         const { data, error, count } = await query;
         if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
 
+        const posts = (data || []).map((post: any) => ({
+          ...post,
+          applications: [],
+        }));
+
+        if (posts.length > 0) {
+          const postIds = posts.map((post: any) => post.id);
+          const { data: applications, error: applicationsError } = await supabase
+            .from('missing_player_applications')
+            .select(`
+              id,
+              post_id,
+              message,
+              status,
+              applied_at,
+              applicant:profiles!missing_player_applications_applicant_id_fkey(id, full_name, avatar_url)
+            `)
+            .in('post_id', postIds)
+            .order('applied_at', { ascending: false });
+
+          if (!applicationsError && applications) {
+            const grouped = new Map<string, any[]>();
+            applications.forEach((application: any) => {
+              const list = grouped.get(application.post_id) || [];
+              list.push(application);
+              grouped.set(application.post_id, list);
+            });
+
+            posts.forEach((post: any) => {
+              post.applications = grouped.get(post.id) || [];
+            });
+          }
+        }
+
         return {
-          posts: data || [],
+          posts,
           total: count || 0,
           hasMore: count ? input.offset + input.limit < count : false,
         };
@@ -2798,7 +3010,7 @@ const appRouter = createTRPCRouter({
         // İlanı kontrol et
         const { data: post } = await supabase
           .from('missing_player_posts')
-          .select('id, is_filled, match_id')
+          .select('id, is_filled, match_id, position_needed')
           .eq('id', input.post_id)
           .single();
 
@@ -2813,10 +3025,154 @@ const appRouter = createTRPCRouter({
             applicant_id: user.id,
             message: input.message,
           })
-          .select()
+          .select(`
+            id,
+            post_id,
+            message,
+            status,
+            applied_at,
+            applicant:profiles!missing_player_applications_applicant_id_fkey(id, full_name, avatar_url)
+          `)
           .single();
 
         if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        // Kullanıcıyı maça rezervasyon olarak ekle (varsa)
+        if (post.match_id) {
+          const { error: participantError } = await supabase
+            .from('match_participants')
+            .insert({
+              match_id: post.match_id,
+              user_id: user.id,
+              position: post.position_needed || null,
+              is_confirmed: false,
+            })
+            .select()
+            .single();
+
+          if (participantError && participantError.code !== '23505') {
+            console.error('match_participants insert error:', participantError);
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Rezervasyon oluşturulamadı' });
+          }
+        }
+
+        // Organizatöre mesaj gönder ve bildirim gönder
+        const { data: postDetails } = await supabase
+          .from('missing_player_posts')
+          .select('posted_by, match:matches(id, match_date, start_time, field:fields(name))')
+          .eq('id', input.post_id)
+          .single();
+
+        if (postDetails?.posted_by && postDetails.posted_by !== user.id) {
+          // Chat room oluştur veya mevcut olanı bul
+          const { data: existingRoom } = await supabase
+            .from('chat_members')
+            .select('room_id, chat_rooms!inner(*)')
+            .eq('user_id', user.id)
+            .eq('chat_rooms.type', 'direct');
+
+          let roomId: string | null = null;
+
+          if (existingRoom) {
+            for (const room of existingRoom) {
+              const { data: members } = await supabase
+                .from('chat_members')
+                .select('user_id')
+                .eq('room_id', room.room_id);
+
+              const memberUserIds = (members || []).map((m: any) => m.user_id);
+              if (
+                memberUserIds.length === 2 &&
+                memberUserIds.includes(user.id) &&
+                memberUserIds.includes(postDetails.posted_by)
+              ) {
+                roomId = room.room_id;
+                break;
+              }
+            }
+          }
+
+          if (!roomId) {
+            const { data: newRoom, error: roomError } = await supabase
+              .from('chat_rooms')
+              .insert({
+                type: 'direct',
+                created_by: user.id,
+              })
+              .select('id')
+              .single();
+
+            if (!roomError && newRoom) {
+              roomId = newRoom.id;
+              // Her iki kullanıcıyı da ekle
+              await supabase.from('chat_members').insert([
+                { room_id: roomId, user_id: user.id, role: 'member' },
+                { room_id: roomId, user_id: postDetails.posted_by, role: 'member' },
+              ]);
+            }
+          }
+
+          if (roomId) {
+            // Mesaj gönder
+            const matchInfo = postDetails.match;
+            const messageContent = input.message || 
+              `Merhaba! ${matchInfo?.field?.name || 'Halı saha'} için ${matchInfo?.match_date || ''} tarihinde ${matchInfo?.start_time?.substring(0, 5) || ''} saatinde rezervasyon yaptım. Rakibin hazır, hemen sohbete başlayalım!`;
+
+            await supabase.from('messages').insert({
+              room_id: roomId,
+              user_id: user.id,
+              content: messageContent,
+            });
+
+            await supabase
+              .from('chat_rooms')
+              .update({ last_message_at: new Date().toISOString() })
+              .eq('id', roomId);
+          }
+
+          // Bildirim gönder
+          const { data: organizerProfile } = await supabase
+            .from('profiles')
+            .select('push_token, full_name')
+            .eq('id', postDetails.posted_by)
+            .maybeSingle();
+
+          const { data: applicantProfile } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', user.id)
+            .maybeSingle();
+
+          if (organizerProfile?.push_token) {
+            const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+            const payload = {
+              to: organizerProfile.push_token,
+              sound: 'default',
+              title: 'Rezervasyon İsteği',
+              body: `${applicantProfile?.full_name || 'Bir kullanıcı'} maçınıza rezervasyon yaptı. Rakibin hazır, hemen sohbete başlayın!`,
+              data: {
+                type: 'reservation',
+                post_id: input.post_id,
+                applicant_id: user.id,
+                room_id: roomId,
+              },
+            };
+
+            try {
+              await fetch(expoPushUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Accept: 'application/json',
+                  'Accept-Encoding': 'gzip, deflate',
+                },
+                body: JSON.stringify(payload),
+              });
+            } catch (pushError) {
+              console.error('Reservation push notification error:', pushError);
+            }
+          }
+        }
 
         return data;
       }),
@@ -6086,6 +6442,8 @@ const appRouter = createTRPCRouter({
             audio_url: input.audio_url,
             start_date: now.toISOString(),
             expires_at: expiresAt.toISOString(),
+            is_active: true, // Açıkça set et
+            is_deleted: false, // Açıkça set et
           })
           .select()
           .single();
@@ -6098,7 +6456,13 @@ const appRouter = createTRPCRouter({
         }
 
         // Algoritma: Etkilenecek kullanıcıları bul ve bildirim oluştur
-        await createNotificationsForEvent(supabase, event, input.severity, input.district, input.city);
+        console.log('📢 Event created:', event.id, 'Severity:', input.severity);
+        try {
+          await createNotificationsForEvent(supabase, event, input.severity, input.district, input.city);
+        } catch (notificationError) {
+          console.error('❌ Notification creation failed:', notificationError);
+          // Bildirim hatası olsa bile event oluşturuldu, devam et
+        }
 
         return event;
       }),
@@ -6117,12 +6481,11 @@ const appRouter = createTRPCRouter({
       .query(async ({ ctx, input }) => {
         const { supabase } = ctx;
 
+        console.log('📢 getEvents called with:', input);
+        
         let query = supabase
           .from('events')
-          .select(`
-            *,
-            user:profiles!events_user_id_fkey(id, full_name, avatar_url, username)
-          `, { count: 'exact' })
+          .select(`*`, { count: 'exact' })
           .eq('is_active', true)
           .eq('is_deleted', false)
           .gt('expires_at', new Date().toISOString())
@@ -6145,11 +6508,37 @@ const appRouter = createTRPCRouter({
         const { data, error, count } = await query;
 
         if (error) {
+          console.error('❌ getEvents error:', error);
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
         }
 
+        let events = data || [];
+
+        if (events.length > 0) {
+          const userIds = [...new Set(events.map((event: any) => event.user_id).filter(Boolean))];
+          
+          if (userIds.length > 0) {
+            const { data: profileData, error: profileError } = await supabase
+              .from('profiles')
+              .select('id, full_name, avatar_url, username')
+              .in('id', userIds);
+            
+            if (profileError) {
+              console.error('❌ getEvents profile load error:', profileError);
+            } else if (profileData) {
+              const profileMap = new Map(profileData.map((profile: any) => [profile.id, profile]));
+              events = events.map((event: any) => ({
+                ...event,
+                user: profileMap.get(event.user_id) || null,
+              }));
+            }
+          }
+        }
+
+        console.log('✅ getEvents returned:', events.length, 'events');
+
         return {
-          events: data || [],
+          events,
           total: count || 0,
           hasMore: count ? input.offset + input.limit < count : false,
         };
@@ -6506,21 +6895,31 @@ async function createNotificationsForEvent(
 
   if (severity === 'CRITICAL') {
     // Tüm şehir
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('id')
       .eq('city', city)
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .neq('id', event.user_id); // Event oluşturan kullanıcıyı hariç tut
+    if (error) {
+      console.error('❌ CRITICAL severity query error:', error);
+    }
     targetUsers = data || [];
+    console.log('📢 CRITICAL: Found', targetUsers.length, 'users in', city);
   } else if (severity === 'HIGH') {
     // Sadece ilçe
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('id')
       .eq('district', district)
       .eq('city', city)
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .neq('id', event.user_id); // Event oluşturan kullanıcıyı hariç tut
+    if (error) {
+      console.error('❌ HIGH severity query error:', error);
+    }
     targetUsers = data || [];
+    console.log('📢 HIGH: Found', targetUsers.length, 'users in', district, city);
   } else if (severity === 'NORMAL') {
     // İlçe + ilgi alanları
     const { data: districtUsers } = await supabase
@@ -6539,16 +6938,23 @@ async function createNotificationsForEvent(
     const interestUserIds = (interestUsers || []).map((u: any) => u.user_id);
     const allUserIds = [...new Set([...districtUserIds, ...interestUserIds])];
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('id')
       .in('id', allUserIds)
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .neq('id', event.user_id); // Event oluşturan kullanıcıyı hariç tut
+    if (error) {
+      console.error('❌ NORMAL severity query error:', error);
+    }
     targetUsers = data || [];
+    console.log('📢 NORMAL: Found', targetUsers.length, 'users (district:', districtUserIds.length, 'interest:', interestUserIds.length, ')');
   }
   // LOW severity için push bildirim yok, sadece feed'de görünür
 
   // Her kullanıcı için bildirim oluştur
+  console.log('📢 Target users found:', targetUsers.length, 'Severity:', severity);
+  
   if (targetUsers.length > 0 && severity !== 'LOW') {
     const notifications = targetUsers.map((user: any) => ({
       user_id: user.id,
@@ -6560,12 +6966,105 @@ async function createNotificationsForEvent(
       push_sent: false,
     }));
 
-    await supabase
+    console.log('📢 Creating notifications:', notifications.length);
+    const { data: insertedNotifications, error: insertError } = await supabase
       .from('notifications')
-      .insert(notifications);
+      .insert(notifications)
+      .select('id, user_id');
+
+    if (insertError) {
+      console.error('❌ Notification insert error:', insertError);
+      // Bildirim hatası olsa bile event oluşturuldu, devam et
+    } else {
+      console.log('✅ Notifications created:', insertedNotifications?.length || 0);
+    }
 
     // Push bildirimleri gönder (Expo Push API)
-    // Bu kısım Supabase Edge Function'da yapılabilir
+    if (insertedNotifications && insertedNotifications.length > 0) {
+      try {
+        // Push token'ları al
+        const userIds = insertedNotifications.map((n: any) => n.user_id);
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, push_token')
+          .in('id', userIds);
+
+        const pushTokens: string[] = [];
+        const notificationIdToTokenMap = new Map<string, string>();
+
+        if (profiles) {
+          for (const profile of profiles) {
+            if (profile.push_token) {
+              pushTokens.push(profile.push_token);
+              // Her notification için token bul
+              const notification = insertedNotifications.find((n: any) => n.user_id === profile.id);
+              if (notification) {
+                notificationIdToTokenMap.set(notification.id, profile.push_token);
+              }
+            }
+          }
+        }
+
+        // Expo Push API ile bildirim gönder
+        if (pushTokens.length > 0) {
+          const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+          const messages = insertedNotifications
+            .filter((n: any) => notificationIdToTokenMap.has(n.id))
+            .map((n: any) => {
+              const token = notificationIdToTokenMap.get(n.id);
+              if (!token) return null;
+              return {
+                to: token,
+                sound: 'default',
+                title: event.title,
+                body: event.description || `${event.category} - ${district}`,
+                data: { 
+                  type: 'EVENT',
+                  event_id: event.id, 
+                  severity, 
+                  category: event.category 
+                },
+                badge: 1,
+              };
+            })
+            .filter((m: any) => m !== null);
+
+          // Batch gönderim (100'lük gruplar halinde)
+          const batchSize = 100;
+          for (let i = 0; i < messages.length; i += batchSize) {
+            const batch = messages.slice(i, i + batchSize);
+            const response = await fetch(expoPushUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'Accept-Encoding': 'gzip, deflate',
+              },
+              body: JSON.stringify(batch),
+            });
+
+            if (!response.ok) {
+              console.error('Push notification error:', await response.text());
+            }
+          }
+
+          // Başarılı gönderimleri işaretle
+          const sentNotificationIds = insertedNotifications
+            .filter((n: any) => notificationIdToTokenMap.has(n.id))
+            .map((n: any) => n.id);
+
+          if (sentNotificationIds.length > 0) {
+            await supabase
+              .from('notifications')
+              .update({ push_sent: true })
+              .in('id', sentNotificationIds);
+          }
+        }
+      } catch (pushError) {
+        console.error('Push notification error:', pushError);
+        // Push hatası olsa bile bildirimler kaydedildi, devam et
+      }
+    }
   }
 }
 

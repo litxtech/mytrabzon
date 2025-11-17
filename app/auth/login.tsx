@@ -7,7 +7,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Mail, Lock } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import { makeRedirectUri } from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
+
+WebBrowser.maybeCompleteAuthSession();
 
 type AuthMode = 'login' | 'register' | 'magic' | 'forgot';
 
@@ -46,33 +49,30 @@ export default function LoginScreen() {
 
     try {
       isNavigatingRef.current = true;
-      console.log('Checking profile for user:', userId);
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (profileError) {
-        console.error('Profile fetch error:', profileError);
-      }
-
-      console.log('Profile check result:', {
-        hasProfile: !!profile,
-        hasFullName: !!profile?.full_name,
-        profileId: profile?.id,
-      });
+      console.log('🔍 [checkProfileAndNavigate] Starting for user:', userId);
+      console.log('🔍 [checkProfileAndNavigate] isNavigatingRef.current:', isNavigatingRef.current);
+      
+      console.log('🔍 [checkProfileAndNavigate] Skipping profile fetch, navigating directly to onboarding');
+      
+      // Profile fetch'i atla - direkt onboarding'e yönlendir
+      // Profil kontrolü onboarding ekranında yapılacak
+      const profile = null;
 
       // Loading state'leri kapat
+      console.log('🔍 [checkProfileAndNavigate] Closing loading states...');
       setOauthLoading(false);
       setLoading(false);
+      console.log('✅ [checkProfileAndNavigate] Loading states closed');
 
       // Navigation path'ini belirle
-      const targetPath = !profile || !profile.full_name 
+      const hasProfile = !!profile;
+      const hasFullName = !!(profile as any)?.full_name;
+      const targetPath = !hasProfile || !hasFullName
         ? '/auth/onboarding' 
         : '/(tabs)/feed';
       
-      console.log('Navigating to:', targetPath);
+      console.log('🚀 [checkProfileAndNavigate] Navigating to:', targetPath);
+      console.log('🚀 [checkProfileAndNavigate] Profile exists:', hasProfile, 'Has full_name:', hasFullName);
 
       // Navigation'ı gerçekleştir - birden fazla deneme yap
       let navigationAttempts = 0;
@@ -82,21 +82,25 @@ export default function LoginScreen() {
 
       while (navigationAttempts < maxAttempts && !navigationSuccess) {
         navigationAttempts++;
-        console.log(`Navigation attempt ${navigationAttempts}/${maxAttempts} to ${targetPath}`);
-        console.log(`Current pathname: ${pathname}, Initial path: ${initialPath}`);
+        console.log(`🚀 [checkProfileAndNavigate] Navigation attempt ${navigationAttempts}/${maxAttempts} to ${targetPath}`);
+        console.log(`🚀 [checkProfileAndNavigate] Current pathname: ${pathname}, Initial path: ${initialPath}`);
         
         try {
           // İlk denemede replace, sonraki denemelerde push kullan
           if (navigationAttempts === 1) {
+            console.log('🚀 [checkProfileAndNavigate] Calling router.replace...');
             router.replace(targetPath as any);
-            console.log('router.replace called');
+            console.log('✅ [checkProfileAndNavigate] router.replace called successfully');
           } else {
+            console.log('🚀 [checkProfileAndNavigate] Calling router.push (fallback)...');
             router.push(targetPath as any);
-            console.log('router.push called (fallback)');
+            console.log('✅ [checkProfileAndNavigate] router.push called successfully');
           }
           
           // Navigation'ın çalışması için delay - pathname'in değişmesini bekle
+          console.log('⏳ [checkProfileAndNavigate] Waiting 800ms for navigation to complete...');
           await new Promise(resolve => setTimeout(resolve, 800));
+          console.log('✅ [checkProfileAndNavigate] Wait completed');
           
           // Pathname'in değişip değişmediğini kontrol et
           // Not: pathname state'i güncellenmiş olabilir, ama callback içinde direkt erişemeyiz
@@ -104,10 +108,11 @@ export default function LoginScreen() {
           // Eğer navigation gerçekten başarısız olursa, onAuthStateChange tekrar tetiklenecek
           // ve checkProfileAndNavigate tekrar çağrılacak, ama isNavigatingRef flag'i bunu engelleyecek
           navigationSuccess = true;
-          console.log('Navigation completed successfully');
+          console.log('✅ [checkProfileAndNavigate] Navigation completed successfully');
           
         } catch (navError: any) {
-          console.error(`Navigation attempt ${navigationAttempts} failed:`, navError);
+          console.error(`❌ [checkProfileAndNavigate] Navigation attempt ${navigationAttempts} failed:`, navError);
+          console.error(`❌ [checkProfileAndNavigate] Navigation error details:`, JSON.stringify(navError, null, 2));
           
           if (navigationAttempts < maxAttempts) {
             // Bir sonraki deneme için kısa bir delay
@@ -139,33 +144,43 @@ export default function LoginScreen() {
       }
 
       if (navigationSuccess) {
-        console.log('Navigation successful, resetting flag after delay');
+        console.log('✅ [checkProfileAndNavigate] Navigation successful, resetting flag after 3s delay');
         // Navigation başarılı - flag'i sıfırla (delay ile)
         // Eğer navigation gerçekten başarısız olursa, onAuthStateChange tekrar tetiklenecek
         // ama isNavigatingRef flag'i bunu engelleyecek, bu yüzden döngü oluşmayacak
         setTimeout(() => {
           isNavigatingRef.current = false;
-          console.log('Navigation flag reset');
+          console.log('✅ [checkProfileAndNavigate] Navigation flag reset');
         }, 3000);
+      } else {
+        console.error('❌ [checkProfileAndNavigate] Navigation was not successful after all attempts');
       }
 
     } catch (error: any) {
-      console.error('Error in checkProfileAndNavigate:', error);
+      console.error('❌ [checkProfileAndNavigate] Error in checkProfileAndNavigate:', error);
+      console.error('❌ [checkProfileAndNavigate] Error details:', JSON.stringify(error, null, 2));
       setOauthLoading(false);
       setLoading(false);
       
       // Hata durumunda onboarding'e yönlendir
       try {
+        console.log('🚀 [checkProfileAndNavigate] Error fallback: Navigating to onboarding');
         router.replace('/auth/onboarding');
-        console.log('Error fallback: Navigating to onboarding');
+        console.log('✅ [checkProfileAndNavigate] Error fallback navigation completed');
       } catch (navError) {
-        console.error('Error fallback navigation failed:', navError);
-        router.push('/auth/onboarding');
+        console.error('❌ [checkProfileAndNavigate] Error fallback navigation failed:', navError);
+        try {
+          router.push('/auth/onboarding');
+          console.log('✅ [checkProfileAndNavigate] Error fallback push completed');
+        } catch (pushError) {
+          console.error('❌ [checkProfileAndNavigate] Error fallback push also failed:', pushError);
+        }
       }
       
       // Flag'i sıfırla
       setTimeout(() => {
         isNavigatingRef.current = false;
+        console.log('✅ [checkProfileAndNavigate] Error: Navigation flag reset');
       }, 2000);
     }
   }, [router, pathname]);
@@ -173,27 +188,38 @@ export default function LoginScreen() {
   // OAuth callback'i dinle - her zaman aktif
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event, session?.user?.id);
+      console.log('🔔 [onAuthStateChange] Auth state changed:', event, 'User ID:', session?.user?.id);
+      console.log('🔔 [onAuthStateChange] isNavigatingRef.current:', isNavigatingRef.current);
+      console.log('🔔 [onAuthStateChange] oauthLoading:', oauthLoading);
       
       if (event === 'SIGNED_IN' && session?.user) {
-        console.log('User signed in via OAuth:', session.user.id);
+        console.log('✅ [onAuthStateChange] User signed in via OAuth:', session.user.id);
         // Duplicate call'ları önle - eğer zaten navigation yapılıyorsa atla
         if (!isNavigatingRef.current) {
+          console.log('🚀 [onAuthStateChange] Calling checkProfileAndNavigate (isNavigatingRef is false)');
           // checkProfileAndNavigate içinde loading state'leri kapatılıyor
           await checkProfileAndNavigate(session.user.id);
+          console.log('✅ [onAuthStateChange] checkProfileAndNavigate completed');
+        } else {
+          console.log('⏭️ [onAuthStateChange] Skipping checkProfileAndNavigate (navigation already in progress)');
         }
       } else if (event === 'SIGNED_OUT') {
-        console.log('User signed out');
+        console.log('👋 [onAuthStateChange] User signed out');
         setOauthLoading(false);
         setLoading(false);
         isNavigatingRef.current = false;
+        console.log('✅ [onAuthStateChange] Reset states and navigation flag');
       } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-        console.log('Token refreshed for user:', session.user.id);
+        console.log('🔄 [onAuthStateChange] Token refreshed for user:', session.user.id);
         // Token yenilendiğinde de kontrol et (sadece OAuth loading durumunda)
         if (oauthLoading && !isNavigatingRef.current) {
+          console.log('🚀 [onAuthStateChange] Calling checkProfileAndNavigate after token refresh');
           setOauthLoading(false);
           setLoading(false);
           await checkProfileAndNavigate(session.user.id);
+          console.log('✅ [onAuthStateChange] checkProfileAndNavigate completed after token refresh');
+        } else {
+          console.log('⏭️ [onAuthStateChange] Skipping checkProfileAndNavigate after token refresh (oauthLoading:', oauthLoading, ', isNavigatingRef:', isNavigatingRef.current, ')');
         }
       }
     });
@@ -393,11 +419,14 @@ export default function LoginScreen() {
     setLoading(true);
     setOauthLoading(true);
     try {
-      console.log('Starting Google native login...');
+      console.log('Starting Google OAuth login...');
 
-      // Web'de Supabase OAuth kullan
+      // Web'de Supabase'in standart yönlendirmesini kullan
       if (Platform.OS === 'web') {
-        const redirectUrl = typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback';
+        const redirectUrl = typeof window !== 'undefined'
+          ? `${window.location.origin}/auth/callback`
+          : 'https://www.litxtech.com/auth/callback';
+
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
@@ -405,6 +434,7 @@ export default function LoginScreen() {
             skipBrowserRedirect: false,
           },
         });
+
         if (error) throw error;
         if (data.url) {
           window.location.href = data.url;
@@ -412,200 +442,21 @@ export default function LoginScreen() {
         return;
       }
 
-      // Mobilde Supabase OAuth URL'ini uygulama içinde aç
-      const redirectUrl = 'mytrabzon://auth/callback';
+      // Native platformlar için deep link URI'sı oluştur
+      const nativeRedirectUri = makeRedirectUri({
+        scheme: 'mytrabzon',
+        path: 'auth/callback',
+        preferLocalhost: __DEV__,
+      });
+
+      console.log('Google login - native redirect URI:', nativeRedirectUri);
+
+      const callbackHtmlUrl = `https://www.litxtech.com/auth/callback?redirect_to=${encodeURIComponent(nativeRedirectUri)}`;
+
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: redirectUrl,
-          skipBrowserRedirect: true,
-        },
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      if (!data.url) {
-        throw new Error('OAuth URL alınamadı');
-      }
-
-      console.log('Opening Google OAuth in app browser:', data.url);
-
-      // OAuth URL'ini uygulama içinde aç
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-
-      console.log('WebBrowser result:', result);
-      console.log('WebBrowser result type:', result.type);
-
-      if (result.type === 'success') {
-        // OAuth başarılı - callback URL'i kontrol et
-        // WebBrowser.openAuthSessionAsync result'ında url property'si olabilir
-        const callbackUrl = (result as any).url;
-        console.log('Callback URL from result:', callbackUrl);
-        
-        if (callbackUrl && (callbackUrl.includes('access_token') || callbackUrl.includes('code'))) {
-          // Callback URL'inde token veya code var - direkt işle
-          console.log('Processing callback URL directly:', callbackUrl);
-          
-          try {
-            // URL'den token'ları veya code'u çıkar
-            // Not: Supabase callback URL'i hash fragment (#) kullanıyor, query string (?) değil
-            let accessToken: string | null = null;
-            let refreshToken: string | null = null;
-            let code: string | null = null;
-            
-            // Hash fragment'i parse et (# ile başlayan kısım)
-            const hashIndex = callbackUrl.indexOf('#');
-            if (hashIndex !== -1) {
-              const hashPart = callbackUrl.substring(hashIndex + 1);
-              const hashParams = new URLSearchParams(hashPart);
-              accessToken = hashParams.get('access_token');
-              refreshToken = hashParams.get('refresh_token');
-              code = hashParams.get('code');
-            } else {
-              // Query string varsa onu kullan (? ile başlayan kısım)
-              try {
-                const url = new URL(callbackUrl);
-                accessToken = url.searchParams.get('access_token');
-                refreshToken = url.searchParams.get('refresh_token');
-                code = url.searchParams.get('code');
-              } catch (urlError) {
-                // URL parse hatası - manuel parse
-                const accessTokenMatch = callbackUrl.match(/[#&?]access_token=([^&]+)/);
-                const refreshTokenMatch = callbackUrl.match(/[#&?]refresh_token=([^&]+)/);
-                const codeMatch = callbackUrl.match(/[#&?]code=([^&]+)/);
-                
-                if (accessTokenMatch) accessToken = decodeURIComponent(accessTokenMatch[1]);
-                if (refreshTokenMatch) refreshToken = decodeURIComponent(refreshTokenMatch[1]);
-                if (codeMatch) code = decodeURIComponent(codeMatch[1]);
-              }
-            }
-            
-            console.log('Parsed tokens:', {
-              hasAccessToken: !!accessToken,
-              hasRefreshToken: !!refreshToken,
-              hasCode: !!code,
-            });
-
-            if (accessToken && refreshToken) {
-              // Token'lar varsa direkt session set et
-              console.log('Setting session with tokens from callback');
-              const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-                access_token: accessToken,
-                refresh_token: refreshToken,
-              });
-
-              if (sessionError) {
-                console.error('Session set error:', sessionError);
-                throw sessionError;
-              }
-
-              if (sessionData.session?.user) {
-                console.log('Session set successfully, user ID:', sessionData.session.user.id);
-                setOauthLoading(false);
-                setLoading(false);
-                // onAuthStateChange otomatik olarak checkProfileAndNavigate'i çağıracak
-                // Burada tekrar çağırmaya gerek yok, duplicate call'ları önlemek için
-                return;
-              }
-            } else if (code) {
-              // Code varsa exchange et
-              console.log('Exchanging code for session');
-              const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-              
-              if (exchangeError) {
-                console.error('Code exchange error:', exchangeError);
-                throw exchangeError;
-              }
-
-              if (exchangeData.session?.user) {
-                console.log('Code exchanged successfully, user ID:', exchangeData.session.user.id);
-                setOauthLoading(false);
-                setLoading(false);
-                // onAuthStateChange otomatik olarak checkProfileAndNavigate'i çağıracak
-                // Burada tekrar çağırmaya gerek yok, duplicate call'ları önlemek için
-                return;
-              }
-            }
-          } catch (urlError: any) {
-            console.error('Error processing callback URL:', urlError);
-            // Hata durumunda deep link handler'a gönder
-            await Linking.openURL(callbackUrl);
-          }
-        }
-        
-        // Callback URL yok veya işlenemedi - deep link handler'ın çalışmasını bekle
-        console.log('Waiting for deep link callback...');
-        let attempts = 0;
-        const maxAttempts = 15; // 15 saniye bekle
-        
-        const checkSession = setInterval(async () => {
-          attempts++;
-          const { data: { session } } = await supabase.auth.getSession();
-          
-          if (session?.user) {
-            clearInterval(checkSession);
-            setOauthLoading(false);
-            setLoading(false);
-            await checkProfileAndNavigate(session.user.id);
-          } else if (attempts >= maxAttempts) {
-            clearInterval(checkSession);
-            setOauthLoading(false);
-            setLoading(false);
-            Alert.alert('Hata', 'Giriş tamamlanamadı. Lütfen tekrar deneyin.');
-          }
-        }, 1000);
-      } else if (result.type === 'cancel') {
-        console.log('Google giriş iptal edildi');
-        setLoading(false);
-        setOauthLoading(false);
-      } else {
-        throw new Error('Google giriş başarısız');
-      }
-    } catch (error: any) {
-      console.error('Error during Google login:', error);
-      Alert.alert('Hata', error.message || 'Google ile giriş yapılırken bir hata oluştu');
-      setLoading(false);
-      setOauthLoading(false);
-    }
-  };
-
-  const handleTwitterLogin = async () => {
-    setLoading(true);
-    setOauthLoading(true);
-    try {
-      console.log('Starting Twitter/X native login...');
-
-      // Web'de Supabase OAuth kullan
-      if (Platform.OS === 'web') {
-        const redirectUrl = typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback';
-        const { data, error } = await supabase.auth.signInWithOAuth({
-          provider: 'twitter',
-          options: {
-            redirectTo: redirectUrl,
-            skipBrowserRedirect: false,
-          },
-        });
-        if (error) throw error;
-        if (data.url) {
-          window.location.href = data.url;
-        }
-        return;
-      }
-
-      // Mobilde Supabase OAuth URL'ini uygulama içinde aç
-      // Twitter OAuth için Supabase callback URL'ini kullan, oradan deep link'e yönlendir
-      const deepLinkUrl = 'mytrabzon://auth/callback';
-      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-      const redirectUrl = `${supabaseUrl}/auth/v1/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`;
-      
-      console.log('Twitter redirect URL:', redirectUrl);
-      
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'twitter',
-        options: {
-          redirectTo: redirectUrl,
+          redirectTo: callbackHtmlUrl,
           skipBrowserRedirect: true,
         },
       });
@@ -615,151 +466,108 @@ export default function LoginScreen() {
         throw error;
       }
 
-      if (!data.url) {
+      if (!data?.url) {
         throw new Error('OAuth URL alınamadı');
       }
 
-      console.log('Opening Twitter/X OAuth in app browser:', data.url);
+      console.log('Opening Google OAuth inside app via WebBrowser...');
+      const browserResult = await WebBrowser.openAuthSessionAsync(data.url, nativeRedirectUri);
 
-      // OAuth URL'ini uygulama içinde aç
-      // Twitter callback'i Supabase callback URL'ine gidecek, oradan deep link handler yakalayacak
-      const result = await WebBrowser.openAuthSessionAsync(data.url, deepLinkUrl);
+      console.log('AuthSession result:', browserResult.type);
 
-      console.log('WebBrowser result:', result);
-      console.log('WebBrowser result type:', result.type);
-
-      if (result.type === 'success') {
-        // OAuth başarılı - callback URL'i kontrol et
-        // WebBrowser.openAuthSessionAsync result'ında url property'si olabilir
-        const callbackUrl = (result as any).url;
-        console.log('Callback URL from result:', callbackUrl);
-        
-        if (callbackUrl && (callbackUrl.includes('access_token') || callbackUrl.includes('code'))) {
-          // Callback URL'inde token veya code var - direkt işle
-          console.log('Processing callback URL directly:', callbackUrl);
-          
-          try {
-            // URL'den token'ları veya code'u çıkar
-            // Not: Supabase callback URL'i hash fragment (#) kullanıyor, query string (?) değil
-            let accessToken: string | null = null;
-            let refreshToken: string | null = null;
-            let code: string | null = null;
-            
-            // Hash fragment'i parse et (# ile başlayan kısım)
-            const hashIndex = callbackUrl.indexOf('#');
-            if (hashIndex !== -1) {
-              const hashPart = callbackUrl.substring(hashIndex + 1);
-              const hashParams = new URLSearchParams(hashPart);
-              accessToken = hashParams.get('access_token');
-              refreshToken = hashParams.get('refresh_token');
-              code = hashParams.get('code');
-            } else {
-              // Query string varsa onu kullan (? ile başlayan kısım)
-              try {
-                const url = new URL(callbackUrl);
-                accessToken = url.searchParams.get('access_token');
-                refreshToken = url.searchParams.get('refresh_token');
-                code = url.searchParams.get('code');
-              } catch (urlError) {
-                // URL parse hatası - manuel parse
-                const accessTokenMatch = callbackUrl.match(/[#&?]access_token=([^&]+)/);
-                const refreshTokenMatch = callbackUrl.match(/[#&?]refresh_token=([^&]+)/);
-                const codeMatch = callbackUrl.match(/[#&?]code=([^&]+)/);
-                
-                if (accessTokenMatch) accessToken = decodeURIComponent(accessTokenMatch[1]);
-                if (refreshTokenMatch) refreshToken = decodeURIComponent(refreshTokenMatch[1]);
-                if (codeMatch) code = decodeURIComponent(codeMatch[1]);
-              }
-            }
-            
-            console.log('Parsed tokens:', {
-              hasAccessToken: !!accessToken,
-              hasRefreshToken: !!refreshToken,
-              hasCode: !!code,
-            });
-
-            if (accessToken && refreshToken) {
-              // Token'lar varsa direkt session set et
-              console.log('Setting session with tokens from callback');
-              const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-                access_token: accessToken,
-                refresh_token: refreshToken,
-              });
-
-              if (sessionError) {
-                console.error('Session set error:', sessionError);
-                throw sessionError;
-              }
-
-              if (sessionData.session?.user) {
-                console.log('Session set successfully, user ID:', sessionData.session.user.id);
-                setOauthLoading(false);
-                setLoading(false);
-                // onAuthStateChange otomatik olarak checkProfileAndNavigate'i çağıracak
-                // Burada tekrar çağırmaya gerek yok, duplicate call'ları önlemek için
-                return;
-              }
-            } else if (code) {
-              // Code varsa exchange et
-              console.log('Exchanging code for session');
-              const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-              
-              if (exchangeError) {
-                console.error('Code exchange error:', exchangeError);
-                throw exchangeError;
-              }
-
-              if (exchangeData.session?.user) {
-                console.log('Code exchanged successfully, user ID:', exchangeData.session.user.id);
-                setOauthLoading(false);
-                setLoading(false);
-                // onAuthStateChange otomatik olarak checkProfileAndNavigate'i çağıracak
-                // Burada tekrar çağırmaya gerek yok, duplicate call'ları önlemek için
-                return;
-              }
-            }
-          } catch (urlError: any) {
-            console.error('Error processing callback URL:', urlError);
-            // Hata durumunda deep link handler'a gönder
-            await Linking.openURL(callbackUrl);
-          }
-        }
-        
-        // Callback URL yok veya işlenemedi - deep link handler'ın çalışmasını bekle
-        console.log('Waiting for deep link callback...');
-        let attempts = 0;
-        const maxAttempts = 15; // 15 saniye bekle
-        
-        const checkSession = setInterval(async () => {
-          attempts++;
-          const { data: { session } } = await supabase.auth.getSession();
-          
-          if (session?.user) {
-            clearInterval(checkSession);
-            setOauthLoading(false);
-            setLoading(false);
-            await checkProfileAndNavigate(session.user.id);
-          } else if (attempts >= maxAttempts) {
-            clearInterval(checkSession);
-            setOauthLoading(false);
-            setLoading(false);
-            Alert.alert('Hata', 'Giriş tamamlanamadı. Lütfen tekrar deneyin.');
-          }
-        }, 1000);
-      } else if (result.type === 'cancel') {
-        console.log('Twitter/X giriş iptal edildi');
-        setLoading(false);
-        setOauthLoading(false);
-      } else {
-        throw new Error('Twitter/X giriş başarısız');
+      if (browserResult.type === 'cancel' || browserResult.type === 'dismiss') {
+        throw new Error('Giriş işlemi iptal edildi');
       }
+
+      if (browserResult.type !== 'success' || !browserResult.url) {
+        throw new Error('OAuth sonucu alınamadı');
+      }
+
+      const extractParams = (url: string) => {
+        const collected: Record<string, string> = {};
+        const parseSegment = (segment?: string) => {
+          if (!segment) return;
+          segment.split('&').forEach(pair => {
+            const [rawKey, rawValue] = pair.split('=');
+            if (!rawKey || typeof rawValue === 'undefined') return;
+            try {
+              collected[decodeURIComponent(rawKey)] = decodeURIComponent(rawValue);
+            } catch {
+              collected[rawKey] = rawValue;
+            }
+          });
+        };
+
+        const queryIndex = url.indexOf('?');
+        const hashIndex = url.indexOf('#');
+
+        if (queryIndex !== -1) {
+          const queryEnd = hashIndex !== -1 && hashIndex > queryIndex ? hashIndex : undefined;
+          const queryPart = url.substring(queryIndex + 1, queryEnd);
+          parseSegment(queryPart);
+        }
+
+        if (hashIndex !== -1) {
+          const hashPart = url.substring(hashIndex + 1);
+          parseSegment(hashPart);
+        }
+
+        return collected;
+      };
+
+      const params = extractParams(browserResult.url);
+
+      if (params.error) {
+        throw new Error(params.error_description || 'Google OAuth reddedildi');
+      }
+
+      const accessToken = params.access_token;
+      const refreshToken = params.refresh_token;
+      const code = params.code;
+
+      if (accessToken && refreshToken) {
+        console.log('Setting session from access/refresh tokens');
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (sessionError) {
+          console.error('setSession error:', sessionError);
+          throw sessionError;
+        }
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData.session?.user) {
+          setOauthLoading(false);
+          setLoading(false);
+          await checkProfileAndNavigate(sessionData.session.user.id);
+          return;
+        }
+      }
+
+      if (code) {
+        console.log('Exchanging auth code for session...');
+        const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchangeError) {
+          console.error('Code exchange error:', exchangeError);
+          throw exchangeError;
+        }
+        if (exchangeData.session?.user) {
+          setOauthLoading(false);
+          setLoading(false);
+          await checkProfileAndNavigate(exchangeData.session.user.id);
+          return;
+        }
+      }
+
+      throw new Error('Google OAuth yanıtı geçersiz. Lütfen tekrar deneyin.');
     } catch (error: any) {
-      console.error('Error during Twitter/X login:', error);
-      Alert.alert('Hata', error.message || 'X ile giriş yapılırken bir hata oluştu');
+      console.error('Error during Google login:', error);
+      Alert.alert('Hata', error.message || 'Google ile giriş yapılırken bir hata oluştu');
       setLoading(false);
       setOauthLoading(false);
     }
   };
+
 
   const handleAppleLogin = async () => {
     // Apple ile giriş sadece iOS'ta çalışır
@@ -995,20 +803,6 @@ export default function LoginScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.twitterButton, (loading || oauthLoading) && styles.buttonDisabled]}
-          onPress={handleTwitterLogin}
-          disabled={loading || oauthLoading}
-        >
-          {oauthLoading ? (
-            <ActivityIndicator color={COLORS.white} />
-          ) : (
-            <Text style={styles.twitterButtonText}>
-              𝕏 ile {mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
-            </Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity
           style={[styles.googleButton, (loading || oauthLoading) && styles.buttonDisabled]}
           onPress={handleGoogleLogin}
           disabled={loading || oauthLoading}
@@ -1065,12 +859,6 @@ export default function LoginScreen() {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.header}>
-            <Text style={styles.subtitle} numberOfLines={2} adjustsFontSizeToFit>
-              Trabzon&apos;un Dijital Sesi
-            </Text>
-          </View>
-
           {renderForm()}
 
           <View style={styles.footer}>
@@ -1125,19 +913,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.xxl,
-  },
-  header: {
-    alignItems: 'center' as const,
-    marginBottom: SPACING.xxl,
-  },
-  subtitle: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.white,
-    opacity: 0.9,
-    marginTop: SPACING.sm,
-    textAlign: 'center' as const,
-    flexWrap: 'wrap',
-    paddingHorizontal: SPACING.md,
   },
   formContainer: {
     width: '100%',
@@ -1213,22 +988,6 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.md,
     fontWeight: '500' as const,
-    flexWrap: 'wrap',
-    textAlign: 'center' as const,
-  },
-  twitterButton: {
-    backgroundColor: '#000000',
-    paddingVertical: SPACING.md,
-    borderRadius: 12,
-    alignItems: 'center' as const,
-    marginBottom: SPACING.sm,
-    borderWidth: 1,
-    borderColor: '#333333',
-  },
-  twitterButtonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600' as const,
     flexWrap: 'wrap',
     textAlign: 'center' as const,
   },

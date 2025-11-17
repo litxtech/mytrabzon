@@ -3,7 +3,7 @@
  * Agora sesli/görüntülü arama ekranı
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -22,12 +22,14 @@ import { AgoraCallManager, generateChannelName } from '@/lib/agora';
 import { trpc } from '@/lib/trpc';
 
 export default function CallScreen() {
-  const { userId, userName, userAvatar, callType } = useLocalSearchParams<{
+  const { userId, userName, userAvatar, callType, sessionId } = useLocalSearchParams<{
     userId: string;
     userName: string;
     userAvatar: string;
     callType: 'audio' | 'video';
+    sessionId?: string;
   }>();
+  const resolvedSessionId = Array.isArray(sessionId) ? sessionId[0] : sessionId;
   const router = useRouter();
   const { user } = useAuth();
   const [isConnected, setIsConnected] = useState(false);
@@ -35,6 +37,25 @@ export default function CallScreen() {
   const [isVideoEnabled, setIsVideoEnabled] = useState(callType === 'video');
   const [isLoading, setIsLoading] = useState(true);
   const callManagerRef = useRef<AgoraCallManager | null>(null);
+  const hasEndedSessionRef = useRef(false);
+
+  // Agora token mutation hook'u
+  const generateAgoraTokenMutation = (trpc as any).match.generateAgoraToken.useMutation();
+  const endSessionMutation = (trpc as any).match.updateSession.useMutation();
+  const markSessionEnded = useCallback(async () => {
+    if (!resolvedSessionId || hasEndedSessionRef.current) {
+      return;
+    }
+    hasEndedSessionRef.current = true;
+    try {
+      await endSessionMutation.mutateAsync({
+        session_id: resolvedSessionId,
+        action: 'end',
+      });
+    } catch (error) {
+      console.error('Session end update failed:', error);
+    }
+  }, [endSessionMutation, resolvedSessionId]);
 
   useEffect(() => {
     if (!user || !userId) {
@@ -56,12 +77,12 @@ export default function CallScreen() {
         // Agora token al (opsiyonel - test mode için gerekli değil)
         let token = '';
         try {
-          const tokenResult = await (trpc as any).match.generateAgoraToken.mutateAsync({
+          const tokenResult = await generateAgoraTokenMutation.mutateAsync({
             channel_name: channelName,
             uid: uid,
           });
           token = tokenResult?.token || '';
-        } catch (error) {
+        } catch (error: any) {
           console.error('Token generation error:', error);
           // Token olmadan devam et (test mode)
           token = '';
@@ -90,13 +111,15 @@ export default function CallScreen() {
       if (callManagerRef.current) {
         callManagerRef.current.endCall();
       }
+      markSessionEnded();
     };
-  }, [user, userId, callType, router]);
+  }, [user, userId, callType, router, markSessionEnded]);
 
   const handleEndCall = async () => {
     if (callManagerRef.current) {
       await callManagerRef.current.endCall();
     }
+    await markSessionEnded();
     router.back();
   };
 
