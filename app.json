@@ -2,7 +2,7 @@
   "expo": {
     "name": "MyTrabzon",
     "slug": "MyTrabzon",
-    "version": "1.0.33",
+    "version": "1.0.34",
     "orientation": "portrait",
     "scheme": "mytrabzon",
     "userInterfaceStyle": "automatic",
@@ -26,7 +26,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.litxtech.mytrabzon",
-      "versionCode": 32,
+      "versionCode": 33,
       "playStoreUrl": "https://play.google.com/store/apps/details?id=com.litxtech.mytrabzon",
       "permissions": [
         "CAMERA",
@@ -64,7 +64,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.litxtech.mytrabzon",
-      "buildNumber": "32",
+      "buildNumber": "33",
       "icon": "./assets/images/icon.png",
       "appStoreUrl": "https://apps.apple.com/app/mytrabzon/id1234567890",
       "infoPlist": {
@@ -75,7 +75,10 @@
         "NSLocationAlwaysUsageDescription": "Allow $(PRODUCT_NAME) to access your location for better recommendations",
         "CFBundleURLTypes": [
           {
-            "CFBundleURLSchemes": ["mytrabzon", "litxtech"]
+            "CFBundleURLSchemes": [
+              "mytrabzon",
+              "litxtech"
+            ]
           }
         ]
       },
