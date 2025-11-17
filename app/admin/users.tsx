@@ -262,7 +262,12 @@ export default function AdminUsersScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {data?.users && data.users.length > 0 ? (
-          data.users.map((user: any) => {
+          [...data.users].sort((a: any, b: any) => {
+            // created_at'e göre sırala (yeni → eski)
+            const dateA = new Date(a.created_at || 0).getTime();
+            const dateB = new Date(b.created_at || 0).getTime();
+            return dateB - dateA;
+          }).map((user: any) => {
             // user_bans, blue_ticks ve hidden_users array veya object olabilir
             const userBans = Array.isArray(user.user_bans) ? user.user_bans : (user.user_bans ? [user.user_bans] : []);
             const blueTicks = Array.isArray(user.blue_ticks) ? user.blue_ticks : (user.blue_ticks ? [user.blue_ticks] : []);

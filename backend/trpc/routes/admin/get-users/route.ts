@@ -93,8 +93,10 @@ export const getUsersProcedure = protectedProcedure
       query = query.or(`full_name.ilike.%${input.search}%,email.ilike.%${input.search}%`);
     }
     
+    // Sıralama: Önce created_at'e göre sırala, sonra join'leri yap
+    // Join'lerden önce sıralama yapmak için order'ı en sona koyuyoruz
     query = query
-      .order("created_at", { ascending: false })
+      .order("created_at", { ascending: false, nullsFirst: false })
       .range(input.offset, input.offset + input.limit - 1);
     
     const { data, error, count } = await query;

@@ -5,6 +5,17 @@ async function checkAdmin(supabase: any, userId: string) {
   // Özel admin bypass
   const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
   if (userId === SPECIAL_ADMIN_ID) {
+    // Özel admin için admin_users tablosundan id al
+    const { data: adminUserRecord } = await supabase
+      .from("admin_users")
+      .select("id, role")
+      .eq("user_id", userId)
+      .maybeSingle();
+    
+    if (adminUserRecord) {
+      return { role: 'super_admin', id: adminUserRecord.id };
+    }
+    // Eğer admin_users'da kayıt yoksa, özel admin id'sini kullan (nullable verified_by için)
     return { role: 'super_admin', id: SPECIAL_ADMIN_ID };
   }
 
@@ -41,7 +52,7 @@ export const giveBlueTickProcedure = protectedProcedure
       .from("blue_ticks")
       .select("id")
       .eq("user_id", input.userId)
-      .single();
+      .maybeSingle();
     
     if (existing) {
       // Güncelle
