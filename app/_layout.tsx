@@ -169,9 +169,16 @@ export default function RootLayout() {
             }
           }
 
-          // Callback (OAuth) - Deep link formatı: mytrabzon://auth/callback?access_token=xxx&refresh_token=xxx
-          // Veya hash fragment: mytrabzon://auth/callback#access_token=xxx&refresh_token=xxx
-          if (url.includes('callback')) {
+          // Callback (OAuth) - Deep link formatı: mytrabzon://auth/callback?code=xxx
+          // Callback ekranına yönlendir - orada exchangeCodeForSession ile işlenecek
+          if (url.includes('auth/callback') || url.includes('callback')) {
+            console.log('🔐 [DeepLink] OAuth callback detected, routing to callback screen');
+            router.replace('/auth/callback');
+            return;
+          }
+          
+          // Eski callback handling kodu - artık kullanılmıyor
+          if (false && url.includes('callback')) {
             console.log('OAuth callback received (deep link):', url);
             
             // Hash fragment'i de kontrol et (# ile başlayan kısım)
@@ -477,6 +484,12 @@ export default function RootLayout() {
 
     // Deep link listener (uygulama açıkken link'e tıklanırsa)
     deepLinkListener.current = Linking.addEventListener('url', async (event) => {
+      // OAuth callback ise direkt callback ekranına yönlendir
+      if (event.url.includes('auth/callback') || event.url.includes('callback')) {
+        console.log('🔐 [DeepLink] OAuth callback detected (app running), routing to callback screen');
+        router.replace('/auth/callback');
+        return;
+      }
       console.log('Deep link received:', event.url);
       await handleDeepLink(event.url);
     });
@@ -549,14 +562,22 @@ export default function RootLayout() {
         }
 
         // Bildirim tipine göre yönlendirme
-        if (data?.type === 'match') {
+        if (data?.type === 'NEW_MESSAGE' || data?.type === 'chat') {
+          // Yeni mesaj bildirimi - ilgili sohbet ekranına git
+          const conversationId = data?.conversationId || data?.roomId;
+          if (conversationId) {
+            console.log('📱 [Notification] Yeni mesaj bildirimi, sohbet ekranına yönlendiriliyor:', conversationId);
+            router.push(`/chat/${conversationId}` as any);
+          } else {
+            // conversationId yoksa chat listesine git
+            router.push('/(tabs)/chat' as any);
+          }
+        } else if (data?.type === 'match') {
           router.push(`/football/match/${data.matchId}` as any);
         } else if (data?.type === 'missing_player') {
           router.push('/football/missing-players' as any);
         } else if (data?.type === 'team') {
           router.push(`/football/team/${data.teamId}` as any);
-        } else if (data?.type === 'chat') {
-          router.push(`/chat/${data.roomId}` as any);
         } else if (data?.type === 'post') {
           router.push(`/post/${data.postId}` as any);
         } else if (data?.type === 'EVENT' || data?.event_id) {

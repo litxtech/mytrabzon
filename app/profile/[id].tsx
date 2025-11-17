@@ -128,14 +128,14 @@ export default function UserProfileScreen() {
       // Takip durumunu güncelle
       await refetchFollowStatus();
       
-      // Tüm ilgili query'leri invalidate et
-      await utils.user.getFollowStats.invalidate({ user_id: id! });
-      if (currentUser?.id) {
-        await utils.user.getFollowStats.invalidate({ user_id: currentUser.id });
-      }
-      
-      // Refetch yap
-      await refetchFollowStats();
+      // Tüm ilgili query'leri invalidate et ve refetch yap
+      await Promise.all([
+        utils.user.getFollowStats.invalidate({ user_id: id! }),
+        currentUser?.id ? utils.user.getFollowStats.invalidate({ user_id: currentUser.id }) : Promise.resolve(),
+        refetchFollowStats(),
+        utils.user.getProfile.invalidate({ userId: id! }),
+        refetchProfile(),
+      ]);
     },
     onError: () => {
       // Hata durumunda optimistic update'i geri al

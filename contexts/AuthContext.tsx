@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { UserProfile } from '@/types/database';
+import { registerForPushNotifications } from '@/lib/notifications';
 
 export const [AuthContext, useAuth] = createContextHook(() => {
   const [session, setSession] = useState<Session | null>(null);
@@ -96,7 +97,7 @@ export const [AuthContext, useAuth] = createContextHook(() => {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       const nextUser = session?.user ?? null;
       setUser(nextUser);
@@ -106,6 +107,12 @@ export const [AuthContext, useAuth] = createContextHook(() => {
         void loadProfile(nextUser.id)
           .then((profileData) => {
             setProfile(profileData);
+            
+            // Push notification token'ı kaydet (arka planda, sessiz)
+            registerForPushNotifications().catch((error) => {
+              console.error('❌ [AuthContext] Push token kaydı başarısız:', error);
+              // Hata olsa bile uygulamayı durdurma
+            });
           })
           .catch((error) => {
             console.error('Error loading profile after auth change:', error);

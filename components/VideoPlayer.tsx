@@ -540,7 +540,7 @@ function FullScreenVideoPlayer({
             overrideFileExtensionAndroid: 'mp4',
           }}
           style={[styles.fullScreenVideo, { width, height: height - insets.top - insets.bottom }]}
-          resizeMode={ResizeMode.CONTAIN}
+          resizeMode={ResizeMode.COVER}
           isLooping
           isMuted={isMuted}
           shouldPlay={isPlaying}
@@ -667,36 +667,40 @@ function FullScreenVideoPlayer({
       </Pressable>
 
       {/* Yorum Paneli (Bottom Sheet) - Instagram tarzı, şeffaf, video izlenirken */}
-      {showComments && (
-        <Animated.View
-          style={[
-            styles.commentSheet,
-            {
-              transform: [{ translateY: commentSheetY }],
-              height: COMMENT_SHEET_HEIGHT,
-              backgroundColor: 'rgba(0, 0, 0, 0.75)', // Şeffaf - video görünür
-              zIndex: 1000,
-            },
-          ]}
-        >
-          {/* Drag Handle - Sadece burada pan responder çalışır */}
-          <View style={styles.dragHandleContainer} {...dragHandlePanResponder.panHandlers} pointerEvents="auto">
-            <View style={[styles.dragHandle, { backgroundColor: COLORS.white }]} />
-          </View>
-          
-          <View style={[styles.commentSheetHeader, { borderBottomColor: 'rgba(255, 255, 255, 0.1)' }]} pointerEvents="auto">
-            <Text style={[styles.commentSheetTitle, { color: COLORS.white }]}>
-              Yorumlar ({commentCount || 0})
-            </Text>
-            <TouchableOpacity onPress={handleCloseComments}>
-              <X size={24} color={COLORS.white} />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.commentSheetContent} pointerEvents="auto">
-            <CommentSheet postId={postId} />
-          </View>
-        </Animated.View>
-      )}
+      <Animated.View
+        style={[
+          styles.commentSheet,
+          {
+            transform: [{ translateY: commentSheetY }],
+            height: COMMENT_SHEET_HEIGHT,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)', // Şeffaf - video görünür
+            zIndex: 1000,
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            display: showComments ? 'flex' : 'none',
+          },
+        ]}
+        pointerEvents={showComments ? 'auto' : 'none'}
+      >
+        {/* Drag Handle - Sadece burada pan responder çalışır */}
+        <View style={styles.dragHandleContainer} {...dragHandlePanResponder.panHandlers} pointerEvents="auto">
+          <View style={[styles.dragHandle, { backgroundColor: COLORS.white }]} />
+        </View>
+        
+        <View style={[styles.commentSheetHeader, { borderBottomColor: 'rgba(255, 255, 255, 0.1)' }]} pointerEvents="auto">
+          <Text style={[styles.commentSheetTitle, { color: COLORS.white }]}>
+            Yorumlar ({commentCount || 0})
+          </Text>
+          <TouchableOpacity onPress={handleCloseComments}>
+            <X size={24} color={COLORS.white} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.commentSheetContent} pointerEvents="auto">
+          <CommentSheet postId={postId} />
+        </View>
+      </Animated.View>
     </View>
   );
 }

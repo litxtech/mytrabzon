@@ -139,40 +139,36 @@ export default function CreateEventScreen() {
     setSelectedVideos((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const uploadMediaMutation = trpc.post.uploadMedia.useMutation();
+
   const uploadMedia = async (uri: string, type: 'image' | 'video'): Promise<string> => {
     if (!user?.id) throw new Error('Kullanıcı bilgisi bulunamadı');
 
     const fileExt = uri.split('.').pop()?.toLowerCase() || (type === 'video' ? 'mp4' : 'jpg');
-    const fileName = `${user.id}/events/${type}_${Date.now()}.${fileExt}`;
+    const fileName = `events/${type}_${Date.now()}.${fileExt}`;
     
-    // Fetch ile blob olarak al ve direkt upload et (base64 yerine)
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    
-    const mimeType = type === 'video' 
+    const fileType = type === 'video' 
       ? 'video/mp4' 
       : fileExt === 'png' 
       ? 'image/png' 
       : 'image/jpeg';
 
-    // Blob'u ArrayBuffer'a çevir
-    const arrayBuffer = await blob.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuffer);
+    // Base64 string'i oku
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: 'base64' as any,
+    });
 
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('posts')
-      .upload(fileName, bytes, {
-        contentType: mimeType,
-        upsert: false,
-      });
+    // Base64 string'i temizle (data: prefix varsa kaldır)
+    const base64Data = base64.replace(/^data:image\/\w+;base64,/, '').replace(/^data:video\/\w+;base64,/, '');
 
-    if (uploadError) throw new Error(uploadError.message);
+    // Backend'deki uploadMedia mutation'ını kullan
+    const result = await uploadMediaMutation.mutateAsync({
+      base64Data,
+      fileType,
+      fileName,
+    });
 
-    const { data: urlData } = supabase.storage
-      .from('posts')
-      .getPublicUrl(uploadData.path);
-
-    return urlData.publicUrl;
+    return result.url;
   };
 
   const handleSubmit = async () => {

@@ -92,6 +92,8 @@ export default function FeedScreen() {
     }
   );
 
+  const likeEventMutation = (trpc as any).event.likeEvent.useMutation();
+
   const likePostMutation = trpc.post.likePost.useMutation({
     onMutate: async ({ postId }) => {
       await utils.post.getPosts.cancel();
@@ -314,11 +316,18 @@ export default function FeedScreen() {
                 <VideoPlayer
                   videoUrl={firstMedia}
                   postId={event.id}
-                  isLiked={false}
-                  likeCount={0}
-                  commentCount={0}
+                  isLiked={event.is_liked || false}
+                  likeCount={event.like_count || 0}
+                  commentCount={event.comment_count || 0}
                   shareCount={0}
-                  onLike={() => router.push(`/event/${event.id}` as any)}
+                  onLike={async () => {
+                    try {
+                      await likeEventMutation.mutateAsync({ event_id: event.id });
+                      refetchEvents();
+                    } catch (error) {
+                      console.error('Event like error:', error);
+                    }
+                  }}
                   onComment={() => router.push(`/event/${event.id}` as any)}
                   onShare={() => {}}
                   onTag={() => {}}
@@ -355,11 +364,22 @@ export default function FeedScreen() {
         <View style={styles.postActions}>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => router.push(`/event/${event.id}` as any)}
+            onPress={async () => {
+              try {
+                await likeEventMutation.mutateAsync({ event_id: event.id });
+                refetchEvents();
+              } catch (error) {
+                console.error('Event like error:', error);
+              }
+            }}
           >
-            <Heart size={20} color={theme.colors.textLight} />
-            <Text style={[styles.actionText, { color: theme.colors.textLight }]}>
-              Beğen
+            <Heart 
+              size={20} 
+              color={event.is_liked ? theme.colors.error : theme.colors.textLight}
+              fill={event.is_liked ? theme.colors.error : 'transparent'}
+            />
+            <Text style={[styles.actionText, { color: event.is_liked ? theme.colors.error : theme.colors.textLight }]}>
+              {formatCount(event.like_count || 0)}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -368,12 +388,23 @@ export default function FeedScreen() {
           >
             <MessageCircle size={20} color={theme.colors.textLight} />
             <Text style={[styles.actionText, { color: theme.colors.textLight }]}>
-              Yorum
+              {formatCount(event.comment_count || 0)}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => router.push(`/event/${event.id}` as any)}
+            onPress={() => {
+              // Event'i post olarak paylaşmak için create-post ekranına yönlendir
+              const eventContent = `🚨 Olay Var: ${event.title}\n\n${event.description || ''}\n\n📍 ${event.district}${event.city ? `, ${event.city}` : ''}`;
+              router.push({
+                pathname: '/create-post',
+                params: {
+                  shareEvent: event.id,
+                  content: eventContent,
+                  mediaUrls: event.media_urls ? JSON.stringify(event.media_urls) : undefined,
+                } as any,
+              });
+            }}
           >
             <Share2 size={20} color={theme.colors.textLight} />
             <Text style={[styles.actionText, { color: theme.colors.textLight }]}>
@@ -383,7 +414,7 @@ export default function FeedScreen() {
         </View>
       </View>
     );
-  }, [router, theme, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible]);
+  }, [router, theme, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible, refetchEvents, formatCount]);
 
   const renderPost = useCallback(({ item }: { item: Post }) => {
     const firstMedia = item.media && item.media.length > 0 ? item.media[0] : null;

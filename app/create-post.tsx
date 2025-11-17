@@ -24,7 +24,13 @@ import { Video, ResizeMode } from 'expo-av';
 
 export default function CreatePostScreen() {
   const router = useRouter();
-  const { edit, room_id } = useLocalSearchParams<{ edit?: string; room_id?: string }>();
+  const { edit, room_id, shareEvent, content: initialContent, mediaUrls } = useLocalSearchParams<{ 
+    edit?: string; 
+    room_id?: string;
+    shareEvent?: string;
+    content?: string;
+    mediaUrls?: string;
+  }>();
   const { profile } = useAuth();
   const [content, setContent] = useState('');
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
@@ -32,16 +38,45 @@ export default function CreatePostScreen() {
   const [isUploading, setIsUploading] = useState(false);
   const isEditMode = !!edit;
   const isGroupPost = !!room_id;
+  const isShareEvent = !!shareEvent;
 
   const createPostMutation = trpc.post.createPost.useMutation();
   const updatePostMutation = trpc.post.updatePost.useMutation();
   const uploadMediaMutation = trpc.post.uploadMedia.useMutation();
   
+  // Event paylaşımı için event bilgilerini yükle
+  const { data: eventsData } = trpc.event.getEvents.useQuery(
+    { limit: 100, offset: 0 },
+    { enabled: isShareEvent && !!shareEvent }
+  );
+
   // Edit modunda gönderiyi yükle
   const { data: existingPost, isLoading: isLoadingPost } = trpc.post.getPostDetail.useQuery(
     { postId: edit! },
     { enabled: isEditMode && !!edit }
   );
+
+  useEffect(() => {
+    if (initialContent) {
+      setContent(initialContent);
+    }
+    if (mediaUrls) {
+      try {
+        const urls = JSON.parse(mediaUrls);
+        if (Array.isArray(urls)) {
+          urls.forEach((url: string) => {
+            if (url.match(/\.(mp4|mov|avi|webm)$/i)) {
+              setSelectedVideos((prev) => [...prev, url]);
+            } else {
+              setSelectedImages((prev) => [...prev, url]);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Media URLs parse error:', e);
+      }
+    }
+  }, [initialContent, mediaUrls]);
 
   useEffect(() => {
     if (existingPost && isEditMode) {
@@ -52,6 +87,27 @@ export default function CreatePostScreen() {
       }
     }
   }, [existingPost, isEditMode]);
+
+  useEffect(() => {
+    if (isShareEvent && shareEvent && eventsData?.events) {
+      const event = eventsData.events.find((e: any) => e.id === shareEvent);
+      if (event && !initialContent) {
+        // Event bilgilerini içeriğe ekle
+        const eventContent = `🚨 Olay Var: ${event.title}\n\n${event.description || ''}\n\n📍 ${event.district}${event.city ? `, ${event.city}` : ''}`;
+        setContent(eventContent);
+        // Event medya URL'lerini ekle
+        if (event.media_urls && Array.isArray(event.media_urls) && event.media_urls.length > 0) {
+          event.media_urls.forEach((url: string) => {
+            if (url.match(/\.(mp4|mov|avi|webm)$/i)) {
+              setSelectedVideos((prev) => [...prev, url]);
+            } else {
+              setSelectedImages((prev) => [...prev, url]);
+            }
+          });
+        }
+      }
+    }
+  }, [isShareEvent, shareEvent, eventsData, initialContent]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -128,6 +184,12 @@ export default function CreatePostScreen() {
 
       if (allMedia.length > 0) {
         const uploadPromises = allMedia.map(async (media) => {
+          // Eğer URI zaten bir URL ise (http/https ile başlıyorsa), direkt kullan
+          if (media.uri.startsWith('http://') || media.uri.startsWith('https://')) {
+            return media.uri;
+          }
+
+          // Local file ise upload et
           const base64 = await FileSystem.readAsStringAsync(media.uri, {
             encoding: 'base64' as any,
           });

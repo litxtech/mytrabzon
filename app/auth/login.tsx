@@ -419,14 +419,20 @@ export default function LoginScreen() {
     setLoading(true);
     setOauthLoading(true);
     try {
-      console.log('Starting Google OAuth login...');
+      console.log('🔐 [GoogleLogin] Starting Google OAuth login...');
+
+      // Platforma göre redirect URL belirle
+      const isNative = Platform.OS === 'ios' || Platform.OS === 'android';
+      const redirectUrl = isNative
+        ? 'mytrabzon://auth/callback'
+        : (typeof window !== 'undefined'
+          ? `${window.location.origin}/auth/callback`
+          : 'https://www.litxtech.com/auth/callback');
+
+      console.log('🔐 [GoogleLogin] Platform:', Platform.OS, 'Redirect URL:', redirectUrl);
 
       // Web'de Supabase'in standart yönlendirmesini kullan
       if (Platform.OS === 'web') {
-        const redirectUrl = typeof window !== 'undefined'
-          ? `${window.location.origin}/auth/callback`
-          : 'https://www.litxtech.com/auth/callback';
-
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
@@ -442,27 +448,18 @@ export default function LoginScreen() {
         return;
       }
 
-      // Native platformlar için deep link URI'sı oluştur
-      const nativeRedirectUri = makeRedirectUri({
-        scheme: 'mytrabzon',
-        path: 'auth/callback',
-        preferLocalhost: __DEV__,
-      });
-
-      console.log('Google login - native redirect URI:', nativeRedirectUri);
-
-      const callbackHtmlUrl = `https://www.litxtech.com/auth/callback?redirect_to=${encodeURIComponent(nativeRedirectUri)}`;
-
+      // Native platformlar için Supabase OAuth - direkt deep link'e yönlendir
+      // skipBrowserRedirect: false kullanarak Supabase'in normal redirect akışını kullan
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: callbackHtmlUrl,
-          skipBrowserRedirect: true,
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: false, // Supabase'in normal redirect akışını kullan
         },
       });
 
       if (error) {
-        console.error('OAuth error:', error);
+        console.error('🔐 [GoogleLogin] OAuth error:', error);
         throw error;
       }
 
@@ -470,98 +467,17 @@ export default function LoginScreen() {
         throw new Error('OAuth URL alınamadı');
       }
 
-      console.log('Opening Google OAuth inside app via WebBrowser...');
-      const browserResult = await WebBrowser.openAuthSessionAsync(data.url, nativeRedirectUri);
-
-      console.log('AuthSession result:', browserResult.type);
-
-      if (browserResult.type === 'cancel' || browserResult.type === 'dismiss') {
-        throw new Error('Giriş işlemi iptal edildi');
-      }
-
-      if (browserResult.type !== 'success' || !browserResult.url) {
-        throw new Error('OAuth sonucu alınamadı');
-      }
-
-      const extractParams = (url: string) => {
-        const collected: Record<string, string> = {};
-        const parseSegment = (segment?: string) => {
-          if (!segment) return;
-          segment.split('&').forEach(pair => {
-            const [rawKey, rawValue] = pair.split('=');
-            if (!rawKey || typeof rawValue === 'undefined') return;
-            try {
-              collected[decodeURIComponent(rawKey)] = decodeURIComponent(rawValue);
-            } catch {
-              collected[rawKey] = rawValue;
-            }
-          });
-        };
-
-        const queryIndex = url.indexOf('?');
-        const hashIndex = url.indexOf('#');
-
-        if (queryIndex !== -1) {
-          const queryEnd = hashIndex !== -1 && hashIndex > queryIndex ? hashIndex : undefined;
-          const queryPart = url.substring(queryIndex + 1, queryEnd);
-          parseSegment(queryPart);
-        }
-
-        if (hashIndex !== -1) {
-          const hashPart = url.substring(hashIndex + 1);
-          parseSegment(hashPart);
-        }
-
-        return collected;
-      };
-
-      const params = extractParams(browserResult.url);
-
-      if (params.error) {
-        throw new Error(params.error_description || 'Google OAuth reddedildi');
-      }
-
-      const accessToken = params.access_token;
-      const refreshToken = params.refresh_token;
-      const code = params.code;
-
-      if (accessToken && refreshToken) {
-        console.log('Setting session from access/refresh tokens');
-        const { error: sessionError } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
-        if (sessionError) {
-          console.error('setSession error:', sessionError);
-          throw sessionError;
-        }
-        const { data: sessionData } = await supabase.auth.getSession();
-        if (sessionData.session?.user) {
-          setOauthLoading(false);
-          setLoading(false);
-          await checkProfileAndNavigate(sessionData.session.user.id);
-          return;
-        }
-      }
-
-      if (code) {
-        console.log('Exchanging auth code for session...');
-        const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-        if (exchangeError) {
-          console.error('Code exchange error:', exchangeError);
-          throw exchangeError;
-        }
-        if (exchangeData.session?.user) {
-          setOauthLoading(false);
-          setLoading(false);
-          await checkProfileAndNavigate(exchangeData.session.user.id);
-          return;
-        }
-      }
-
-      throw new Error('Google OAuth yanıtı geçersiz. Lütfen tekrar deneyin.');
+      console.log('🔐 [GoogleLogin] Opening OAuth URL in browser:', data.url);
+      
+      // Native'de tarayıcıyı aç - Supabase redirectTo ile mytrabzon://auth/callback'e dönecek
+      await Linking.openURL(data.url);
+      
+      // OAuth başarılı olduğunda onAuthStateChange callback'i tetiklenecek
+      // ve checkProfileAndNavigate çağrılacak
+      // Bu yüzden burada loading state'i kapatmıyoruz - callback ekranında kapatılacak
+      
     } catch (error: any) {
-      console.error('Error during Google login:', error);
+      console.error('🔐 [GoogleLogin] Error during Google login:', error);
       Alert.alert('Hata', error.message || 'Google ile giriş yapılırken bir hata oluştu');
       setLoading(false);
       setOauthLoading(false);

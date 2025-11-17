@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -60,18 +60,33 @@ export default function MissingPlayersScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [city, setCity] = useState<'Trabzon' | 'Giresun'>('Trabzon');
+  const [searchType, setSearchType] = useState<'all' | 'team' | 'player'>('all');
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedPost, setSelectedPost] = useState<MissingPlayerPost | null>(null);
   const [message, setMessage] = useState('Ben oynamak istiyorum');
 
-  const { data: response, isLoading, refetch } = trpc.football.getMissingPlayerPosts.useQuery(
+  const { data: response, isLoading, refetch } = (trpc as any).football.getMissingPlayerPosts.useQuery(
     { city, limit: 50, offset: 0 },
     { enabled: !!user }
   );
 
   const posts = useMemo<MissingPlayerPost[]>(() => response?.posts ?? [], [response]);
+  
+  // Filtreleme: Takım veya Oyuncu
+  const filteredPosts = useMemo(() => {
+    if (searchType === 'all') return posts;
+    return posts.filter((post) => {
+      if (searchType === 'team') {
+        // Takım arıyor - missing_players_count > 1 veya team_name var
+        return (post.match as any)?.team1_name || (post.match as any)?.team2_name || (post.match as any)?.needed_players > 1;
+      } else {
+        // Oyuncu arıyor - missing_players_count = 1 veya position_needed var
+        return post.position_needed || ((post.match as any)?.needed_players === 1);
+      }
+    });
+  }, [posts, searchType]);
 
-  const applyMutation = trpc.football.applyToMissingPlayerPost.useMutation({
+  const applyMutation = (trpc as any).football.applyToMissingPlayerPost.useMutation({
     onSuccess: () => {
       Alert.alert('Başarılı', 'Rezervasyon isteğin organizatöre iletildi.');
       closeModal();
@@ -163,8 +178,14 @@ export default function MissingPlayersScreen() {
     </View>
   );
 
-  const renderPost = ({ item }: { item: MissingPlayerPost }) => (
-    <View style={styles.postCard}>
+  const renderPost = useCallback(({ item }: { item: MissingPlayerPost }) => {
+    const match = item.match as any;
+    const team1Name = match?.team1_name;
+    const team2Name = match?.team2_name;
+    const isTeamSearch = team1Name || team2Name || (match?.needed_players && match.needed_players > 1);
+    
+    return (
+      <View style={styles.postCard}>
       <View style={styles.organizerRow}>
         {renderAvatar(item.posted_by_user)}
         <View style={styles.organizerInfo}>
@@ -193,7 +214,17 @@ export default function MissingPlayersScreen() {
 
       <View style={styles.positionBadge}>
         <Text style={styles.positionBadgeText}>
-          {item.position_needed ? item.position_needed.toUpperCase() : 'POZİSYON SERBEST'}
+          {isTeamSearch 
+            ? team1Name && team2Name 
+              ? `${team1Name} vs ${team2Name} - Rakip Takım Aranıyor`
+              : team1Name 
+                ? `${team1Name} - Rakip Takım Aranıyor`
+                : team2Name
+                  ? `${team2Name} - Rakip Takım Aranıyor`
+                  : 'Takım Aranıyor'
+            : item.position_needed 
+              ? item.position_needed.toUpperCase() 
+              : 'POZİSYON SERBEST'}
         </Text>
       </View>
 
@@ -214,7 +245,8 @@ export default function MissingPlayersScreen() {
         )}
       </View>
     </View>
-  );
+    );
+  }, [router, openModal, renderApplication, formatDateTime]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -240,14 +272,28 @@ export default function MissingPlayersScreen() {
           </TouchableOpacity>
         ))}
       </View>
+      
+      <View style={styles.filterBar}>
+        {(['all', 'team', 'player'] as const).map((type) => (
+          <TouchableOpacity
+            key={type}
+            style={[styles.filterChip, searchType === type && styles.filterChipActive]}
+            onPress={() => setSearchType(type)}
+          >
+            <Text style={[styles.filterChipText, searchType === type && styles.filterChipTextActive]}>
+              {type === 'all' ? 'Tümü' : type === 'team' ? 'Takım Arıyor' : 'Oyuncu Arıyor'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
-      ) : posts.length > 0 ? (
+      ) : filteredPosts.length > 0 ? (
         <FlatList
-          data={posts}
+          data={filteredPosts}
           keyExtractor={(item) => item.id}
           renderItem={renderPost}
           contentContainerStyle={styles.listContent}
