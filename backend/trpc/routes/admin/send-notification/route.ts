@@ -10,7 +10,7 @@ export const sendNotificationProcedure = protectedProcedure
       body: z.string().min(1).max(500),
       type: z.enum(['SYSTEM', 'EVENT', 'MESSAGE', 'RESERVATION', 'FOOTBALL']).optional().default('SYSTEM'),
       data: z.record(z.string(), z.any()).optional(),
-      mediaUrl: z.string().url().optional(),
+      mediaUrl: z.string().optional(), // URL veya file URI olabilir
     })
   )
   .mutation(async ({ ctx, input }) => {
@@ -94,8 +94,9 @@ export const sendNotificationProcedure = protectedProcedure
     
     // Data objesini oluştur (medya URL'i varsa ekle)
     const notificationData: any = { ...(input.data || {}) };
-    if (input.mediaUrl) {
-      notificationData.mediaUrl = input.mediaUrl;
+    if (input.mediaUrl && input.mediaUrl.trim() && !input.mediaUrl.startsWith('file://')) {
+      // Sadece geçerli URL'leri kabul et (file:// URI'leri frontend'de yüklenmeli)
+      notificationData.mediaUrl = input.mediaUrl.trim();
     }
 
     const notifications = targetUserIds.map((userId) => ({

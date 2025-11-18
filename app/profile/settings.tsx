@@ -316,21 +316,38 @@ export default function SettingsScreen() {
           
           <TouchableOpacity 
             style={[styles.settingButton, { borderTopColor: theme.colors.border }]}
-            onPress={() => Alert.alert('Şifre Değiştir', 'Bu özellik yakında eklenecek.')}
+            onPress={() => router.push('/auth/reset-password')}
           >
             <Text style={[styles.settingButtonText, { color: theme.colors.primary }]}>Şifre Değiştir</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
             style={[styles.settingButton, { borderTopColor: theme.colors.border }]}
-            onPress={() => Alert.alert('2FA', 'İki faktörlü kimlik doğrulama yakında eklenecek.')}
+            onPress={() => {
+              Alert.alert(
+                'İki Faktörlü Doğrulama',
+                'Bu özellik yakında eklenecek. Güvenliğiniz için şifrenizi güçlü tutun.',
+                [{ text: 'Tamam' }]
+              );
+            }}
           >
             <Text style={[styles.settingButtonText, { color: theme.colors.primary }]}>İki Faktörlü Doğrulama</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
             style={[styles.settingButton, { borderTopColor: theme.colors.border }]}
-            onPress={() => Alert.alert('Veri İndir', 'Verileriniz hazırlanıyor...')}
+            onPress={async () => {
+              try {
+                Alert.alert(
+                  'Veri İndirme',
+                  'Verileriniz hazırlanıyor. Bu işlem birkaç dakika sürebilir. Hazır olduğunda e-posta ile bilgilendirileceksiniz.',
+                  [{ text: 'Tamam' }]
+                );
+                // TODO: Backend'de veri indirme endpoint'i eklendiğinde buraya entegre edilecek
+              } catch (error) {
+                Alert.alert('Hata', 'Veri indirme işlemi başlatılamadı.');
+              }
+            }}
           >
             <Text style={[styles.settingButtonText, { color: theme.colors.primary }]}>Verilerimi İndir</Text>
           </TouchableOpacity>

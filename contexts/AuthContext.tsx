@@ -75,7 +75,23 @@ export const [AuthContext, useAuth] = createContextHook(() => {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    let mounted = true;
+    
+    // Session'ı al ve koru - otomatik çıkış yapma
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      if (!mounted) return;
+      
+      if (error) {
+        console.error('Error getting session:', error);
+        // Hata olsa bile session'ı korumaya çalış - refresh token ile yenilenebilir
+        if (mounted) {
+          setLoading(false);
+        }
+        return;
+      }
+
+      if (!mounted) return;
+
       setSession(session);
       const nextUser = session?.user ?? null;
       setUser(nextUser);
@@ -84,20 +100,73 @@ export const [AuthContext, useAuth] = createContextHook(() => {
         setLoading(true);
         try {
           const profileData = await loadProfile(nextUser.id);
-          setProfile(profileData);
+          if (mounted) {
+            setProfile(profileData);
+          }
         } catch (error) {
           console.error('Error loading profile after session fetch:', error);
-          setProfile(null);
+          // Hata olsa bile session'ı koru - otomatik çıkış yapma
+          // setProfile(null); // Kaldırıldı - session korunacak
         } finally {
-          setLoading(false);
+          if (mounted) {
+            setLoading(false);
+          }
         }
       } else {
-        setProfile(null);
+        // Session yoksa bile otomatik çıkış yapma - refresh token ile yenilenebilir
+        // setProfile(null); // Kaldırıldı
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }).catch((error) => {
+      console.error('Unexpected error in getSession:', error);
+      if (mounted) {
         setLoading(false);
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    return () => {
+      mounted = false;
+    };
+  }, [loadProfile]);
+
+  useEffect(() => {
+    // Token refresh listener - session'ı süresiz tutmak için
+    const refreshInterval = setInterval(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          // Session varsa token'ı yenile (otomatik refresh)
+          await supabase.auth.refreshSession();
+          console.log('🔄 [AuthContext] Token refreshed automatically');
+        }
+      } catch (error) {
+        console.error('Error refreshing token:', error);
+        // Hata olsa bile session'ı koru
+      }
+    }, 30 * 60 * 1000); // Her 30 dakikada bir token'ı yenile
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Sadece manuel SIGNED_OUT event'inde çıkış yap
+      // TOKEN_REFRESHED ve diğer event'lerde session'ı koru
+      // Not: Supabase'de SIGNED_OUT event'i sadece manuel signOut() çağrıldığında tetiklenir
+      // Ancak TypeScript'te SIGNED_OUT event'i yok, bu yüzden session null kontrolü yapıyoruz
+      if (!session && event !== 'TOKEN_REFRESHED' && event !== 'INITIAL_SESSION') {
+        // Session yoksa ve manuel çıkış yapılmışsa
+        console.log('👋 [AuthContext] Session ended - user may have signed out');
+        // Sadece gerçekten çıkış yapıldıysa temizle
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (!currentSession) {
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Diğer tüm durumlarda session'ı koru ve güncelle
       setSession(session);
       const nextUser = session?.user ?? null;
       setUser(nextUser);
@@ -116,18 +185,23 @@ export const [AuthContext, useAuth] = createContextHook(() => {
           })
           .catch((error) => {
             console.error('Error loading profile after auth change:', error);
-            setProfile(null);
+            // Hata olsa bile session'ı koru - otomatik çıkış yapma
+            // setProfile(null); // Bu satırı kaldırdık - session korunacak
           })
           .finally(() => {
             setLoading(false);
           });
-      } else {
-        setProfile(null);
-        setLoading(false);
+      } else if (event !== 'INITIAL_SESSION' && event !== 'TOKEN_REFRESHED') {
+        // Session yoksa bile koru (refresh bekleniyor olabilir)
+        // Otomatik çıkış yapma - session refresh edilebilir
+        console.log('⚠️ [AuthContext] Session temporarily unavailable, waiting for refresh...');
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearInterval(refreshInterval);
+      subscription.unsubscribe();
+    };
   }, [loadProfile]);
 
   useEffect(() => {
@@ -163,8 +237,30 @@ export const [AuthContext, useAuth] = createContextHook(() => {
   }, [user]);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
-    setProfile(null);
+    try {
+      // Session'ı temizle
+      setSession(null);
+      setUser(null);
+      setProfile(null);
+      setLoading(false);
+      
+      // Supabase'den çıkış yap
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        console.error('Sign out error:', error);
+        // Hata olsa bile state'i temizle
+      }
+      
+      console.log('✅ [AuthContext] User signed out successfully');
+    } catch (error) {
+      console.error('Unexpected error during sign out:', error);
+      // Hata olsa bile state'i temizle
+      setSession(null);
+      setUser(null);
+      setProfile(null);
+      setLoading(false);
+    }
   }, []);
 
   const refreshProfile = useCallback(async () => {

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView, ScrollView, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView, ScrollView, Alert, Linking, Modal } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Mail, Lock, PhoneCall } from 'lucide-react-native';
+import { Mail, Lock, PhoneCall, X } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { makeRedirectUri } from 'expo-auth-session';
@@ -34,11 +34,15 @@ export default function LoginScreen() {
   // Policy'leri çek
   const { data: policies } = (trpc as any).admin.getPolicies.useQuery();
   
-  const handlePolicyPress = (policyType: 'terms' | 'privacy') => {
+  const [selectedPolicy, setSelectedPolicy] = useState<any>(null);
+  const [policyModalVisible, setPolicyModalVisible] = useState(false);
+
+  const handlePolicyPress = (policyType: string) => {
     if (policies) {
       const policy = policies.find((p: any) => p.policy_type === policyType && p.is_active);
       if (policy) {
-        router.push(`/admin/policy-view/${policy.id}` as any);
+        setSelectedPolicy(policy);
+        setPolicyModalVisible(true);
       } else {
         Alert.alert('Bilgi', 'Politika bulunamadı');
       }
@@ -1319,21 +1323,48 @@ export default function LoginScreen() {
           {renderForm()}
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Developed by</Text>
-            <Text style={styles.companyName}>LITXTECH LLC</Text>
-            <TouchableOpacity 
-              onPress={() => Linking.openURL('https://www.litxtech.com')}
-              style={styles.footerLinks}
-            >
-              <Text style={styles.footerLinkText}>www.litxtech.com</Text>
-            </TouchableOpacity>
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <TouchableOpacity onPress={() => Linking.openURL('https://www.litxtech.com')}>
-                <Text style={styles.dividerText}>www.litxtech.com</Text>
-              </TouchableOpacity>
-              <View style={styles.dividerLine} />
-            </View>
+            {/* Politikalar - Simetrik Düzen */}
+            {policies && policies.length > 0 && (
+              <View style={styles.policiesContainer}>
+                {policies
+                  .filter((p: any) => p.is_active)
+                  .sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0))
+                  .map((policy: any, index: number) => {
+                    const policyTypeLabels: Record<string, string> = {
+                      terms: 'Kullanım Şartları',
+                      privacy: 'Gizlilik Politikası',
+                      community: 'Topluluk Kuralları',
+                      cookie: 'Çerez Politikası',
+                      refund: 'İade Politikası',
+                      child_safety: 'Çocuk Güvenliği',
+                      payment: 'Ödeme Politikası',
+                      moderation: 'Moderasyon',
+                      data_storage: 'Veri Saklama',
+                      eula: 'Lisans Sözleşmesi',
+                      university: 'Üniversite Modu',
+                      event: 'Etkinlik Politikası',
+                      other: 'Diğer',
+                    };
+                    
+                    return (
+                      <React.Fragment key={policy.id}>
+                        <TouchableOpacity 
+                          onPress={() => handlePolicyPress(policy.policy_type)}
+                          style={styles.policyButton}
+                        >
+                          <Text style={styles.policyButtonText}>
+                            {policyTypeLabels[policy.policy_type] || policy.title}
+                          </Text>
+                        </TouchableOpacity>
+                        {index < policies.filter((p: any) => p.is_active).length - 1 && (
+                          <Text style={styles.policySeparator}>•</Text>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+              </View>
+            )}
+            
             <Text style={styles.terms}>
               Devam ederek{' '}
               <Text 
@@ -1354,6 +1385,63 @@ export default function LoginScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Policy Modal */}
+      <Modal
+        visible={policyModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => {
+          setPolicyModalVisible(false);
+          setSelectedPolicy(null);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={styles.modalOverlayTouchable}
+            activeOpacity={1}
+            onPress={() => {
+              setPolicyModalVisible(false);
+              setSelectedPolicy(null);
+            }}
+          />
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {selectedPolicy?.title || 'Politika'}
+              </Text>
+              <TouchableOpacity 
+                onPress={() => {
+                  setPolicyModalVisible(false);
+                  setSelectedPolicy(null);
+                }} 
+                style={styles.closeButton}
+              >
+                <X size={24} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView 
+              style={styles.modalScrollView} 
+              contentContainerStyle={styles.modalScrollContent}
+              showsVerticalScrollIndicator={true}
+            >
+              {selectedPolicy && (
+                <>
+                  <Text style={styles.modalPolicyContent}>{selectedPolicy.content}</Text>
+                  <Text style={styles.modalPolicyDate}>
+                    Son güncelleme: {new Date(selectedPolicy.updated_at || selectedPolicy.created_at).toLocaleDateString('tr-TR', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                    })}
+                  </Text>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1383,6 +1471,10 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
     textAlign: 'center' as const,
     flexWrap: 'wrap',
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.xl * 1.2,
+    }),
   },
   formSubtitle: {
     fontSize: FONT_SIZES.sm,
@@ -1391,6 +1483,10 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.lg,
     textAlign: 'center' as const,
     flexWrap: 'wrap',
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.sm * 1.3,
+    }),
   },
   inputContainer: {
     flexDirection: 'row' as const,
@@ -1410,6 +1506,12 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.md,
     paddingVertical: SPACING.md,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      textAlignVertical: 'center' as const,
+      paddingTop: 0,
+      paddingBottom: 0,
+    }),
   },
   forgotText: {
     color: COLORS.white,
@@ -1417,6 +1519,10 @@ const styles = StyleSheet.create({
     textAlign: 'right' as const,
     marginBottom: SPACING.md,
     opacity: 0.8,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.sm * 1.3,
+    }),
   },
   primaryButton: {
     backgroundColor: COLORS.white,
@@ -1431,6 +1537,10 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     flexWrap: 'wrap',
     textAlign: 'center' as const,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.md * 1.2,
+    }),
   },
   secondaryButton: {
     backgroundColor: 'rgba(255,255,255,0.15)',
@@ -1447,6 +1557,10 @@ const styles = StyleSheet.create({
     fontWeight: '500' as const,
     flexWrap: 'wrap',
     textAlign: 'center' as const,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.md * 1.2,
+    }),
   },
   googleButton: {
     backgroundColor: '#4285F4',
@@ -1463,6 +1577,10 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     flexWrap: 'wrap',
     textAlign: 'center' as const,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.md * 1.2,
+    }),
   },
   appleButton: {
     backgroundColor: '#000000',
@@ -1479,6 +1597,10 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     flexWrap: 'wrap',
     textAlign: 'center' as const,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.md * 1.2,
+    }),
   },
   magicLinkButton: {
     backgroundColor: '#9B59B6',
@@ -1495,6 +1617,10 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     flexWrap: 'wrap',
     textAlign: 'center' as const,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.md * 1.2,
+    }),
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -1513,6 +1639,10 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     marginHorizontal: SPACING.md,
     opacity: 0.7,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.sm * 1.3,
+    }),
   },
   switchText: {
     color: COLORS.white,
@@ -1522,6 +1652,10 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     flexWrap: 'wrap',
     paddingHorizontal: SPACING.xs,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.sm * 1.3,
+    }),
   },
   linkText: {
     color: COLORS.white,
@@ -1529,42 +1663,56 @@ const styles = StyleSheet.create({
     textAlign: 'center' as const,
     marginTop: SPACING.md,
     textDecorationLine: 'underline' as const,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.sm * 1.3,
+    }),
   },
   footer: {
     marginTop: SPACING.xxl,
     alignItems: 'center' as const,
+    paddingHorizontal: SPACING.md,
   },
-  footerText: {
+  policiesContainer: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.xs,
+    marginBottom: SPACING.lg,
+    paddingHorizontal: SPACING.sm,
+  },
+  policyButton: {
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+  },
+  policyButtonText: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.white,
-    opacity: 0.6,
-    marginBottom: SPACING.xs,
-  },
-  companyName: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600' as const,
-    color: COLORS.secondary,
-    marginBottom: SPACING.sm,
-  },
-  footerLinks: {
-    marginBottom: SPACING.md,
-  },
-  footerLink: {
-    textDecorationLine: 'none' as const,
-  },
-  footerLinkText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.white,
     opacity: 0.8,
+    textDecorationLine: 'underline' as const,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.xs * 1.3,
+    }),
+  },
+  policySeparator: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.white,
+    opacity: 0.5,
+    marginHorizontal: SPACING.xs,
   },
   terms: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.white,
     textAlign: 'center' as const,
     opacity: 0.7,
-    lineHeight: 18,
+    lineHeight: Platform.OS === 'android' ? FONT_SIZES.xs * 1.4 : 18,
     flexWrap: 'wrap',
     paddingHorizontal: SPACING.xs,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+    }),
   },
   termsLink: {
     textDecorationLine: 'underline' as const,
@@ -1583,18 +1731,84 @@ const styles = StyleSheet.create({
     fontWeight: '700' as const,
     color: '#FFC107',
     marginBottom: SPACING.xs,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.md * 1.2,
+    }),
   },
   betaSubtext: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.white,
     opacity: 0.9,
     textAlign: 'center' as const,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.sm * 1.3,
+    }),
   },
   phoneInfoText: {
     color: COLORS.white,
     opacity: 0.8,
     fontSize: FONT_SIZES.sm,
     marginBottom: SPACING.sm,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.sm * 1.3,
+    }),
     textAlign: 'left' as const,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end' as const,
+  },
+  modalOverlayTouchable: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  modalContent: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '90%',
+    minHeight: '50%',
+  },
+  modalHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    padding: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  modalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700' as const,
+    color: COLORS.text,
+    flex: 1,
+  },
+  closeButton: {
+    padding: SPACING.xs,
+  },
+  modalScrollView: {
+    flex: 1,
+  },
+  modalScrollContent: {
+    padding: SPACING.md,
+    paddingBottom: SPACING.xl,
+  },
+  modalPolicyContent: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    lineHeight: 24,
+    marginBottom: SPACING.lg,
+  },
+  modalPolicyDate: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+    fontStyle: 'italic' as const,
   },
 });

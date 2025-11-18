@@ -45,8 +45,10 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
   const [likeCount, setLikeCount] = useState(post.like_count || 0);
   const [isLoading, setIsLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isVideoReady, setIsVideoReady] = useState(false);
   const commentSheetY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const lastTap = useRef(0);
+  const isMountedRef = useRef(true);
 
   const firstMedia = post.media && post.media.length > 0 ? post.media[0] : null;
   const videoUrl = firstMedia?.path;
@@ -68,75 +70,113 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
       // Event'ler için upvotes - downvotes kullanılıyor
       setLikeCount((prev: number) => (isLiked ? prev - 1 : prev + 1));
     },
-    onError: (error) => {
+    onError: (error: any) => {
       console.error('Like event error:', error);
     },
   });
 
   // Audio session'ı aktif et
   useEffect(() => {
-    let mounted = true;
     Audio.setAudioModeAsync({
       allowsRecordingIOS: false,
       staysActiveInBackground: false,
       playsInSilentModeIOS: true,
       shouldDuckAndroid: true,
       playThroughEarpieceAndroid: false,
-    })
-      .then(() => {
-        if (mounted) {
-          console.log('✅ Audio session activated (VideoFeedItem)');
-        }
-      })
-      .catch((error) => {
-        console.error('❌ Audio session activation error:', error);
-      });
+    }).catch(() => {
+      // Sessizce geç
+    });
+  }, []);
 
+  // Component unmount olduğunda flag'i güncelle
+  useEffect(() => {
+    isMountedRef.current = true;
     return () => {
-      mounted = false;
+      isMountedRef.current = false;
     };
   }, []);
 
   // Sadece aktif video oynatılır - diğerleri durur
   useEffect(() => {
-    if (isActive && videoRef.current && videoUrl) {
-      // Audio session aktif olduğundan emin ol
-      Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        staysActiveInBackground: false,
-        playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
-      })
-        .then(() => {
-          if (videoRef.current) {
-            return videoRef.current.playAsync();
+    // Video hazır değilse bekle
+    if (!isVideoReady || !videoUrl) return;
+
+    const timer = setTimeout(() => {
+      if (!isMountedRef.current) return;
+
+      // Video ref'inin geçerli olduğundan emin ol
+      if (!videoRef.current) return;
+
+      if (isActive) {
+        // Audio session aktif olduğundan emin ol
+        Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          staysActiveInBackground: false,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        })
+          .then(() => {
+            // Ref'in hala geçerli olduğunu kontrol et
+            if (!isMountedRef.current || !videoRef.current) return;
+            
+            try {
+              return videoRef.current.playAsync();
+            } catch {
+              // Native view hatası - sessizce geç
+              return null;
+            }
+          })
+          .then(() => {
+            if (isMountedRef.current) {
+              setIsPlaying(true);
+            }
+          })
+          .catch(() => {
+            // Tüm hataları sessizce geç - console'a yazma
+            if (isMountedRef.current) {
+              setIsLoading(false);
+            }
+          });
+      } else {
+        // Aktif değilse durdur
+        if (videoRef.current && isMountedRef.current) {
+          try {
+            videoRef.current.pauseAsync().catch(() => {
+              // Sessizce geç
+            });
+          } catch {
+            // Sessizce geç
           }
-        })
-        .then(() => {
-          setIsPlaying(true);
-        })
-        .catch((error) => {
-          console.error('Video play error:', error);
-          setIsLoading(false);
-        });
-    } else if (!isActive && videoRef.current) {
-      // Aktif değilse durdur
-      videoRef.current.pauseAsync().catch((error) => {
-        console.error('Video pause error:', error);
-      });
-      setIsPlaying(false);
-    }
-  }, [isActive, videoUrl]);
+        }
+        if (isMountedRef.current) {
+          setIsPlaying(false);
+        }
+      }
+    }, 200); // Daha uzun gecikme - native view'ın hazır olması için
+
+    return () => clearTimeout(timer);
+  }, [isActive, videoUrl, isVideoReady]);
 
   // Sadece aktif video sesli olmalı
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.setIsMutedAsync(!isActive).catch((error) => {
-        console.error('Video mute error:', error);
-      });
-    }
-  }, [isActive]);
+    // Video hazır değilse bekle
+    if (!isVideoReady) return;
+
+    const timer = setTimeout(() => {
+      if (!isMountedRef.current || !videoRef.current) return;
+
+      try {
+        videoRef.current.setIsMutedAsync(!isActive).catch(() => {
+          // Sessizce geç
+        });
+      } catch {
+        // Sessizce geç
+      }
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [isActive, isVideoReady]);
 
   const handleLike = () => {
     if (isEvent) {
@@ -181,18 +221,22 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
       handleLike();
     } else {
       // Tek tıklama - pause/play toggle
-      if (videoRef.current) {
+      if (!videoRef.current || !isVideoReady || !isMountedRef.current) return;
+
+      try {
         if (isPlaying) {
-          videoRef.current.pauseAsync().catch((error) => {
-            console.error('Video pause error:', error);
+          videoRef.current.pauseAsync().catch(() => {
+            // Sessizce geç
           });
           setIsPlaying(false);
         } else {
-          videoRef.current.playAsync().catch((error) => {
-            console.error('Video play error:', error);
+          videoRef.current.playAsync().catch(() => {
+            // Sessizce geç
           });
           setIsPlaying(true);
         }
+      } catch {
+        // Sessizce geç
       }
     }
     lastTap.current = now;
@@ -250,14 +294,32 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
             shouldPlay={isActive}
             useNativeControls={false}
             onError={(error) => {
-              console.error('Video error:', error);
-              setIsLoading(false);
+              // Hataları sessizce geç - console'a yazma
+              if (isMountedRef.current) {
+                setIsLoading(false);
+              }
             }}
             onLoadStart={() => {
-              setIsLoading(true);
+              if (isMountedRef.current) {
+                setIsLoading(true);
+              }
             }}
             onLoad={() => {
-              setIsLoading(false);
+              if (isMountedRef.current) {
+                setIsLoading(false);
+                // Video yüklendiğinde hazır olarak işaretle
+                setTimeout(() => {
+                  if (isMountedRef.current) {
+                    setIsVideoReady(true);
+                  }
+                }, 100);
+              }
+            }}
+            onReadyForDisplay={() => {
+              if (isMountedRef.current) {
+                setIsVideoReady(true);
+                setIsLoading(false);
+              }
             }}
           />
           {isLoading && (

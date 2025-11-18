@@ -89,7 +89,7 @@ export const followUserProcedure = protectedProcedure
           user_id: input.following_id,
           type: 'FOLLOW',
           title: 'Yeni Takipçi',
-          message,
+          body: message, // notifications tablosunda body kolonu var
           data: {
             follower_id: user.id,
             follower_name: followerName,
@@ -100,41 +100,50 @@ export const followUserProcedure = protectedProcedure
         .single();
 
       if (notification) {
+        // Kullanıcının bildirim tercihlerini kontrol et
         const { data: targetProfile } = await supabase
           .from('profiles')
-          .select('push_token')
+          .select('push_token, privacy_settings')
           .eq('id', input.following_id)
           .maybeSingle();
 
-        if (targetProfile?.push_token) {
-          try {
-            const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
-            await fetch(expoPushUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/json',
-                'Accept-Encoding': 'gzip, deflate',
-              },
-              body: JSON.stringify({
-                to: targetProfile.push_token,
-                sound: 'default',
-                title: 'Yeni Takipçi',
-                body: message,
-                data: {
-                  type: 'FOLLOW',
-                  follower_id: user.id,
-                },
-                badge: 1,
-              }),
-            });
+        if (targetProfile) {
+          // Bildirim tercihlerini kontrol et
+          const privacySettings = targetProfile.privacy_settings as any;
+          const notificationsEnabled = privacySettings?.notifications?.push !== false;
+          const followsEnabled = privacySettings?.notifications?.follows !== false;
 
-            await supabase
-              .from('notifications')
-              .update({ push_sent: true })
-              .eq('id', notification.id);
-          } catch (pushError) {
-            console.error('Follow push notification error:', pushError);
+          // Push notification gönder (eğer izin verilmişse)
+          if (targetProfile.push_token && notificationsEnabled && followsEnabled) {
+            try {
+              const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+              await fetch(expoPushUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Accept: 'application/json',
+                  'Accept-Encoding': 'gzip, deflate',
+                },
+                body: JSON.stringify({
+                  to: targetProfile.push_token,
+                  sound: 'default',
+                  title: 'Yeni Takipçi',
+                  body: message,
+                  data: {
+                    type: 'FOLLOW',
+                    follower_id: user.id,
+                  },
+                  badge: 1,
+                }),
+              });
+
+              await supabase
+                .from('notifications')
+                .update({ push_sent: true })
+                .eq('id', notification.id);
+            } catch (pushError) {
+              console.error('Follow push notification error:', pushError);
+            }
           }
         }
       }

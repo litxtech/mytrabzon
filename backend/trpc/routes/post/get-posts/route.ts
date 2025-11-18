@@ -17,6 +17,22 @@ export const getPostsProcedure = publicProcedure
     const { supabase, user } = ctx;
 
     try {
+      // Engellenen kullanıcıların ID'lerini al (eğer kullanıcı giriş yaptıysa)
+      let blockedUserIds: string[] = [];
+      if (user) {
+        const { data: blockedUsers } = await supabase
+          .from('user_blocks')
+          .select('blocked_id, blocker_id')
+          .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
+        
+        if (blockedUsers) {
+          // Hem engellediğimiz hem de bizi engelleyen kullanıcıları filtrele
+          blockedUserIds = blockedUsers.map(b => 
+            b.blocker_id === user.id ? b.blocked_id : b.blocker_id
+          );
+        }
+      }
+
       // Lightweight select - sadece gerekli alanlar
       let query = supabase
         .from("posts")
@@ -48,6 +64,11 @@ export const getPostsProcedure = publicProcedure
           { count: "exact" }
         )
         .eq("archived", input.archived);
+
+      // Engellenen kullanıcıların postlarını filtrele
+      if (blockedUserIds.length > 0) {
+        query = query.not('author_id', 'in', `(${blockedUserIds.join(',')})`);
+      }
 
       if (input.district && input.district !== "all") {
         query = query.eq("district", input.district);

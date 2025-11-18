@@ -12,7 +12,7 @@ import {
   Platform,
   Image,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
@@ -22,6 +22,7 @@ import { Footer } from '@/components/Footer';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useAuth } from '@/contexts/AuthContext';
+import { useEffect } from 'react';
 
 const EVENT_CATEGORIES = [
   { value: 'trafik', label: '🚗 Trafik Var' },
@@ -53,6 +54,8 @@ export default function CreateEventScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const params = useLocalSearchParams<{ edit?: string }>();
+  const isEditMode = !!params.edit;
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [showCityPicker, setShowCityPicker] = useState(false);
@@ -72,17 +75,62 @@ export default function CreateEventScreen() {
 
   const utils = trpc.useUtils();
   
+  // Event verilerini yükle (düzenleme modu için)
+  const { data: eventsData } = trpc.event.getEvents.useQuery({
+    limit: 100,
+    offset: 0,
+  }, { enabled: isEditMode });
+
+  const eventToEdit = isEditMode && eventsData?.events?.find((e: any) => e.id === params.edit);
+
+  // Event verilerini forma yükle
+  useEffect(() => {
+    if (eventToEdit) {
+      setFormData({
+        title: eventToEdit.title || '',
+        description: eventToEdit.description || '',
+        category: eventToEdit.category || '',
+        severity: eventToEdit.severity || 'NORMAL',
+        city: eventToEdit.city || 'Trabzon',
+        district: eventToEdit.district || 'Tümü', // null ise "Tümü" göster
+        latitude: eventToEdit.latitude,
+        longitude: eventToEdit.longitude,
+      });
+      if (eventToEdit.media_urls && eventToEdit.media_urls.length > 0) {
+        const images = eventToEdit.media_urls.filter((url: string) => 
+          !url.match(/\.(mp4|mov|avi|webm)$/i)
+        );
+        const videos = eventToEdit.media_urls.filter((url: string) => 
+          url.match(/\.(mp4|mov|avi|webm)$/i)
+        );
+        setSelectedImages(images);
+        setSelectedVideos(videos);
+      }
+    }
+  }, [eventToEdit]);
+  
   const createEventMutation = trpc.event.createEvent.useMutation({
     onSuccess: async () => {
-      // Feed'deki event query'sini invalidate et ve refetch et
       await utils.event.getEvents.invalidate();
-      // Tüm parametrelerle invalidate et
       await utils.event.getEvents.invalidate(undefined);
       Alert.alert('Başarılı', 'Olay başarıyla oluşturuldu!');
       router.back();
     },
     onError: (error) => {
       Alert.alert('Hata', error.message || 'Olay oluşturulamadı');
+      setLoading(false);
+    },
+  });
+
+  const updateEventMutation = trpc.event.updateEvent.useMutation({
+    onSuccess: async () => {
+      await utils.event.getEvents.invalidate();
+      await utils.event.getEvents.invalidate(undefined);
+      Alert.alert('Başarılı', 'Olay başarıyla güncellendi!');
+      router.back();
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Olay güncellenemedi');
       setLoading(false);
     },
   });
@@ -185,31 +233,58 @@ export default function CreateEventScreen() {
     try {
       let mediaUrls: string[] = [];
 
-      // Medya yükle
-      const allMedia = [
-        ...selectedImages.map(uri => ({ uri, type: 'image' as const })),
-        ...selectedVideos.map(uri => ({ uri, type: 'video' as const })),
+      // Medya yükle (sadece yeni eklenenler için)
+      const newImages = selectedImages.filter(uri => uri.startsWith('file://'));
+      const newVideos = selectedVideos.filter(uri => uri.startsWith('file://'));
+      const existingMedia = [
+        ...selectedImages.filter(uri => !uri.startsWith('file://')),
+        ...selectedVideos.filter(uri => !uri.startsWith('file://')),
       ];
 
-      if (allMedia.length > 0) {
-        const uploadPromises = allMedia.map(media => uploadMedia(media.uri, media.type));
-        mediaUrls = await Promise.all(uploadPromises);
+      const allNewMedia = [
+        ...newImages.map(uri => ({ uri, type: 'image' as const })),
+        ...newVideos.map(uri => ({ uri, type: 'video' as const })),
+      ];
+
+      if (allNewMedia.length > 0) {
+        const uploadPromises = allNewMedia.map(media => uploadMedia(media.uri, media.type));
+        const uploadedUrls = await Promise.all(uploadPromises);
+        mediaUrls = [...existingMedia, ...uploadedUrls];
+      } else {
+        mediaUrls = existingMedia;
       }
 
-      await createEventMutation.mutateAsync({
-        title: formData.title,
-        description: formData.description,
-        category: formData.category as any,
-        severity: formData.severity,
-        district: districtToSend, // null veya string olabilir
-        city: formData.city,
-        latitude: formData.latitude,
-        longitude: formData.longitude,
-        media_urls: mediaUrls.length > 0 ? mediaUrls : undefined,
-      });
+      if (isEditMode && params.edit) {
+        // Düzenleme modu
+        await updateEventMutation.mutateAsync({
+          eventId: params.edit,
+          title: formData.title,
+          description: formData.description,
+          category: formData.category as any,
+          severity: formData.severity,
+          district: districtToSend,
+          city: formData.city,
+          latitude: formData.latitude,
+          longitude: formData.longitude,
+          media_urls: mediaUrls.length > 0 ? mediaUrls : undefined,
+        });
+      } else {
+        // Yeni oluşturma modu
+        await createEventMutation.mutateAsync({
+          title: formData.title,
+          description: formData.description,
+          category: formData.category as any,
+          severity: formData.severity,
+          district: districtToSend,
+          city: formData.city,
+          latitude: formData.latitude,
+          longitude: formData.longitude,
+          media_urls: mediaUrls.length > 0 ? mediaUrls : undefined,
+        });
+      }
     } catch (error) {
-      console.error('Create event error:', error);
-      Alert.alert('Hata', error instanceof Error ? error.message : 'Olay oluşturulamadı');
+      console.error('Event save error:', error);
+      Alert.alert('Hata', error instanceof Error ? error.message : 'Olay kaydedilemedi');
     } finally {
       setLoading(false);
       setUploading(false);
@@ -232,7 +307,7 @@ export default function CreateEventScreen() {
               <ArrowLeft size={24} color={COLORS.text} />
             </TouchableOpacity>
           ),
-          title: 'Olay Var!',
+          title: isEditMode ? 'Olayı Düzenle' : 'Olay Var!',
         }}
       />
 
@@ -243,9 +318,9 @@ export default function CreateEventScreen() {
       >
         <View style={styles.header}>
           <AlertCircle size={32} color={COLORS.primary} />
-          <Text style={styles.headerTitle}>Olay Var!</Text>
+          <Text style={styles.headerTitle}>{isEditMode ? 'Olayı Düzenle' : 'Olay Var!'}</Text>
           <Text style={styles.headerSubtitle}>
-            Trabzon&apos;da ne olup bittiğini paylaş
+            {isEditMode ? 'Olay bilgilerini güncelle' : 'Trabzon\'da ne olup bittiğini paylaş'}
           </Text>
         </View>
 
@@ -545,7 +620,7 @@ export default function CreateEventScreen() {
           {loading || uploading ? (
             <ActivityIndicator color={COLORS.white} />
           ) : (
-            <Text style={styles.submitButtonText}>Olayı Paylaş</Text>
+            <Text style={styles.submitButtonText}>{isEditMode ? 'Güncelle' : 'Olayı Paylaş'}</Text>
           )}
         </TouchableOpacity>
 

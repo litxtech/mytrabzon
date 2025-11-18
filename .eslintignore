@@ -1,0 +1,24 @@
+# Android klasörü
+android/
+android/**
+
+# GitHub Actions
+.github/
+.github/**
+
+# Node modules
+node_modules/
+node_modules/**
+
+# Supabase functions
+supabase/functions/
+supabase/functions/**
+
+# Build outputs
+dist/
+build/
+.expo/
+
+# TypeScript build info
+*.tsbuildinfo
+

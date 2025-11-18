@@ -11,9 +11,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    persistSession: true,
-    autoRefreshToken: true,
+    persistSession: true, // Session'ı kalıcı olarak sakla
+    autoRefreshToken: true, // Token'ı otomatik yenile (süresiz session için)
     detectSessionInUrl: true,
+    storage: undefined, // AsyncStorage kullan (default)
+    storageKey: 'supabase.auth.token', // Storage key
+    flowType: 'pkce', // PKCE flow (daha güvenli)
+    // Session süresiz olacak - refresh token ile otomatik yenilenecek
   },
   realtime: {
     params: {

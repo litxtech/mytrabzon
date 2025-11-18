@@ -1,24 +1,35 @@
-import * as ImageManipulator from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system';
-
 /**
  * Image compression utility
  * - Max width: 1080px
  * - JPEG quality: 80%
  * - Automatic format conversion
+ * 
+ * Note: expo-image-manipulator paketi yüklenene kadar orijinal URI döndürür
  */
 export const compressImage = async (
   uri: string,
   options?: {
     maxWidth?: number;
     quality?: number;
-    format?: ImageManipulator.SaveFormat;
+    format?: 'jpeg' | 'png';
   }
 ): Promise<string> => {
   try {
+    // expo-image-manipulator paketini dinamik olarak yükle
+    let ImageManipulator: any;
+    try {
+      ImageManipulator = require('expo-image-manipulator');
+    } catch (e) {
+      // Paket yüklenmemişse orijinal URI'yi döndür
+      console.warn('expo-image-manipulator not installed, skipping compression');
+      return uri;
+    }
+
     const maxWidth = options?.maxWidth || 1080;
     const quality = options?.quality || 0.8;
-    const format = options?.format || ImageManipulator.SaveFormat.JPEG;
+    const format = options?.format === 'png' 
+      ? ImageManipulator.SaveFormat.PNG 
+      : ImageManipulator.SaveFormat.JPEG;
 
     // Resize ve compress
     const manipulatedImage = await ImageManipulator.manipulateAsync(

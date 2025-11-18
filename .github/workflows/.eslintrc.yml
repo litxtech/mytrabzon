@@ -1,0 +1,6 @@
+# GitHub Actions workflow dosyaları için ESLint ayarları
+# Secrets kullanımı uyarılarını bastır
+rules:
+  yaml/no-empty-mapping-value: off
+  yaml/no-empty-sequence-entry: off
+

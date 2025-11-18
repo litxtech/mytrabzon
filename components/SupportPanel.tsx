@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Linking, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
-import { X, Phone, Mail, Globe, MessageCircle } from 'lucide-react-native';
+import { X, Phone, Mail, Globe, MessageCircle, MessageSquare } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
 
 interface SupportPanelProps {
@@ -23,7 +23,7 @@ export function SupportPanel({ visible, onClose }: SupportPanelProps) {
     },
   });
 
-  const handleContact = (type: 'phone' | 'email' | 'web') => {
+  const handleContact = (type: 'phone' | 'email' | 'web' | 'whatsapp') => {
     switch (type) {
       case 'phone':
         Linking.openURL('tel:+13072715151');
@@ -33,6 +33,16 @@ export function SupportPanel({ visible, onClose }: SupportPanelProps) {
         break;
       case 'web':
         Linking.openURL('https://www.litxtech.com');
+        break;
+      case 'whatsapp':
+        // WhatsApp URL formatı: whatsapp://send?phone=PHONE_NUMBER&text=MESSAGE
+        const phoneNumber = '13072715151'; // + işareti olmadan
+        const message = encodeURIComponent('Merhaba, MyTrabzon uygulamasından şikayet/öneri bildirmek istiyorum.');
+        const whatsappUrl = `whatsapp://send?phone=${phoneNumber}&text=${message}`;
+        // Eğer WhatsApp yüklü değilse web versiyonunu aç
+        Linking.openURL(whatsappUrl).catch(() => {
+          Linking.openURL(`https://wa.me/${phoneNumber}?text=${message}`);
+        });
         break;
     }
   };
@@ -56,12 +66,22 @@ export function SupportPanel({ visible, onClose }: SupportPanelProps) {
       transparent={true}
       onRequestClose={onClose}
     >
-      <KeyboardAvoidingView
-        style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-      >
-        <View style={styles.container}>
+      <View style={styles.overlay}>
+        <TouchableOpacity 
+          style={StyleSheet.absoluteFill}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+        <KeyboardAvoidingView
+          style={styles.keyboardView}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
+          <TouchableOpacity 
+            style={styles.container}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
           <View style={styles.header}>
             <Text style={styles.title}>Destek</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -106,6 +126,19 @@ export function SupportPanel({ visible, onClose }: SupportPanelProps) {
               </View>
             </TouchableOpacity>
 
+            <TouchableOpacity 
+              style={[styles.contactItem, styles.whatsappItem]} 
+              onPress={() => handleContact('whatsapp')}
+            >
+              <View style={[styles.iconContainer, styles.whatsappIcon]}>
+                <MessageSquare size={20} color="#25D366" />
+              </View>
+              <View style={styles.contactTextContainer}>
+                <Text style={styles.contactLabel}>WhatsApp Şikayet</Text>
+                <Text style={[styles.contactValue, styles.whatsappText]}>Anlık destek için tıklayın</Text>
+              </View>
+            </TouchableOpacity>
+
             <View style={styles.divider} />
 
             <Text style={styles.subtitle}>Hızlı Mesaj</Text>
@@ -132,8 +165,9 @@ export function SupportPanel({ visible, onClose }: SupportPanelProps) {
               </Text>
             </TouchableOpacity>
           </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -142,6 +176,10 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  keyboardView: {
+    flex: 1,
     justifyContent: 'flex-end' as const,
   },
   container: {
@@ -149,6 +187,20 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '80%',
+  },
+  whatsappItem: {
+    backgroundColor: '#25D36610',
+    borderRadius: 12,
+    marginTop: SPACING.sm,
+    borderWidth: 1,
+    borderColor: '#25D36630',
+  },
+  whatsappIcon: {
+    backgroundColor: '#25D36620',
+  },
+  whatsappText: {
+    color: '#25D366',
+    fontWeight: '600' as const,
   },
   header: {
     flexDirection: 'row' as const,

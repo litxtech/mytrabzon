@@ -11,13 +11,14 @@ import { registerForPushNotifications, addNotificationResponseReceivedListener }
 import { supabase } from "@/lib/supabase";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 
+// Development'ta hot reload için QueryClient'i optimize et
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000, // 5 dakika - veri 5 dakika boyunca fresh kalır
+      staleTime: process.env.NODE_ENV === 'development' ? 0 : 5 * 60 * 1000, // Development'ta anlık güncelleme
       gcTime: 10 * 60 * 1000, // 10 dakika - cache'de tutulma süresi (eski cacheTime)
-      refetchOnWindowFocus: false, // Pencere focus olduğunda otomatik refetch yapma
-      refetchOnMount: false, // Mount olduğunda otomatik refetch yapma (cache'den kullan)
+      refetchOnWindowFocus: process.env.NODE_ENV === 'development', // Development'ta focus'ta refetch
+      refetchOnMount: process.env.NODE_ENV === 'development', // Development'ta mount'ta refetch
       refetchOnReconnect: true, // Bağlantı yenilendiğinde refetch yap
       retry: 1, // Hata durumunda sadece 1 kez tekrar dene
       retryDelay: 1000, // Retry arası 1 saniye bekle

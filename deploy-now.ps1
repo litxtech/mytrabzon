@@ -12,35 +12,23 @@ supabase link --project-ref $PROJECT_REF
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "✅ Project linked!" -ForegroundColor Green
+} else {
+    Write-Host "⚠️  Link failed (may already be linked, continuing...)" -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "📦 Deploying function..." -ForegroundColor Cyan
+supabase functions deploy trpc --no-verify-jwt
+
+if ($LASTEXITCODE -eq 0) {
     Write-Host ""
-    Write-Host "📦 Deploying function..." -ForegroundColor Cyan
-    supabase functions deploy trpc --no-verify-jwt
-    
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host ""
-        Write-Host "✅✅✅ DEPLOYMENT SUCCESSFUL! ✅✅✅" -ForegroundColor Green
-        Write-Host ""
-        Write-Host "🔗 Function URL: https://$PROJECT_REF.supabase.co/functions/v1/trpc" -ForegroundColor Cyan
-        Write-Host ""
-        Write-Host "🎉 You can now test notifications from the admin panel!" -ForegroundColor Green
-    } else {
-        Write-Host ""
-        Write-Host "❌ Deployment failed!" -ForegroundColor Red
-    }
+    Write-Host "✅✅✅ DEPLOYMENT SUCCESSFUL! ✅✅✅" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "🔗 Function URL: https://$PROJECT_REF.supabase.co/functions/v1/trpc" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "🎉 Deployment complete!" -ForegroundColor Green
 } else {
     Write-Host ""
-    Write-Host "⚠️  Link failed (may already be linked, continuing...)" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "📦 Deploying function anyway..." -ForegroundColor Cyan
-    supabase functions deploy trpc --no-verify-jwt
-    
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host ""
-        Write-Host "✅✅✅ DEPLOYMENT SUCCESSFUL! ✅✅✅" -ForegroundColor Green
-        Write-Host ""
-        Write-Host "🔗 Function URL: https://$PROJECT_REF.supabase.co/functions/v1/trpc" -ForegroundColor Cyan
-    } else {
-        Write-Host ""
-        Write-Host "❌ Deployment failed!" -ForegroundColor Red
-    }
+    Write-Host "❌ Deployment failed!" -ForegroundColor Red
+    exit 1
 }

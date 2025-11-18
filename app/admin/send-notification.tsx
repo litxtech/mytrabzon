@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  FlatList,
   Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +18,9 @@ import { trpc } from '../../lib/trpc';
 import { Footer } from '@/components/Footer';
 import * as ImagePicker from 'expo-image-picker';
 import { Image as ExpoImage } from 'expo-image';
+import { supabase } from '@/lib/supabase';
+import * as FileSystem from 'expo-file-system';
+import { compressImage } from '@/lib/image-compression';
 
 type SendMode = 'all' | 'single';
 
@@ -70,34 +72,65 @@ export default function AdminSendNotificationScreen() {
         setUploading(true);
         const asset = result.assets[0];
         
-        // Supabase Storage'a yükle
-        const formData = new FormData();
-        const uri = asset.uri;
-        const filename = uri.split('/').pop() || `notification-${Date.now()}.jpg`;
-        const match = /\.(\w+)$/.exec(filename);
-        const type = match ? `image/${match[1]}` : 'image/jpeg';
-
-        formData.append('file', {
-          uri,
-          name: filename,
-          type,
-        } as any);
-
-        // Supabase Storage URL'ini oluştur
-        // Not: Bu basit bir implementasyon, gerçek uygulamada Supabase Storage API kullanılmalı
-        const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-        const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-        
-        if (!supabaseUrl || !supabaseKey) {
-          Alert.alert('Hata', 'Supabase yapılandırması bulunamadı');
+        try {
+          // Resmi compress et
+          const compressedUri = await compressImage(asset.uri, { maxWidth: 1080, quality: 0.8 });
+          
+          // Dosya uzantısını al
+          let fileExt = compressedUri.split('.').pop()?.toLowerCase() || 'jpg';
+          if (fileExt === 'jpg') fileExt = 'jpeg';
+          
+          // Dosya yolu
+          const fileName = `notifications/notification-${Date.now()}.${fileExt}`;
+          
+          // MIME type'ı belirle
+          const mimeType = fileExt === 'jpeg' || fileExt === 'jpg' 
+            ? 'image/jpeg' 
+            : fileExt === 'png' 
+            ? 'image/png' 
+            : `image/${fileExt}`;
+          
+          // Base64'e çevir
+          const base64 = await FileSystem.readAsStringAsync(compressedUri, {
+            encoding: 'base64' as any,
+          });
+          
+          // Base64'ü Uint8Array'e çevir (data URI prefix'i varsa kaldır)
+          const cleanBase64 = base64.includes(',') ? base64.split(',')[1] : base64;
+          const binaryString = atob(cleanBase64);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          
+          // Supabase Storage'a yükle
+          const { error: uploadError } = await supabase.storage
+            .from('posts')
+            .upload(fileName, bytes, {
+              contentType: mimeType,
+              upsert: false,
+            });
+          
+          if (uploadError) {
+            throw uploadError;
+          }
+          
+          // Public URL'i al
+          const { data: urlData } = supabase.storage
+            .from('posts')
+            .getPublicUrl(fileName);
+          
+          if (!urlData?.publicUrl) {
+            throw new Error('Public URL oluşturulamadı');
+          }
+          
+          setMediaUrl(urlData.publicUrl);
+        } catch (uploadError: any) {
+          console.error('Upload error:', uploadError);
+          Alert.alert('Hata', uploadError.message || 'Resim yüklenirken bir hata oluştu');
+        } finally {
           setUploading(false);
-          return;
         }
-
-        // Geçici olarak base64 veya URL kullan
-        // Gerçek uygulamada Supabase Storage'a yüklenmeli
-        setMediaUrl(uri);
-        setUploading(false);
       }
     } catch (error: any) {
       console.error('Image picker error:', error);

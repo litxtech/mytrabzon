@@ -24,6 +24,7 @@ import {
   Send,
   ArrowLeft,
   AlertCircle,
+  MoreVertical,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -67,6 +68,46 @@ export default function EventDetailScreen() {
       refetch();
     },
   });
+
+  const deleteEventMutation = trpc.event.deleteEvent.useMutation({
+    onSuccess: () => {
+      Alert.alert('Başarılı', 'Olay silindi', [
+        { text: 'Tamam', onPress: () => router.back() },
+      ]);
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message);
+    },
+  });
+
+  const handleEventOptions = () => {
+    if (event?.user_id !== user?.id) return;
+    Alert.alert('Olay Var', 'Seçenekler', [
+      { text: 'İptal', style: 'cancel' },
+      {
+        text: 'Düzenle',
+        onPress: () => router.push(`/event/create?edit=${event.id}` as any),
+      },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: () => {
+          Alert.alert(
+            'Olayı Sil',
+            'Bu olayı silmek istediğinize emin misiniz?',
+            [
+              { text: 'İptal', style: 'cancel' },
+              {
+                text: 'Sil',
+                style: 'destructive',
+                onPress: () => deleteEventMutation.mutate({ eventId: event.id }),
+              },
+            ]
+          );
+        },
+      },
+    ]);
+  };
 
   const { data: commentsData } = (trpc as any).event.getEventComments.useQuery({
     event_id: id!,
@@ -156,6 +197,17 @@ export default function EventDetailScreen() {
             <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
               <ArrowLeft size={24} color={theme.colors.text} />
             </TouchableOpacity>
+          ),
+          headerRight: () => (
+            event?.user_id === user?.id ? (
+              <TouchableOpacity 
+                onPress={handleEventOptions} 
+                style={styles.headerButton}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <MoreVertical size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+            ) : null
           ),
           title: 'Olay Detayı',
           headerStyle: { backgroundColor: theme.colors.card },

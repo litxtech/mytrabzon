@@ -10,6 +10,7 @@ import {
   Alert,
   FlatList,
   Modal,
+  Linking,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Video, ResizeMode } from 'expo-av';
@@ -27,6 +28,15 @@ import {
   MapPin,
   Users,
   Star,
+  Instagram,
+  Twitter,
+  Facebook,
+  Linkedin,
+  Youtube,
+  Music,
+  Venus,
+  Mars,
+  Link as LinkIcon,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CallButtons } from '@/components/CallButtons';
@@ -152,19 +162,25 @@ export default function UserProfileScreen() {
       }
     },
     onSuccess: async () => {
-      // Takip durumunu güncelle
+      // Önce takip durumunu güncelle
       await refetchFollowStatus();
       
-      // Tüm ilgili query'leri invalidate et ve refetch yap
-      await Promise.all([
-        utils.user.getFollowStats.invalidate({ user_id: id! }),
-        currentUser?.id ? utils.user.getFollowStats.invalidate({ user_id: currentUser.id }) : Promise.resolve(),
-        refetchFollowStats(),
-        utils.user.getProfile.invalidate({ userId: id! }),
-        utils.user.getFollowers.invalidate(),
-        utils.user.getFollowing.invalidate(),
-        refetchProfile(),
-      ]);
+      // Sonra istatistikleri güncelle
+      await refetchFollowStats();
+      
+      // Profil bilgisini güncelle
+      await refetchProfile();
+      
+      // Liste query'lerini invalidate et (takipçi/takip listeleri için)
+      utils.user.getFollowers.invalidate({ user_id: id! });
+      utils.user.getFollowing.invalidate({ user_id: id! });
+      if (currentUser?.id) {
+        utils.user.getFollowers.invalidate({ user_id: currentUser.id });
+        utils.user.getFollowing.invalidate({ user_id: currentUser.id });
+      }
+      
+      // Takip durumu query'sini de invalidate et
+      utils.user.checkFollowStatus.invalidate({ user_id: id! });
     },
     onError: () => {
       // Hata durumunda optimistic update'i geri al
@@ -201,18 +217,25 @@ export default function UserProfileScreen() {
       }
     },
     onSuccess: async () => {
-      // Takip durumunu güncelle
+      // Önce takip durumunu güncelle
       await refetchFollowStatus();
       
-      // Sadece refetch yap, invalidate yapma (optimistic update'i korumak için)
-      await Promise.all([
-        refetchFollowStats(),
-        refetchProfile(),
-      ]);
+      // Sonra istatistikleri güncelle
+      await refetchFollowStats();
       
-      // Diğer query'leri invalidate et (liste güncellemeleri için)
-      utils.user.getFollowers.invalidate();
-      utils.user.getFollowing.invalidate();
+      // Profil bilgisini güncelle
+      await refetchProfile();
+      
+      // Liste query'lerini invalidate et (takipçi/takip listeleri için)
+      utils.user.getFollowers.invalidate({ user_id: id! });
+      utils.user.getFollowing.invalidate({ user_id: id! });
+      if (currentUser?.id) {
+        utils.user.getFollowers.invalidate({ user_id: currentUser.id });
+        utils.user.getFollowing.invalidate({ user_id: currentUser.id });
+      }
+      
+      // Takip durumu query'sini de invalidate et
+      utils.user.checkFollowStatus.invalidate({ user_id: id! });
     },
     onError: () => {
       // Hata durumunda optimistic update'i geri al
@@ -370,11 +393,101 @@ export default function UserProfileScreen() {
                 color={profile.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
               />
             )}
+            {profile.gender === 'female' && (
+              <Venus size={18} color="#E91E63" style={{ marginLeft: 6 }} />
+            )}
+            {profile.gender === 'male' && (
+              <Mars size={18} color="#2196F3" style={{ marginLeft: 6 }} />
+            )}
           </View>
           {profile.username && (
             <Text style={styles.username}>@{profile.username}</Text>
           )}
           {profile.bio && <Text style={styles.bio}>{profile.bio}</Text>}
+          
+          {/* Sosyal Medya Hesapları */}
+          {profile.social_media && profile.privacy_settings?.show_social_media !== false && (
+            <View style={styles.socialMediaContainer}>
+              {profile.social_media.instagram && (
+                <TouchableOpacity
+                  style={styles.socialMediaButton}
+                  onPress={() => {
+                    const url = profile.social_media.instagram.startsWith('http') 
+                      ? profile.social_media.instagram 
+                      : `https://instagram.com/${profile.social_media.instagram.replace('@', '')}`;
+                    Linking.openURL(url).catch(() => {});
+                  }}
+                >
+                  <Instagram size={18} color="#E4405F" />
+                </TouchableOpacity>
+              )}
+              {profile.social_media.twitter && (
+                <TouchableOpacity
+                  style={styles.socialMediaButton}
+                  onPress={() => {
+                    const url = profile.social_media.twitter.startsWith('http') 
+                      ? profile.social_media.twitter 
+                      : `https://twitter.com/${profile.social_media.twitter.replace('@', '')}`;
+                    require('react-native').Linking.openURL(url).catch(() => {});
+                  }}
+                >
+                  <Twitter size={18} color="#1DA1F2" />
+                </TouchableOpacity>
+              )}
+              {profile.social_media.facebook && (
+                <TouchableOpacity
+                  style={styles.socialMediaButton}
+                  onPress={() => {
+                    const url = profile.social_media.facebook.startsWith('http') 
+                      ? profile.social_media.facebook 
+                      : `https://facebook.com/${profile.social_media.facebook.replace('@', '')}`;
+                    require('react-native').Linking.openURL(url).catch(() => {});
+                  }}
+                >
+                  <Facebook size={18} color="#1877F2" />
+                </TouchableOpacity>
+              )}
+              {profile.social_media.linkedin && (
+                <TouchableOpacity
+                  style={styles.socialMediaButton}
+                  onPress={() => {
+                    const url = profile.social_media.linkedin.startsWith('http') 
+                      ? profile.social_media.linkedin 
+                      : `https://linkedin.com/in/${profile.social_media.linkedin.replace('@', '')}`;
+                    require('react-native').Linking.openURL(url).catch(() => {});
+                  }}
+                >
+                  <Linkedin size={18} color="#0077B5" />
+                </TouchableOpacity>
+              )}
+              {profile.social_media.tiktok && (
+                <TouchableOpacity
+                  style={styles.socialMediaButton}
+                  onPress={() => {
+                    const url = profile.social_media.tiktok.startsWith('http') 
+                      ? profile.social_media.tiktok 
+                      : `https://tiktok.com/@${profile.social_media.tiktok.replace('@', '')}`;
+                    require('react-native').Linking.openURL(url).catch(() => {});
+                  }}
+                >
+                  <Music size={18} color="#000000" />
+                </TouchableOpacity>
+              )}
+              {profile.social_media.youtube && (
+                <TouchableOpacity
+                  style={styles.socialMediaButton}
+                  onPress={() => {
+                    const url = profile.social_media.youtube.startsWith('http') 
+                      ? profile.social_media.youtube 
+                      : `https://youtube.com/@${profile.social_media.youtube.replace('@', '')}`;
+                    require('react-native').Linking.openURL(url).catch(() => {});
+                  }}
+                >
+                  <Youtube size={18} color="#FF0000" />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
           
           {/* KTÜ Bilgileri */}
           {ktuStudent && ktuStudent.verification_status === 'verified' && (
@@ -668,6 +781,11 @@ export default function UserProfileScreen() {
         onRequestClose={() => setFollowersModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setFollowersModalVisible(false)}
+          />
           <View style={styles.followersModalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Takipçiler</Text>
@@ -688,6 +806,11 @@ export default function UserProfileScreen() {
         onRequestClose={() => setFollowingModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setFollowingModalVisible(false)}
+          />
           <View style={styles.followersModalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Takip Edilenler</Text>
@@ -1244,6 +1367,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.xs,
   },
+  socialMediaContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+    flexWrap: 'wrap',
+  },
+  socialMediaButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
   ktuText: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.primary,
@@ -1259,7 +1399,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: SPACING.lg,
-    maxHeight: '80%',
+    maxHeight: '90%',
+    minHeight: '50%',
+    flex: 1,
   },
   modalHeader: {
     flexDirection: 'row',

@@ -296,6 +296,23 @@ const appRouter = createTRPCRouter({
 
         const targetUserId = input?.userId ?? user.id;
 
+        // Engelleme kontrolü - eğer kullanıcı engellenmişse profil gösterilmez
+        if (user.id !== targetUserId) {
+          const { data: blockCheck } = await supabase
+            .from('user_blocks')
+            .select('id')
+            .or(`and(blocker_id.eq.${user.id},blocked_id.eq.${targetUserId}),and(blocker_id.eq.${targetUserId},blocked_id.eq.${user.id})`)
+            .maybeSingle();
+
+          if (blockCheck) {
+            // Engelleme var - profil gösterilmez
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message: 'Bu profili görüntüleme yetkiniz yok',
+            });
+          }
+        }
+
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
@@ -325,16 +342,37 @@ const appRouter = createTRPCRouter({
         })
       )
       .query(async ({ ctx, input }) => {
-        const { supabase } = ctx;
+        const { supabase, user } = ctx;
         const { search, gender } = input;
 
         console.log('getAllUsers called with:', { search, gender });
+
+        // Engellenen kullanıcıların ID'lerini al (eğer kullanıcı giriş yaptıysa)
+        let blockedUserIds: string[] = [];
+        if (user) {
+          const { data: blockedUsers } = await supabase
+            .from('user_blocks')
+            .select('blocked_id, blocker_id')
+            .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
+          
+          if (blockedUsers) {
+            // Hem engellediğimiz hem de bizi engelleyen kullanıcıları filtrele
+            blockedUserIds = blockedUsers.map(b => 
+              b.blocker_id === user.id ? b.blocked_id : b.blocker_id
+            );
+          }
+        }
 
         // TÜM KULLANICILARI GÖSTER - HİÇBİR FİLTRE YOK
         let query = supabase
           .from('profiles')
           .select('id, full_name, avatar_url, bio, city, district, created_at, gender, public_id, username', { count: 'exact' })
           .order('created_at', { ascending: false });
+
+        // Engellenen kullanıcıları filtrele
+        if (blockedUserIds.length > 0) {
+          query = query.not('id', 'in', `(${blockedUserIds.join(',')})`);
+        }
 
         // Cinsiyet filtresi: sadece 'all' değilse filtrele
         if (gender && gender !== 'all') {
@@ -512,7 +550,7 @@ const appRouter = createTRPCRouter({
               user_id: input.following_id,
               type: 'FOLLOW',
               title: 'Yeni Takipçi',
-              message,
+              body: message,
               data: {
                 follower_id: user.id,
                 follower_name: followerName,
@@ -523,41 +561,50 @@ const appRouter = createTRPCRouter({
             .single();
 
           if (notification) {
+            // Kullanıcının bildirim tercihlerini kontrol et
             const { data: targetProfile } = await supabase
               .from('profiles')
-              .select('push_token')
+              .select('push_token, privacy_settings')
               .eq('id', input.following_id)
               .maybeSingle();
 
-            if (targetProfile?.push_token) {
-              try {
-                const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
-                await fetch(expoPushUrl, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    Accept: 'application/json',
-                    'Accept-Encoding': 'gzip, deflate',
-                  },
-                  body: JSON.stringify({
-                    to: targetProfile.push_token,
-                    sound: 'default',
-                    title: 'Yeni Takipçi',
-                    body: message,
-                    data: {
-                      type: 'FOLLOW',
-                      follower_id: user.id,
-                    },
-                    badge: 1,
-                  }),
-                });
+            if (targetProfile) {
+              // Bildirim tercihlerini kontrol et
+              const privacySettings = targetProfile.privacy_settings as any;
+              const notificationsEnabled = privacySettings?.notifications?.push !== false;
+              const followsEnabled = privacySettings?.notifications?.follows !== false;
 
-                await supabase
-                  .from('notifications')
-                  .update({ push_sent: true })
-                  .eq('id', notification.id);
-              } catch (pushError) {
-                console.error('Follow push notification error:', pushError);
+              // Push notification gönder (eğer izin verilmişse)
+              if (targetProfile.push_token && notificationsEnabled && followsEnabled) {
+                try {
+                  const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+                  await fetch(expoPushUrl, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      Accept: 'application/json',
+                      'Accept-Encoding': 'gzip, deflate',
+                    },
+                    body: JSON.stringify({
+                      to: targetProfile.push_token,
+                      sound: 'default',
+                      title: 'Yeni Takipçi',
+                      body: message,
+                      data: {
+                        type: 'FOLLOW',
+                        follower_id: user.id,
+                      },
+                      badge: 1,
+                    }),
+                  });
+
+                  await supabase
+                    .from('notifications')
+                    .update({ push_sent: true })
+                    .eq('id', notification.id);
+                } catch (pushError) {
+                  console.error('Follow push notification error:', pushError);
+                }
               }
             }
           }
@@ -804,6 +851,22 @@ const appRouter = createTRPCRouter({
       .query(async ({ ctx, input }) => {
         const { supabase, user } = ctx;
 
+        // Engellenen kullanıcıların ID'lerini al (eğer kullanıcı giriş yaptıysa)
+        let blockedUserIds: string[] = [];
+        if (user) {
+          const { data: blockedUsers } = await supabase
+            .from('user_blocks')
+            .select('blocked_id, blocker_id')
+            .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
+          
+          if (blockedUsers) {
+            // Hem engellediğimiz hem de bizi engelleyen kullanıcıları filtrele
+            blockedUserIds = blockedUsers.map(b => 
+              b.blocker_id === user.id ? b.blocked_id : b.blocker_id
+            );
+          }
+        }
+
         let query = supabase
           .from("posts")
           .select(
@@ -815,6 +878,11 @@ const appRouter = createTRPCRouter({
           )
           .eq("archived", input.archived)
           .eq("is_deleted", false);
+
+        // Engellenen kullanıcıların postlarını filtrele
+        if (blockedUserIds.length > 0) {
+          query = query.not('author_id', 'in', `(${blockedUserIds.join(',')})`);
+        }
 
         if (input.room_id) {
           query = query.eq('room_id', input.room_id);
@@ -970,6 +1038,76 @@ const appRouter = createTRPCRouter({
           });
 
         if (error) throw new Error(error.message);
+
+        // Bildirim gönder - post sahibine
+        try {
+          const { data: post } = await supabase
+            .from("posts")
+            .select("author_id")
+            .eq("id", input.postId)
+            .single();
+
+          if (post && post.author_id !== user.id) {
+            const { data: authorProfile } = await supabase
+              .from("profiles")
+              .select("push_token, privacy_settings, full_name")
+              .eq("id", post.author_id)
+              .maybeSingle();
+
+            if (authorProfile) {
+              const privacySettings = authorProfile.privacy_settings as any;
+              const notificationsEnabled = privacySettings?.notifications?.push !== false;
+              const likesEnabled = privacySettings?.notifications?.likes !== false;
+
+              // Bildirim kaydı oluştur
+              const { data: notification } = await supabase
+                .from("notifications")
+                .insert({
+                  user_id: post.author_id,
+                  type: "LIKE",
+                  title: "Yeni Beğeni",
+                  body: `${user.user_metadata?.full_name || 'Birisi'} paylaşımınızı beğendi`,
+                  data: { post_id: input.postId, liker_id: user.id },
+                  push_sent: false,
+                })
+                .select()
+                .single();
+
+              // Push notification gönder (eğer izin verilmişse)
+              if (notification && authorProfile.push_token && notificationsEnabled && likesEnabled) {
+                try {
+                  const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+                  await fetch(expoPushUrl, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      Accept: 'application/json',
+                      'Accept-Encoding': 'gzip, deflate',
+                    },
+                    body: JSON.stringify({
+                      to: authorProfile.push_token,
+                      sound: 'default',
+                      title: 'Yeni Beğeni',
+                      body: `${user.user_metadata?.full_name || 'Birisi'} paylaşımınızı beğendi`,
+                      data: { type: 'LIKE', post_id: input.postId },
+                      badge: 1,
+                    }),
+                  });
+
+                  await supabase
+                    .from("notifications")
+                    .update({ push_sent: true })
+                    .eq("id", notification.id);
+                } catch (pushError) {
+                  console.error('Like push notification error:', pushError);
+                }
+              }
+            }
+          }
+        } catch (notificationError) {
+          console.error('Like notification error:', notificationError);
+        }
+
         return { liked: true };
       }),
 
@@ -1183,6 +1321,76 @@ const appRouter = createTRPCRouter({
           .single();
 
         if (error) throw new Error(error.message);
+
+        // Bildirim gönder - post sahibine
+        try {
+          const { data: post } = await supabase
+            .from("posts")
+            .select("author_id")
+            .eq("id", input.post_id)
+            .single();
+
+          if (post && post.author_id !== user.id) {
+            const { data: authorProfile } = await supabase
+              .from("profiles")
+              .select("push_token, privacy_settings, full_name")
+              .eq("id", post.author_id)
+              .maybeSingle();
+
+            if (authorProfile) {
+              const privacySettings = authorProfile.privacy_settings as any;
+              const notificationsEnabled = privacySettings?.notifications?.push !== false;
+              const commentsEnabled = privacySettings?.notifications?.comments !== false;
+
+              // Bildirim kaydı oluştur
+              const { data: notification } = await supabase
+                .from("notifications")
+                .insert({
+                  user_id: post.author_id,
+                  type: "COMMENT",
+                  title: "Yeni Yorum",
+                  body: `${user.user_metadata?.full_name || 'Birisi'} paylaşımınıza yorum yaptı`,
+                  data: { post_id: input.post_id, comment_id: data.id, commenter_id: user.id },
+                  push_sent: false,
+                })
+                .select()
+                .single();
+
+              // Push notification gönder (eğer izin verilmişse)
+              if (notification && authorProfile.push_token && notificationsEnabled && commentsEnabled) {
+                try {
+                  const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+                  await fetch(expoPushUrl, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      Accept: 'application/json',
+                      'Accept-Encoding': 'gzip, deflate',
+                    },
+                    body: JSON.stringify({
+                      to: authorProfile.push_token,
+                      sound: 'default',
+                      title: 'Yeni Yorum',
+                      body: `${user.user_metadata?.full_name || 'Birisi'} paylaşımınıza yorum yaptı`,
+                      data: { type: 'COMMENT', post_id: input.post_id, comment_id: data.id },
+                      badge: 1,
+                    }),
+                  });
+
+                  await supabase
+                    .from("notifications")
+                    .update({ push_sent: true })
+                    .eq("id", notification.id);
+                } catch (pushError) {
+                  console.error('Comment push notification error:', pushError);
+                }
+              }
+            }
+          }
+        } catch (notificationError) {
+          console.error('Comment notification error:', notificationError);
+        }
+
         return data;
       }),
 
@@ -1834,6 +2042,37 @@ const appRouter = createTRPCRouter({
           throw new Error('Not a member of this room');
         }
 
+        // Direct chat için engelleme kontrolü
+        const { data: room } = await ctx.supabase
+          .from('chat_rooms')
+          .select('type')
+          .eq('id', input.roomId)
+          .single();
+
+        if (room?.type === 'direct') {
+          // Direct chat'teki diğer kullanıcıyı bul
+          const { data: otherMembers } = await ctx.supabase
+            .from('chat_members')
+            .select('user_id')
+            .eq('room_id', input.roomId)
+            .neq('user_id', userId);
+
+          if (otherMembers && otherMembers.length > 0) {
+            const otherUserId = otherMembers[0].user_id;
+            
+            // Engelleme kontrolü
+            const { data: blockCheck } = await ctx.supabase
+              .from('user_blocks')
+              .select('id')
+              .or(`and(blocker_id.eq.${userId},blocked_id.eq.${otherUserId}),and(blocker_id.eq.${otherUserId},blocked_id.eq.${userId})`)
+              .maybeSingle();
+
+            if (blockCheck) {
+              throw new Error('Bu kullanıcıyla mesajlaşamazsınız');
+            }
+          }
+        }
+
         const { data: message, error } = await ctx.supabase
           .from('messages')
           .insert({
@@ -1884,8 +2123,16 @@ const appRouter = createTRPCRouter({
                 .maybeSingle();
 
               const senderName = senderProfile?.full_name || 'Birisi';
+              
+              // Bildirim tercihlerine göre filtrele
               const pushTokens = profiles
-                .filter((p: any) => p.push_token)
+                .filter((p: any) => {
+                  if (!p.push_token) return false;
+                  const privacySettings = p.privacy_settings as any;
+                  const notificationsEnabled = privacySettings?.notifications?.push !== false;
+                  const messagesEnabled = privacySettings?.notifications?.messages !== false;
+                  return notificationsEnabled && messagesEnabled;
+                })
                 .map((p: any) => p.push_token);
 
               // Her token için push notification gönder
@@ -1954,6 +2201,17 @@ const appRouter = createTRPCRouter({
 
         if (input.type === 'direct') {
           const otherUserId = input.memberIds[0];
+          
+          // Engelleme kontrolü - engellenen kullanıcıyla mesajlaşma yapılamaz
+          const { data: blockCheck } = await ctx.supabase
+            .from('user_blocks')
+            .select('id')
+            .or(`and(blocker_id.eq.${userId},blocked_id.eq.${otherUserId}),and(blocker_id.eq.${otherUserId},blocked_id.eq.${userId})`)
+            .maybeSingle();
+
+          if (blockCheck) {
+            throw new Error('Bu kullanıcıyla mesajlaşamazsınız');
+          }
           
           const { data: existingRoom } = await ctx.supabase
             .from('chat_members')
@@ -2525,18 +2783,18 @@ const appRouter = createTRPCRouter({
         }
 
         const { data: existing } = await ctx.supabase
-          .from('blocked_users')
+          .from('user_blocks')
           .select('*')
           .eq('blocker_id', userId)
           .eq('blocked_id', input.blockedUserId)
-          .single();
+          .maybeSingle();
 
         if (existing) {
           throw new Error('User already blocked');
         }
 
         const { error } = await ctx.supabase
-          .from('blocked_users')
+          .from('user_blocks')
           .insert({
             blocker_id: userId,
             blocked_id: input.blockedUserId,
@@ -2556,7 +2814,7 @@ const appRouter = createTRPCRouter({
         const userId = ctx.user.id;
 
         const { error } = await ctx.supabase
-          .from('blocked_users')
+          .from('user_blocks')
           .delete()
           .eq('blocker_id', userId)
           .eq('blocked_id', input.blockedUserId);
@@ -3732,10 +3990,12 @@ const appRouter = createTRPCRouter({
           city: z.enum(['Trabzon', 'Giresun']),
           district: z.string(),
           match_date: z.string(),
+          match_type: z.enum(['looking_for_opponent', 'looking_for_players']).optional().default('looking_for_opponent'),
           team1_name: z.string().optional(),
           team2_name: z.string().optional(),
           max_players: z.number().optional(),
           needed_players: z.number().optional(),
+          position_needed: z.string().optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -3809,8 +4069,9 @@ const appRouter = createTRPCRouter({
             city: input.city,
             district: input.district,
             organizer_id: user.id,
-            status: input.needed_players && input.needed_players > 0 ? 'looking_for_players' : 'looking_for_opponent', // Varsayılan olarak rakip aranıyor
+            status: input.match_type || (input.needed_players && input.needed_players > 0 ? 'looking_for_players' : 'looking_for_opponent'),
             missing_players_count: input.needed_players || 0,
+            missing_positions: input.position_needed ? [input.position_needed] : [],
             max_players: input.max_players || 10,
             is_public: true,
             match_type: 'friendly',
@@ -6654,625 +6915,6 @@ const appRouter = createTRPCRouter({
         };
       }),
 
-    // Bildirim gönderme
-    sendNotification: protectedProcedure
-      .input(
-        z.object({
-          userId: z.string().uuid().optional(), // Tek kullanıcı için
-          title: z.string().min(1).max(100),
-          body: z.string().min(1).max(500),
-          type: z.enum(['SYSTEM', 'EVENT', 'MESSAGE', 'RESERVATION', 'FOOTBALL']).optional().default('SYSTEM'),
-          data: z.record(z.string(), z.any()).optional(),
-          mediaUrl: z.string().url().optional(),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const { supabase, user } = ctx;
-
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-        // Admin kontrolü
-        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
-        let isAdmin = false;
-
-        if (user.id === SPECIAL_ADMIN_ID) {
-          isAdmin = true;
-        } else {
-          const { data: adminUser } = await supabase
-            .from('admin_users')
-            .select('id')
-            .eq('user_id', user.id)
-            .eq('is_active', true)
-            .single();
-
-          if (adminUser) {
-            isAdmin = true;
-          }
-        }
-
-        if (!isAdmin) {
-          throw new TRPCError({
-            code: 'FORBIDDEN',
-            message: 'Unauthorized: Admin access required',
-          });
-        }
-
-        // Kullanıcıları belirle
-        let targetUserIds: string[] = [];
-
-        if (input.userId) {
-          // Tek kullanıcı
-          const { data: targetUser } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('id', input.userId)
-            .single();
-
-          if (!targetUser) {
-            throw new TRPCError({ code: 'NOT_FOUND', message: 'Kullanıcı bulunamadı' });
-          }
-
-          targetUserIds = [targetUser.id];
-        } else {
-          // Tüm aktif kullanıcılar
-          const { data: allUsers, error } = await supabase
-            .from('profiles')
-            .select('id')
-            .not('id', 'is', null);
-
-          if (error) {
-            throw new TRPCError({
-              code: 'INTERNAL_SERVER_ERROR',
-              message: error.message,
-            });
-          }
-
-          targetUserIds = allUsers?.map((u) => u.id) || [];
-        }
-
-        if (targetUserIds.length === 0) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Hedef kullanıcı bulunamadı' });
-        }
-
-        // Bildirim kayıtlarını oluştur
-        // body alanı NOT NULL olduğu için boş olamaz
-        const bodyText = input.body?.trim() || input.title?.trim() || 'Bildirim';
-        
-        if (!bodyText || bodyText.length === 0) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Mesaj içeriği boş olamaz',
-          });
-        }
-        
-        // Data objesini oluştur (medya URL'i varsa ekle)
-        const notificationData: any = { ...(input.data || {}) };
-        if (input.mediaUrl) {
-          notificationData.mediaUrl = input.mediaUrl;
-        }
-        
-        const notifications = targetUserIds.map((userId) => ({
-          user_id: userId,
-          type: input.type,
-          title: input.title,
-          body: bodyText, // notifications tablosunda body kolonu var
-          data: notificationData,
-          push_sent: false,
-          is_deleted: false,
-        }));
-
-        const { data: insertedNotifications, error: insertError } = await supabase
-          .from('notifications')
-          .insert(notifications)
-          .select('id, user_id');
-
-        if (insertError) {
-          throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
-            message: `Bildirimler oluşturulamadı: ${insertError.message}`,
-          });
-        }
-
-        // Push token'ları al ve push bildirimleri gönder
-        const pushTokens: string[] = [];
-        const userIdToTokenMap = new Map<string, string>();
-
-        for (const userId of targetUserIds) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('push_token')
-            .eq('id', userId)
-            .single();
-
-          if (profile?.push_token) {
-            pushTokens.push(profile.push_token);
-            userIdToTokenMap.set(userId, profile.push_token);
-          }
-        }
-
-        // Expo Push API ile bildirim gönder
-        if (pushTokens.length > 0) {
-          try {
-            const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
-            const messages = pushTokens.map((token) => ({
-              to: token,
-              sound: 'default',
-              title: input.title,
-              body: input.body,
-              data: input.data || {},
-              badge: 1,
-            }));
-
-            // Batch gönderim (100'lük gruplar halinde)
-            const batchSize = 100;
-            for (let i = 0; i < messages.length; i += batchSize) {
-              const batch = messages.slice(i, i + batchSize);
-              const response = await fetch(expoPushUrl, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Accept: 'application/json',
-                  'Accept-Encoding': 'gzip, deflate',
-                },
-                body: JSON.stringify(batch),
-              });
-
-              if (!response.ok) {
-                console.error('Push notification error:', await response.text());
-              }
-            }
-
-            // Başarılı gönderimleri işaretle
-            if (insertedNotifications) {
-              const sentNotificationIds = insertedNotifications.map((n) => n.id);
-              await supabase
-                .from('notifications')
-                .update({ push_sent: true })
-                .in('id', sentNotificationIds);
-            }
-          } catch (pushError) {
-            console.error('Push notification error:', pushError);
-            // Push hatası olsa bile bildirimler kaydedildi, devam et
-          }
-        }
-
-        return {
-          success: true,
-          sentCount: targetUserIds.length,
-          pushSentCount: pushTokens.length,
-        };
-      }),
-  }),
-
-  // ===================================================================
-  // OLAY VAR BİLDİRİM SİSTEMİ
-  // ===================================================================
-  event: createTRPCRouter({
-    createEvent: protectedProcedure
-      .input(
-        z.object({
-          title: z.string().min(3).max(200),
-          description: z.string().optional(),
-          category: z.enum([
-            'trafik', 'kaza', 'mac_hareketlendi', 'sahil_kalabalik',
-            'firtina_yagmur', 'etkinlik', 'konser', 'polis_kontrol',
-            'pazar_yogunlugu', 'kampanya_indirim', 'güvenlik', 'yol_kapanmasi',
-            'sel_riski', 'ciddi_olay', 'normal_trafik', 'esnaf_duyuru'
-          ]),
-          severity: z.enum(['CRITICAL', 'HIGH', 'NORMAL', 'LOW']).default('NORMAL'),
-          district: z.string().optional().nullable(),
-          city: z.enum(['Trabzon', 'Giresun']).default('Trabzon'),
-          latitude: z.number().optional(),
-          longitude: z.number().optional(),
-          media_urls: z.array(z.string()).optional(),
-          audio_url: z.string().optional(),
-          expires_at: z.string().optional(),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const { supabase, user } = ctx;
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-        const now = new Date();
-        const expiresAt = input.expires_at 
-          ? new Date(input.expires_at)
-          : new Date(Date.now() + 2 * 60 * 60 * 1000);
-
-        const { data: event, error } = await supabase
-          .from('events')
-          .insert({
-            user_id: user.id,
-            title: input.title,
-            description: input.description,
-            category: input.category,
-            severity: input.severity,
-            district: input.district || null,
-            city: input.city,
-            latitude: input.latitude,
-            longitude: input.longitude,
-            media_urls: input.media_urls,
-            audio_url: input.audio_url,
-            start_date: now.toISOString(),
-            expires_at: expiresAt.toISOString(),
-            is_active: true, // Açıkça set et
-            is_deleted: false, // Açıkça set et
-          })
-          .select()
-          .single();
-
-        if (error) {
-          throw new TRPCError({ 
-            code: 'INTERNAL_SERVER_ERROR', 
-            message: error.message 
-          });
-        }
-
-        // Algoritma: Etkilenecek kullanıcıları bul ve bildirim oluştur
-        // Log kaldırıldı - egress optimizasyonu
-        try {
-          await createNotificationsForEvent(supabase, event, input.severity, input.district || '', input.city);
-        } catch (notificationError) {
-          console.error('❌ Notification creation failed:', notificationError);
-          // Bildirim hatası olsa bile event oluşturuldu, devam et
-        }
-
-        return event;
-      }),
-
-    getEvents: publicProcedure
-      .input(
-        z.object({
-          district: z.string().optional(),
-          city: z.enum(['Trabzon', 'Giresun']).optional(),
-          category: z.string().optional(),
-          severity: z.enum(['CRITICAL', 'HIGH', 'NORMAL', 'LOW']).optional(),
-          limit: z.number().min(1).max(100).default(50),
-          offset: z.number().min(0).default(0),
-        })
-      )
-      .query(async ({ ctx, input }) => {
-        const { supabase } = ctx;
-
-        // Log kaldırıldı - egress optimizasyonu
-        
-        let query = supabase
-          .from('events')
-          .select(`*`, { count: 'exact' })
-          .eq('is_active', true)
-          .eq('is_deleted', false)
-          .gt('expires_at', new Date().toISOString())
-          .order('created_at', { ascending: false })
-          .range(input.offset, input.offset + input.limit - 1);
-
-        if (input.district) {
-          query = query.eq('district', input.district);
-        }
-        if (input.city) {
-          query = query.eq('city', input.city);
-        }
-        if (input.category) {
-          query = query.eq('category', input.category);
-        }
-        if (input.severity) {
-          query = query.eq('severity', input.severity);
-        }
-
-        const { data, error, count } = await query;
-
-        if (error) {
-          // Log kaldırıldı - egress optimizasyonu
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-        }
-
-        let events = data || [];
-
-        if (events.length > 0) {
-          const userIds = [...new Set(events.map((event: any) => event.user_id).filter(Boolean))];
-          
-          if (userIds.length > 0) {
-            const { data: profileData, error: profileError } = await supabase
-              .from('profiles')
-              .select('id, full_name, avatar_url, username')
-              .in('id', userIds);
-            
-            if (profileError) {
-              console.error('❌ getEvents profile load error:', profileError);
-            } else if (profileData) {
-              const profileMap = new Map(profileData.map((profile: any) => [profile.id, profile]));
-              events = events.map((event: any) => ({
-                ...event,
-                user: profileMap.get(event.user_id) || null,
-              }));
-            }
-          }
-        }
-
-        // Log kaldırıldı - egress optimizasyonu
-
-        // Event like durumlarını kontrol et
-        const { user: currentUser } = ctx;
-        if (currentUser && events.length > 0) {
-          const eventIds = events.map((e: any) => e.id);
-          const { data: eventLikes } = await supabase
-            .from('event_likes')
-            .select('event_id')
-            .in('event_id', eventIds)
-            .eq('user_id', currentUser.id);
-
-          const likedEventIds = new Set(eventLikes?.map((l: any) => l.event_id) || []);
-          events = events.map((event: any) => ({
-            ...event,
-            is_liked: likedEventIds.has(event.id),
-            like_count: event.like_count || 0,
-            comment_count: event.comment_count || 0,
-          }));
-        } else {
-          events = events.map((event: any) => ({
-            ...event,
-            is_liked: false,
-            like_count: event.like_count || 0,
-            comment_count: event.comment_count || 0,
-          }));
-        }
-
-        return {
-          events,
-          total: count || 0,
-          hasMore: count ? input.offset + input.limit < count : false,
-        };
-      }),
-
-    likeEvent: protectedProcedure
-      .input(z.object({ event_id: z.string().uuid() }))
-      .mutation(async ({ ctx, input }) => {
-        const { supabase, user } = ctx;
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-        // Mevcut like'ı kontrol et
-        const { data: existing } = await supabase
-          .from('event_likes')
-          .select('id')
-          .eq('event_id', input.event_id)
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-        if (existing) {
-          // Unlike
-          const { error } = await supabase
-            .from('event_likes')
-            .delete()
-            .eq('id', existing.id);
-
-          if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-
-          // Like count'u azalt
-          await supabase.rpc('decrement_event_likes', { event_id_param: input.event_id });
-
-          return { liked: false };
-        } else {
-          // Like
-          const { error } = await supabase
-            .from('event_likes')
-            .insert({
-              event_id: input.event_id,
-              user_id: user.id,
-            });
-
-          if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-
-          // Like count'u artır
-          await supabase.rpc('increment_event_likes', { event_id_param: input.event_id });
-
-          return { liked: true };
-        }
-      }),
-
-    addEventComment: protectedProcedure
-      .input(
-        z.object({
-          event_id: z.string().uuid(),
-          content: z.string().min(1).max(1000),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const { supabase, user } = ctx;
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-        const { data, error } = await supabase
-          .from('event_comments')
-          .insert({
-            event_id: input.event_id,
-            user_id: user.id,
-            content: input.content,
-          })
-          .select(`
-            *,
-            user:profiles!event_comments_user_id_fkey(id, full_name, avatar_url, username)
-          `)
-          .single();
-
-        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-
-        // Comment count'u artır
-        await supabase.rpc('increment_event_comments', { event_id_param: input.event_id });
-
-        return data;
-      }),
-
-    getEventComments: publicProcedure
-      .input(
-        z.object({
-          event_id: z.string().uuid(),
-          limit: z.number().min(1).max(100).default(50),
-          offset: z.number().min(0).default(0),
-        })
-      )
-      .query(async ({ ctx, input }) => {
-        const { supabase } = ctx;
-
-        const { data, error } = await supabase
-          .from('event_comments')
-          .select(`
-            *,
-            user:profiles!event_comments_user_id_fkey(id, full_name, avatar_url, username)
-          `)
-          .eq('event_id', input.event_id)
-          .order('created_at', { ascending: false })
-          .range(input.offset, input.offset + input.limit - 1);
-
-        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-
-        return { comments: data || [] };
-      }),
-  }),
-
-  notification: createTRPCRouter({
-    getNotifications: protectedProcedure
-      .input(
-        z.object({
-          type: z.enum(['EVENT', 'SYSTEM', 'MESSAGE', 'RESERVATION', 'FOOTBALL']).optional(),
-          limit: z.number().min(1).max(100).default(50),
-          offset: z.number().min(0).default(0),
-        })
-      )
-      .query(async ({ ctx, input }) => {
-        const { supabase, user } = ctx;
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-        let query = supabase
-          .from('notifications')
-          .select(`
-            *,
-            event:events(id, title, category, severity, district, media_urls, description)
-          `, { count: 'exact' })
-          .eq('user_id', user.id)
-          .eq('is_deleted', false)
-          .order('created_at', { ascending: false })
-          .range(input.offset, input.offset + input.limit - 1);
-
-        if (input.type) {
-          query = query.eq('type', input.type);
-        }
-
-        const { data, error, count } = await query;
-
-        if (error) {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-        }
-
-        return {
-          notifications: data || [],
-          total: count || 0,
-          hasMore: count ? input.offset + input.limit < count : false,
-        };
-      }),
-
-    getUnreadCount: protectedProcedure
-      .query(async ({ ctx }) => {
-        const { supabase, user } = ctx;
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-        const { data, error } = await supabase
-          .from('notifications')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('is_deleted', false)
-          .is('read_at', null);
-
-        if (error) {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-        }
-
-        return { count: data?.length || 0 };
-      }),
-
-    markAsRead: protectedProcedure
-      .input(
-        z.object({
-          notification_id: z.string().uuid(),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const { supabase, user } = ctx;
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-        const { data, error } = await supabase
-          .from('notifications')
-          .update({ read_at: new Date().toISOString() })
-          .eq('id', input.notification_id)
-          .eq('user_id', user.id)
-          .select()
-          .single();
-
-        if (error) {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-        }
-
-        return data;
-      }),
-
-    deleteNotification: protectedProcedure
-      .input(
-        z.object({
-          notification_id: z.string().uuid(),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const { supabase, user } = ctx;
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-        const { data, error } = await supabase
-          .from('notifications')
-          .update({ is_deleted: true })
-          .eq('id', input.notification_id)
-          .eq('user_id', user.id)
-          .select()
-          .single();
-
-        if (error) {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-        }
-
-        return data;
-      }),
-
-    markAllAsRead: protectedProcedure
-      .mutation(async ({ ctx }) => {
-        const { supabase, user } = ctx;
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-        const { error } = await supabase
-          .from('notifications')
-          .update({ read_at: new Date().toISOString() })
-          .eq('user_id', user.id)
-          .eq('is_deleted', false)
-          .is('read_at', null);
-
-        if (error) {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-        }
-
-        return { success: true };
-      }),
-
-    deleteAllNotifications: protectedProcedure
-      .mutation(async ({ ctx }) => {
-        const { supabase, user } = ctx;
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-        const { error } = await supabase
-          .from('notifications')
-          .update({ is_deleted: true })
-          .eq('user_id', user.id)
-          .eq('is_deleted', false);
-
-        if (error) {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-        }
-
-        return { success: true };
-      }),
-
     // KYC Yönetimi
     getKycRequests: protectedProcedure
       .input(
@@ -7497,6 +7139,819 @@ const appRouter = createTRPCRouter({
           .eq("id", kycRequest.user_id);
         
         return data;
+      }),
+
+    // Bildirim gönderme
+    sendNotification: protectedProcedure
+      .input(
+        z.object({
+          userId: z.string().uuid().optional(), // Tek kullanıcı için
+          title: z.string().min(1).max(100),
+          body: z.string().min(1).max(500),
+          type: z.enum(['SYSTEM', 'EVENT', 'MESSAGE', 'RESERVATION', 'FOOTBALL']).optional().default('SYSTEM'),
+          data: z.record(z.string(), z.any()).optional(),
+          mediaUrl: z.string().optional(), // URL veya file URI olabilir
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        let isAdmin = false;
+
+        if (user.id === SPECIAL_ADMIN_ID) {
+          isAdmin = true;
+        } else {
+          const { data: adminUser } = await supabase
+            .from('admin_users')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('is_active', true)
+            .single();
+
+          if (adminUser) {
+            isAdmin = true;
+          }
+        }
+
+        if (!isAdmin) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Unauthorized: Admin access required',
+          });
+        }
+
+        // Kullanıcıları belirle
+        let targetUserIds: string[] = [];
+
+        if (input.userId) {
+          // Tek kullanıcı
+          const { data: targetUser } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', input.userId)
+            .single();
+
+          if (!targetUser) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Kullanıcı bulunamadı' });
+          }
+
+          targetUserIds = [targetUser.id];
+        } else {
+          // Tüm aktif kullanıcılar
+          const { data: allUsers, error } = await supabase
+            .from('profiles')
+            .select('id')
+            .not('id', 'is', null);
+
+          if (error) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: error.message,
+            });
+          }
+
+          targetUserIds = allUsers?.map((u) => u.id) || [];
+        }
+
+        if (targetUserIds.length === 0) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Hedef kullanıcı bulunamadı' });
+        }
+
+        // Bildirim kayıtlarını oluştur
+        // body alanı NOT NULL olduğu için boş olamaz
+        const bodyText = input.body?.trim() || input.title?.trim() || 'Bildirim';
+        
+        if (!bodyText || bodyText.length === 0) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Mesaj içeriği boş olamaz',
+          });
+        }
+        
+        // Data objesini oluştur (medya URL'i varsa ekle)
+        const notificationData: any = { ...(input.data || {}) };
+        if (input.mediaUrl) {
+          // Eğer file:// URI ise, Supabase Storage'a yükle
+          let finalMediaUrl = input.mediaUrl;
+          if (input.mediaUrl.startsWith('file://')) {
+            // Frontend'den gelen file URI'lerini backend'de işleme
+            // Şimdilik sadece URL'leri kabul et
+            console.warn('File URI detected, skipping media upload');
+            finalMediaUrl = '';
+          }
+          if (finalMediaUrl) {
+            notificationData.mediaUrl = finalMediaUrl;
+          }
+        }
+        
+        const notifications = targetUserIds.map((userId) => ({
+          user_id: userId,
+          type: input.type,
+          title: input.title,
+          body: bodyText, // notifications tablosunda body kolonu var
+          data: notificationData,
+          push_sent: false,
+          is_deleted: false,
+        }));
+
+        const { data: insertedNotifications, error: insertError } = await supabase
+          .from('notifications')
+          .insert(notifications)
+          .select('id, user_id');
+
+        if (insertError) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `Bildirimler oluşturulamadı: ${insertError.message}`,
+          });
+        }
+
+        // Push token'ları al ve push bildirimleri gönder
+        const pushTokens: string[] = [];
+        const userIdToTokenMap = new Map<string, string>();
+
+        for (const userId of targetUserIds) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('push_token')
+            .eq('id', userId)
+            .single();
+
+          if (profile?.push_token) {
+            pushTokens.push(profile.push_token);
+            userIdToTokenMap.set(userId, profile.push_token);
+          }
+        }
+
+        // Expo Push API ile bildirim gönder
+        if (pushTokens.length > 0) {
+          try {
+            const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+            const messages = pushTokens.map((token) => ({
+              to: token,
+              sound: 'default',
+              title: input.title,
+              body: input.body,
+              data: input.data || {},
+              badge: 1,
+            }));
+
+            // Batch gönderim (100'lük gruplar halinde)
+            const batchSize = 100;
+            for (let i = 0; i < messages.length; i += batchSize) {
+              const batch = messages.slice(i, i + batchSize);
+              const response = await fetch(expoPushUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Accept: 'application/json',
+                  'Accept-Encoding': 'gzip, deflate',
+                },
+                body: JSON.stringify(batch),
+              });
+
+              if (!response.ok) {
+                console.error('Push notification error:', await response.text());
+              }
+            }
+
+            // Başarılı gönderimleri işaretle
+            if (insertedNotifications) {
+              const sentNotificationIds = insertedNotifications.map((n) => n.id);
+              await supabase
+                .from('notifications')
+                .update({ push_sent: true })
+                .in('id', sentNotificationIds);
+            }
+          } catch (pushError) {
+            console.error('Push notification error:', pushError);
+            // Push hatası olsa bile bildirimler kaydedildi, devam et
+          }
+        }
+
+        return {
+          success: true,
+          sentCount: targetUserIds.length,
+          pushSentCount: pushTokens.length,
+        };
+      }),
+  }),
+
+  // ===================================================================
+  // OLAY VAR BİLDİRİM SİSTEMİ
+  // ===================================================================
+  event: createTRPCRouter({
+    createEvent: protectedProcedure
+      .input(
+        z.object({
+          title: z.string().min(3).max(200),
+          description: z.string().optional(),
+          category: z.enum([
+            'trafik', 'kaza', 'mac_hareketlendi', 'sahil_kalabalik',
+            'firtina_yagmur', 'etkinlik', 'konser', 'polis_kontrol',
+            'pazar_yogunlugu', 'kampanya_indirim', 'güvenlik', 'yol_kapanmasi',
+            'sel_riski', 'ciddi_olay', 'normal_trafik', 'esnaf_duyuru'
+          ]),
+          severity: z.enum(['CRITICAL', 'HIGH', 'NORMAL', 'LOW']).default('NORMAL'),
+          district: z.string().optional().nullable(),
+          city: z.enum(['Trabzon', 'Giresun']).default('Trabzon'),
+          latitude: z.number().optional(),
+          longitude: z.number().optional(),
+          media_urls: z.array(z.string()).optional(),
+          audio_url: z.string().optional(),
+          expires_at: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const now = new Date();
+        const expiresAt = input.expires_at 
+          ? new Date(input.expires_at)
+          : new Date(Date.now() + 2 * 60 * 60 * 1000);
+
+        const { data: event, error } = await supabase
+          .from('events')
+          .insert({
+            user_id: user.id,
+            title: input.title,
+            description: input.description,
+            category: input.category,
+            severity: input.severity,
+            district: input.district || null,
+            city: input.city,
+            latitude: input.latitude,
+            longitude: input.longitude,
+            media_urls: input.media_urls,
+            audio_url: input.audio_url,
+            start_date: now.toISOString(),
+            expires_at: expiresAt.toISOString(),
+            is_active: true, // Açıkça set et
+            is_deleted: false, // Açıkça set et
+          })
+          .select()
+          .single();
+
+        if (error) {
+          throw new TRPCError({ 
+            code: 'INTERNAL_SERVER_ERROR', 
+            message: error.message 
+          });
+        }
+
+        // Algoritma: Etkilenecek kullanıcıları bul ve bildirim oluştur
+        // Log kaldırıldı - egress optimizasyonu
+        try {
+          await createNotificationsForEvent(supabase, event, input.severity, input.district || '', input.city);
+        } catch (notificationError) {
+          console.error('❌ Notification creation failed:', notificationError);
+          // Bildirim hatası olsa bile event oluşturuldu, devam et
+        }
+
+        return event;
+      }),
+
+    getEvents: publicProcedure
+      .input(
+        z.object({
+          district: z.string().optional(),
+          city: z.enum(['Trabzon', 'Giresun']).optional(),
+          category: z.string().optional(),
+          severity: z.enum(['CRITICAL', 'HIGH', 'NORMAL', 'LOW']).optional(),
+          limit: z.number().min(1).max(100).default(50),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+
+        // Engellenen kullanıcıların ID'lerini al (eğer kullanıcı giriş yaptıysa)
+        let blockedUserIds: string[] = [];
+        if (user) {
+          const { data: blockedUsers } = await supabase
+            .from('user_blocks')
+            .select('blocked_id, blocker_id')
+            .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
+          
+          if (blockedUsers) {
+            // Hem engellediğimiz hem de bizi engelleyen kullanıcıları filtrele
+            blockedUserIds = blockedUsers.map(b => 
+              b.blocker_id === user.id ? b.blocked_id : b.blocker_id
+            );
+          }
+        }
+
+        // Log kaldırıldı - egress optimizasyonu
+        
+        let query = supabase
+          .from('events')
+          .select(`*`, { count: 'exact' })
+          .eq('is_active', true)
+          .eq('is_deleted', false)
+          .gt('expires_at', new Date().toISOString())
+          .order('created_at', { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+
+        // Engellenen kullanıcıların event'lerini filtrele
+        if (blockedUserIds.length > 0) {
+          query = query.not('user_id', 'in', `(${blockedUserIds.join(',')})`);
+        }
+
+        // District filtresi: district null olan event'ler tüm ilçelerde görünmeli
+        // Eğer district belirtilmişse, o district'e ait event'ler VEYA district null olan event'ler gösterilmeli
+        if (input.district) {
+          // Belirli bir ilçe için: o ilçeye ait event'ler VEYA district null olan event'ler
+          query = query.or(`district.eq.${input.district},district.is.null`);
+        }
+        // Eğer district belirtilmemişse, tüm event'ler görünür (district null olanlar dahil)
+        if (input.city) {
+          query = query.eq('city', input.city);
+        }
+        if (input.category) {
+          query = query.eq('category', input.category);
+        }
+        if (input.severity) {
+          query = query.eq('severity', input.severity);
+        }
+
+        const { data, error, count } = await query;
+
+        if (error) {
+          // Log kaldırıldı - egress optimizasyonu
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        }
+
+        let events = data || [];
+
+        if (events.length > 0) {
+          const userIds = [...new Set(events.map((event: any) => event.user_id).filter(Boolean))];
+          
+          if (userIds.length > 0) {
+            const { data: profileData, error: profileError } = await supabase
+              .from('profiles')
+              .select('id, full_name, avatar_url, username')
+              .in('id', userIds);
+            
+            if (profileError) {
+              console.error('❌ getEvents profile load error:', profileError);
+            } else if (profileData) {
+              const profileMap = new Map(profileData.map((profile: any) => [profile.id, profile]));
+              events = events.map((event: any) => ({
+                ...event,
+                user: profileMap.get(event.user_id) || null,
+              }));
+            }
+          }
+        }
+
+        // Log kaldırıldı - egress optimizasyonu
+
+        // Event like durumlarını kontrol et
+        const { user: currentUser } = ctx;
+        if (currentUser && events.length > 0) {
+          const eventIds = events.map((e: any) => e.id);
+          const { data: eventLikes } = await supabase
+            .from('event_likes')
+            .select('event_id')
+            .in('event_id', eventIds)
+            .eq('user_id', currentUser.id);
+
+          const likedEventIds = new Set(eventLikes?.map((l: any) => l.event_id) || []);
+          events = events.map((event: any) => ({
+            ...event,
+            is_liked: likedEventIds.has(event.id),
+            like_count: event.like_count || 0,
+            comment_count: event.comment_count || 0,
+          }));
+        } else {
+          events = events.map((event: any) => ({
+            ...event,
+            is_liked: false,
+            like_count: event.like_count || 0,
+            comment_count: event.comment_count || 0,
+          }));
+        }
+
+        return {
+          events,
+          total: count || 0,
+          hasMore: count ? input.offset + input.limit < count : false,
+        };
+      }),
+
+    likeEvent: protectedProcedure
+      .input(z.object({ event_id: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Mevcut like'ı kontrol et
+        const { data: existing } = await supabase
+          .from('event_likes')
+          .select('id')
+          .eq('event_id', input.event_id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (existing) {
+          // Unlike
+          const { error } = await supabase
+            .from('event_likes')
+            .delete()
+            .eq('id', existing.id);
+
+          if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+          // Like count'u azalt
+          await supabase.rpc('decrement_event_likes', { event_id_param: input.event_id });
+
+          return { liked: false };
+        } else {
+          // Like
+          const { error } = await supabase
+            .from('event_likes')
+            .insert({
+              event_id: input.event_id,
+              user_id: user.id,
+            });
+
+          if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+          // Like count'u artır
+          await supabase.rpc('increment_event_likes', { event_id_param: input.event_id });
+
+          return { liked: true };
+        }
+      }),
+
+    addEventComment: protectedProcedure
+      .input(
+        z.object({
+          event_id: z.string().uuid(),
+          content: z.string().min(1).max(1000),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const { data, error } = await supabase
+          .from('event_comments')
+          .insert({
+            event_id: input.event_id,
+            user_id: user.id,
+            content: input.content,
+          })
+          .select(`
+            *,
+            user:profiles!event_comments_user_id_fkey(id, full_name, avatar_url, username)
+          `)
+          .single();
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        // Comment count'u artır
+        await supabase.rpc('increment_event_comments', { event_id_param: input.event_id });
+
+        return data;
+      }),
+
+    getEventComments: publicProcedure
+      .input(
+        z.object({
+          event_id: z.string().uuid(),
+          limit: z.number().min(1).max(100).default(50),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+
+        const { data, error } = await supabase
+          .from('event_comments')
+          .select(`
+            *,
+            user:profiles!event_comments_user_id_fkey(id, full_name, avatar_url, username)
+          `)
+          .eq('event_id', input.event_id)
+          .order('created_at', { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+        return { comments: data || [] };
+      }),
+
+    updateEvent: protectedProcedure
+      .input(
+        z.object({
+          eventId: z.string().uuid(),
+          title: z.string().min(3).max(200).optional(),
+          description: z.string().optional(),
+          category: z.enum([
+            'trafik', 'kaza', 'mac_hareketlendi', 'sahil_kalabalik',
+            'firtina_yagmur', 'etkinlik', 'konser', 'polis_kontrol',
+            'pazar_yogunlugu', 'kampanya_indirim', 'güvenlik', 'yol_kapanmasi',
+            'sel_riski', 'ciddi_olay', 'normal_trafik', 'esnaf_duyuru'
+          ]).optional(),
+          severity: z.enum(['CRITICAL', 'HIGH', 'NORMAL', 'LOW']).optional(),
+          district: z.string().optional().nullable(),
+          city: z.enum(['Trabzon', 'Giresun']).optional(),
+          latitude: z.number().optional(),
+          longitude: z.number().optional(),
+          media_urls: z.array(z.string()).optional(),
+          audio_url: z.string().optional(),
+          expires_at: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const { eventId, ...updateData } = input;
+
+        // Event'i bul ve kullanıcının kendi event'i olduğunu kontrol et
+        const { data: event, error: fetchError } = await supabase
+          .from('events')
+          .select('*')
+          .eq('id', eventId)
+          .eq('user_id', user.id)
+          .single();
+
+        if (fetchError || !event) {
+          throw new TRPCError({ 
+            code: 'NOT_FOUND', 
+            message: 'Olay bulunamadı veya yetkisiz erişim' 
+          });
+        }
+
+        // Update data'yı hazırla
+        const updatePayload: any = {};
+
+        if (updateData.title !== undefined) updatePayload.title = updateData.title;
+        if (updateData.description !== undefined) updatePayload.description = updateData.description;
+        if (updateData.category !== undefined) updatePayload.category = updateData.category;
+        if (updateData.severity !== undefined) updatePayload.severity = updateData.severity;
+        if (updateData.district !== undefined) {
+          updatePayload.district = updateData.district === 'Tümü' ? null : updateData.district;
+        }
+        if (updateData.city !== undefined) updatePayload.city = updateData.city;
+        if (updateData.latitude !== undefined) updatePayload.latitude = updateData.latitude;
+        if (updateData.longitude !== undefined) updatePayload.longitude = updateData.longitude;
+        if (updateData.media_urls !== undefined) updatePayload.media_urls = updateData.media_urls;
+        if (updateData.audio_url !== undefined) updatePayload.audio_url = updateData.audio_url;
+        if (updateData.expires_at !== undefined) {
+          updatePayload.expires_at = new Date(updateData.expires_at).toISOString();
+        }
+
+        updatePayload.updated_at = new Date().toISOString();
+
+        // Event'i güncelle
+        const { data: updatedEvent, error } = await supabase
+          .from('events')
+          .update(updatePayload)
+          .eq('id', eventId)
+          .eq('user_id', user.id)
+          .select()
+          .single();
+
+        if (error) {
+          throw new TRPCError({ 
+            code: 'INTERNAL_SERVER_ERROR', 
+            message: error.message 
+          });
+        }
+
+        return updatedEvent;
+      }),
+
+    deleteEvent: protectedProcedure
+      .input(
+        z.object({
+          eventId: z.string().uuid(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Event'i bul ve kullanıcının kendi event'i olduğunu kontrol et
+        const { data: event, error: fetchError } = await supabase
+          .from('events')
+          .select('*')
+          .eq('id', input.eventId)
+          .eq('user_id', user.id)
+          .single();
+
+        if (fetchError || !event) {
+          throw new TRPCError({ 
+            code: 'NOT_FOUND', 
+            message: 'Olay bulunamadı veya yetkisiz erişim' 
+          });
+        }
+
+        // Media dosyalarını sil (eğer varsa)
+        if (event.media_urls && Array.isArray(event.media_urls) && event.media_urls.length > 0) {
+          for (const mediaUrl of event.media_urls) {
+            if (mediaUrl) {
+              // Storage path'ini çıkar
+              const path = mediaUrl.split('/storage/v1/object/public/events/')[1] || 
+                           mediaUrl.split('events/')[1];
+              if (path) {
+                try {
+                  await supabase.storage.from('events').remove([path]);
+                } catch (storageError) {
+                  // Storage hatası olsa bile event silme işlemine devam et
+                }
+              }
+            }
+          }
+        }
+
+        // Audio dosyasını sil (eğer varsa)
+        if (event.audio_url) {
+          const audioPath = event.audio_url.split('/storage/v1/object/public/events/')[1] || 
+                           event.audio_url.split('events/')[1];
+          if (audioPath) {
+            try {
+              await supabase.storage.from('events').remove([audioPath]);
+            } catch (storageError) {
+              // Storage hatası olsa bile event silme işlemine devam et
+            }
+          }
+        }
+
+        // Event'i sil (soft delete - is_deleted = true)
+        const { error } = await supabase
+          .from('events')
+          .update({ 
+            is_deleted: true,
+            is_active: false 
+          })
+          .eq('id', input.eventId)
+          .eq('user_id', user.id);
+
+        if (error) {
+          throw new TRPCError({ 
+            code: 'INTERNAL_SERVER_ERROR', 
+            message: error.message 
+          });
+        }
+
+        return { success: true };
+      }),
+  }),
+
+  notification: createTRPCRouter({
+    getNotifications: protectedProcedure
+      .input(
+        z.object({
+          type: z.enum(['EVENT', 'SYSTEM', 'MESSAGE', 'RESERVATION', 'FOOTBALL']).optional(),
+          limit: z.number().min(1).max(100).default(50),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        let query = supabase
+          .from('notifications')
+          .select(`
+            *,
+            event:events(id, title, category, severity, district, media_urls, description)
+          `, { count: 'exact' })
+          .eq('user_id', user.id)
+          .eq('is_deleted', false)
+          .order('created_at', { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+
+        if (input.type) {
+          query = query.eq('type', input.type);
+        }
+
+        const { data, error, count } = await query;
+
+        if (error) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        }
+
+        return {
+          notifications: data || [],
+          total: count || 0,
+          hasMore: count ? input.offset + input.limit < count : false,
+        };
+      }),
+
+    getUnreadCount: protectedProcedure
+      .query(async ({ ctx }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const { data, error } = await supabase
+          .from('notifications')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('is_deleted', false)
+          .is('read_at', null);
+
+        if (error) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        }
+
+        return { count: data?.length || 0 };
+      }),
+
+    markAsRead: protectedProcedure
+      .input(
+        z.object({
+          notification_id: z.string().uuid(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const { data, error } = await supabase
+          .from('notifications')
+          .update({ read_at: new Date().toISOString() })
+          .eq('id', input.notification_id)
+          .eq('user_id', user.id)
+          .select()
+          .single();
+
+        if (error) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        }
+
+        return data;
+      }),
+
+    deleteNotification: protectedProcedure
+      .input(
+        z.object({
+          notification_id: z.string().uuid(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const { data, error } = await supabase
+          .from('notifications')
+          .update({ is_deleted: true })
+          .eq('id', input.notification_id)
+          .eq('user_id', user.id)
+          .select()
+          .single();
+
+        if (error) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        }
+
+        return data;
+      }),
+
+    markAllAsRead: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const { error } = await supabase
+          .from('notifications')
+          .update({ read_at: new Date().toISOString() })
+          .eq('user_id', user.id)
+          .eq('is_deleted', false)
+          .is('read_at', null);
+
+        if (error) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        }
+
+        return { success: true };
+      }),
+
+    deleteAllNotifications: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const { error } = await supabase
+          .from('notifications')
+          .update({ is_deleted: true })
+          .eq('user_id', user.id)
+          .eq('is_deleted', false);
+
+        if (error) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        }
+
+        return { success: true };
       }),
   }),
 

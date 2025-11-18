@@ -420,6 +420,10 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '600' as const,
     color: COLORS.text,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.md * 1.2,
+    }),
   },
   postUsernameContainer: {
     flex: 1,
@@ -429,6 +433,10 @@ const styles = StyleSheet.create({
   postUsername: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.xs * 1.3,
+    }),
   },
   postMeta: {
     flexDirection: 'row' as const,
@@ -444,6 +452,10 @@ const styles = StyleSheet.create({
   postDistrict: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.sm * 1.3,
+    }),
   },
   postTimeContainer: {
     flexShrink: 0,
@@ -451,6 +463,10 @@ const styles = StyleSheet.create({
   postTime: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.sm * 1.3,
+    }),
   },
   postContentContainer: {
     flex: 1,
@@ -461,7 +477,10 @@ const styles = StyleSheet.create({
   postContent: {
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
-    lineHeight: 22,
+    lineHeight: Platform.OS === 'android' ? FONT_SIZES.md * 1.4 : 22,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+    }),
   },
   mediaContainer: {
     maxHeight: 400,
@@ -489,6 +508,10 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
     fontWeight: '600' as const,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.md * 1.2,
+    }),
   },
   commentsSection: {
     backgroundColor: COLORS.white,
@@ -499,6 +522,10 @@ const styles = StyleSheet.create({
     fontWeight: '700' as const,
     color: COLORS.text,
     marginBottom: SPACING.md,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.lg * 1.2,
+    }),
   },
   commentCard: {
     flexDirection: 'row' as const,
@@ -526,6 +553,10 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     fontWeight: '600' as const,
     color: COLORS.text,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.sm * 1.3,
+    }),
   },
   commentUsernameContainer: {
     flex: 1,
@@ -535,6 +566,10 @@ const styles = StyleSheet.create({
   commentUsername: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.xs * 1.3,
+    }),
   },
   commentTextContainer: {
     flex: 1,
@@ -544,7 +579,10 @@ const styles = StyleSheet.create({
   commentText: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.text,
-    lineHeight: 18,
+    lineHeight: Platform.OS === 'android' ? FONT_SIZES.sm * 1.4 : 18,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+    }),
   },
   commentTime: {
     fontSize: FONT_SIZES.xs,

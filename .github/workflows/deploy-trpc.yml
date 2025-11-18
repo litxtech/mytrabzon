@@ -33,14 +33,13 @@ jobs:
 
       - name: Link to Supabase Project
         run: |
-          PROJECT_REF="${{ secrets.SUPABASE_PROJECT_REF }}"
-          if [ -z "$PROJECT_REF" ]; then
-            PROJECT_REF="xcvcplwimicylaxghiak"
-          fi
+          # yamllint disable-line rule:line-length
+          PROJECT_REF="${{ secrets.SUPABASE_PROJECT_REF || 'xcvcplwimicylaxghiak' }}"
           echo "📌 Linking to project: $PROJECT_REF"
           supabase link --project-ref "$PROJECT_REF" || echo "⚠️  Link may have failed (might already be linked)"
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          # yamllint disable-line rule:line-length
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN || '' }}
 
       - name: Deploy trpc
         run: |
@@ -55,5 +54,6 @@ jobs:
             exit 1
           fi
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          # yamllint disable-line rule:line-length
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN || '' }}
 

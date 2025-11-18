@@ -23,6 +23,24 @@ export const getProfileProcedure = protectedProcedure
       targetUserId,
     });
 
+    // Engelleme kontrolü - eğer kullanıcı engellenmişse profil gösterilmez
+    if (requesterId !== targetUserId) {
+      const { data: blockCheck } = await ctx.supabase
+        .from('user_blocks')
+        .select('id')
+        .or(`blocker_id.eq.${requesterId},blocker_id.eq.${targetUserId}`)
+        .or(`blocked_id.eq.${requesterId},blocked_id.eq.${targetUserId}`)
+        .maybeSingle();
+
+      if (blockCheck) {
+        // Engelleme var - profil gösterilmez
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Bu profili görüntüleme yetkiniz yok',
+        });
+      }
+    }
+
     const { data, error } = await ctx.supabase
       .from('profiles')
       .select('*')

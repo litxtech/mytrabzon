@@ -4,6 +4,71 @@
   },
   "markdownlint.ignore": [
     "**/*.md"
+  ],
+  "java.configuration.updateBuildConfiguration": "disabled",
+  "files.exclude": {
+    "**/.git": true,
+    "**/.DS_Store": true,
+    "**/node_modules": true
+  },
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true,
+    "**/android/**": true,
+    "**/.github/**": true
+  },
+  "eslint.ignorePatterns": [
+    "android/**",
+    ".github/**",
+    "node_modules/**",
+    "supabase/functions/**"
+  ],
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact"
+  ],
+  "eslint.options": {
+    "ignorePath": ".eslintignore"
+  },
+  "typescript.preferences.includePackageJsonAutoImports": "off",
+  "typescript.tsserver.experimental.enableProjectDiagnostics": false,
+  "typescript.validate.enable": true,
+  "files.associations": {
+    "*.yml": "yaml",
+    "*.gradle": "groovy"
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/android": true,
+    "**/.github": true,
+    "**/supabase/functions": true
+  },
+  "gradle.nestedProjects": false,
+  "java.import.gradle.enabled": false,
+  "java.import.gradle.wrapper.enabled": false,
+  "java.configuration.runtimes": [],
+  "yaml.schemas": {
+    "https://json.schemastore.org/github-workflow.json": "/.github/workflows/*.yml"
+  },
+  "yaml.customTags": [
+    "!And",
+    "!If",
+    "!Not",
+    "!Equals",
+    "!Or",
+    "!FindInMap sequence",
+    "!Base64",
+    "!Cidr",
+    "!Ref",
+    "!Sub",
+    "!GetAtt",
+    "!GetAZs",
+    "!ImportValue",
+    "!Select",
+    "!Split",
+    "!Join sequence"
   ]
 }
-

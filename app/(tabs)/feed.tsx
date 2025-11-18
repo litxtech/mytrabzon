@@ -32,6 +32,7 @@ import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 import { formatTimeAgo } from '@/lib/time-utils';
 import { Footer } from '@/components/Footer';
 import { VideoPlayer } from '@/components/VideoPlayer';
+import { WhatsAppComplaintButton } from '@/components/WhatsAppComplaintButton';
 
 type SortType = 'new' | 'hot' | 'trending';
 
@@ -227,6 +228,13 @@ export default function FeedScreen() {
     onError: (error) => Alert.alert('Hata', error.message),
   });
 
+  const deleteEventMutation = trpc.event.deleteEvent.useMutation({
+    onSuccess: () => {
+      refetchEvents();
+    },
+    onError: (error) => Alert.alert('Hata', error.message),
+  });
+
   const handlePostOptions = useCallback((post: Post) => {
     if (post.author_id !== user?.id) return;
     Alert.alert('Gönderi', 'Seçenekler', [
@@ -242,6 +250,35 @@ export default function FeedScreen() {
       },
     ]);
   }, [deletePostMutation, router, user?.id]);
+
+  const handleEventOptions = useCallback((event: any) => {
+    if (event.user_id !== user?.id) return;
+    Alert.alert('Olay Var', 'Seçenekler', [
+      { text: 'İptal', style: 'cancel' },
+      {
+        text: 'Düzenle',
+        onPress: () => router.push(`/event/create?edit=${event.id}` as any),
+      },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: () => {
+          Alert.alert(
+            'Olayı Sil',
+            'Bu olayı silmek istediğinize emin misiniz?',
+            [
+              { text: 'İptal', style: 'cancel' },
+              {
+                text: 'Sil',
+                style: 'destructive',
+                onPress: () => deleteEventMutation.mutate({ eventId: event.id }),
+              },
+            ]
+          );
+        },
+      },
+    ]);
+  }, [deleteEventMutation, router, user?.id]);
 
   const renderEvent = useCallback((event: any) => {
     const severityColors: Record<string, string> = {
@@ -287,6 +324,15 @@ export default function FeedScreen() {
               </Text>
             </View>
           </TouchableOpacity>
+          {event.user_id === user?.id && (
+            <TouchableOpacity
+              style={styles.postMenuButton}
+              onPress={() => handleEventOptions(event)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <MoreVertical size={18} color={theme.colors.textLight} />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.eventContent}>
@@ -405,7 +451,7 @@ export default function FeedScreen() {
         </View>
       </View>
     );
-  }, [router, theme, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible, refetchEvents, formatCount, likeEventMutation]);
+  }, [router, theme, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible, refetchEvents, formatCount, likeEventMutation, user?.id, handleEventOptions]);
 
   const renderPost = useCallback(({ item }: { item: Post }) => {
     const firstMedia = item.media && item.media.length > 0 ? item.media[0] : null;
@@ -540,7 +586,6 @@ export default function FeedScreen() {
               >
                 <OptimizedImage
                   source={firstMedia.path}
-                  thumbnail={firstMedia.thumbnail}
                   isThumbnail={true}
                   style={styles.postImage}
                 />
@@ -631,13 +676,16 @@ export default function FeedScreen() {
     <View style={[styles.container, { backgroundColor: theme.colors.background, paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.md) : 0 }]}>
       <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border, paddingTop: Math.max(insets.top, Platform.OS === 'android' ? SPACING.lg : SPACING.md) }]}>
         <AppLogo size="medium" style={styles.headerLogo} />
-        <TouchableOpacity
-          style={[styles.usersButton, { backgroundColor: theme.colors.surface }]}
-          onPress={() => router.push('/all-users')}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Users size={24} color={theme.colors.primary} />
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <WhatsAppComplaintButton />
+          <TouchableOpacity
+            style={[styles.usersButton, { backgroundColor: theme.colors.surface }]}
+            onPress={() => router.push('/all-users')}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Users size={24} color={theme.colors.primary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {renderRideActions}
@@ -803,6 +851,11 @@ const styles = StyleSheet.create({
   headerLogo: {
     marginLeft: -SPACING.xs, // Logo için hafif margin ayarı
   },
+  headerButtons: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.xs,
+  },
   usersButton: {
     width: 44,
     height: 44,
@@ -899,6 +952,10 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '600' as const,
     flexShrink: 1,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.md * 1.2,
+    }),
   },
   postUsernameContainer: {
     flexShrink: 1,
@@ -908,6 +965,10 @@ const styles = StyleSheet.create({
   postUsername: {
     fontSize: FONT_SIZES.xs,
     flexShrink: 1,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.xs * 1.3,
+    }),
   },
   postMeta: {
     flexDirection: 'row' as const,
@@ -923,12 +984,20 @@ const styles = StyleSheet.create({
   postDistrict: {
     fontSize: FONT_SIZES.sm,
     flexShrink: 1,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.sm * 1.3,
+    }),
   },
   postTimeContainer: {
     flexShrink: 0,
   },
   postTime: {
     fontSize: FONT_SIZES.sm,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.sm * 1.3,
+    }),
   },
   postContentContainer: {
     paddingHorizontal: SPACING.md,
@@ -937,8 +1006,11 @@ const styles = StyleSheet.create({
   },
   postContent: {
     fontSize: FONT_SIZES.md,
-    lineHeight: 20,
+    lineHeight: Platform.OS === 'android' ? FONT_SIZES.md * 1.4 : 20,
     width: '100%',
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+    }),
   },
   imageContainer: {
     width: '100%',
@@ -1002,7 +1074,7 @@ const styles = StyleSheet.create({
     width: Dimensions.get('window').width,
     height: Dimensions.get('window').height,
     marginTop: 0,
-    resizeMode: 'contain',
+    // resizeMode removed - expo-image uses contentFit prop instead
   },
   mediaCountBadge: {
     position: 'absolute' as const,
@@ -1036,6 +1108,10 @@ const styles = StyleSheet.create({
   actionText: {
     fontSize: FONT_SIZES.sm,
     flexShrink: 0,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.sm * 1.3,
+    }),
   },
   loadingContainer: {
     flex: 1,

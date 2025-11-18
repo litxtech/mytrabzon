@@ -5,7 +5,7 @@ import { Video, ResizeMode } from 'expo-av';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, MoreVertical, Share2, Users, MessageCircle, Trophy } from 'lucide-react-native';
+import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, MoreVertical, Share2, Users, MessageCircle, Trophy, X } from 'lucide-react-native';
 import { DISTRICT_BADGES } from '../../constants/districts';
 import { useRouter } from 'expo-router';
 import { Footer } from '../../components/Footer';
@@ -385,8 +385,33 @@ export default function ProfileScreen() {
   }, [user?.id, refetchFollowStats]);
 
   const handleLogout = async () => {
-    await signOut();
-    router.replace('/auth/login');
+    try {
+      Alert.alert(
+        'Çıkış Yap',
+        'Hesabınızdan çıkmak istediğinizden emin misiniz?',
+        [
+          { text: 'İptal', style: 'cancel' },
+          {
+            text: 'Çıkış Yap',
+            style: 'destructive',
+            onPress: async () => {
+              await signOut();
+              // Navigation'ı zorla yap
+              router.replace('/auth/login' as any);
+              // Ekstra güvence için bir süre sonra tekrar dene
+              setTimeout(() => {
+                router.replace('/auth/login' as any);
+              }, 100);
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Hata olsa bile çıkış yap
+      await signOut();
+      router.replace('/auth/login' as any);
+    }
   };
 
   const handleDeleteAccount = () => {
@@ -743,9 +768,26 @@ export default function ProfileScreen() {
         animationType="fade"
         onRequestClose={() => setMenuVisible(false)}
       >
-        <View style={styles.menuOverlay}>
-          <View style={[styles.menuContent, { backgroundColor: theme.colors.card }]}>
-            <Text style={[styles.menuTitle, { color: theme.colors.text }]}>Profil menüsü</Text>
+        <TouchableOpacity 
+          style={styles.menuOverlay}
+          activeOpacity={1}
+          onPress={() => setMenuVisible(false)}
+        >
+          <TouchableOpacity 
+            style={[styles.menuContent, { backgroundColor: theme.colors.card }]}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.menuHeader}>
+              <Text style={[styles.menuTitle, { color: theme.colors.text }]}>Profil menüsü</Text>
+              <TouchableOpacity 
+                onPress={() => setMenuVisible(false)}
+                style={styles.menuCloseButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <X size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
             {menuActions.map((action) => {
               const IconComponent = action.icon;
               const isDisabled = action.disabled;
@@ -786,8 +828,8 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               );
             })}
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       <SupportPanel visible={supportVisible} onClose={() => setSupportVisible(false)} />
@@ -800,6 +842,11 @@ export default function ProfileScreen() {
         onRequestClose={() => setFollowersModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setFollowersModalVisible(false)}
+          />
           <View style={[styles.followersModalContent, { backgroundColor: theme.colors.card }]}>
             <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
               <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Takipçiler</Text>
@@ -820,6 +867,11 @@ export default function ProfileScreen() {
         onRequestClose={() => setFollowingModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setFollowingModalVisible(false)}
+          />
           <View style={[styles.followersModalContent, { backgroundColor: theme.colors.card }]}>
             <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
               <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Takip Edilenler</Text>
@@ -901,11 +953,19 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '700',
     color: COLORS.text,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.md * 1.3,
+    }),
   },
   statLabel: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
     marginTop: 2,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.xs * 1.3,
+    }),
   },
   profileInfo: {
     marginBottom: SPACING.md,
@@ -936,6 +996,10 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
     color: COLORS.text,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.sm * 1.3,
+    }),
   },
   quickActionLabelDisabled: {
     color: COLORS.textLight,
@@ -956,6 +1020,10 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     lineHeight: 16,
     marginBottom: SPACING.xs,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.xs * 1.3,
+    }),
   },
   locationRow: {
     marginTop: SPACING.xs,
@@ -1131,6 +1199,10 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
     marginBottom: SPACING.sm,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.md * 1.3,
+    }),
   },
   badgesRow: {
     flexDirection: 'row' as const,
@@ -1281,10 +1353,20 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     gap: SPACING.sm,
   },
+  menuHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
   menuTitle: {
     fontSize: FONT_SIZES.lg,
     fontWeight: '700',
     color: COLORS.text,
+    flex: 1,
+  },
+  menuCloseButton: {
+    padding: SPACING.xs,
   },
   menuOption: {
     flexDirection: 'row',
@@ -1296,6 +1378,10 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
     fontWeight: '600',
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.md * 1.3,
+    }),
   },
   menuOptionDanger: {
     borderTopWidth: 1,
@@ -1333,7 +1419,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: SPACING.lg,
-    maxHeight: '80%',
+    maxHeight: '90%',
+    minHeight: '50%',
+    flex: 1,
   },
   modalHeader: {
     flexDirection: 'row' as const,
@@ -1358,6 +1446,10 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.lg,
     fontWeight: '700',
     color: COLORS.text,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.lg * 1.3,
+    }),
   },
   modalLoadingContainer: {
     padding: SPACING.xl,
@@ -1388,10 +1480,18 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     color: COLORS.text,
     marginBottom: 2,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.md * 1.3,
+    }),
   },
   followerUsername: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.sm * 1.3,
+    }),
   },
   matchesSection: {
     backgroundColor: COLORS.white,

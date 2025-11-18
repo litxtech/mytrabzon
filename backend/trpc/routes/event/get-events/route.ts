@@ -26,9 +26,13 @@ export const getEventsProcedure = publicProcedure
         .order('created_at', { ascending: false })
         .range(input.offset, input.offset + input.limit - 1);
 
+      // District filtresi: district null olan event'ler tüm ilçelerde görünmeli
+      // Eğer district belirtilmişse, o district'e ait event'ler VEYA district null olan event'ler gösterilmeli
       if (input.district) {
-        query = query.eq('district', input.district);
+        // Belirli bir ilçe için: o ilçeye ait event'ler VEYA district null olan event'ler
+        query = query.or(`district.eq.${input.district},district.is.null`);
       }
+      // Eğer district belirtilmemişse, tüm event'ler görünür (district null olanlar dahil)
       if (input.city) {
         query = query.eq('city', input.city);
       }

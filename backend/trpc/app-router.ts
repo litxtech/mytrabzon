@@ -88,6 +88,8 @@ import {
 } from "./routes/admin/kyc-requests/route";
 import { createEventProcedure } from "./routes/event/create-event/route";
 import { getEventsProcedure } from "./routes/event/get-events/route";
+import { deleteEventProcedure } from "./routes/event/delete-event/route";
+import { updateEventProcedure } from "./routes/event/update-event/route";
 import { createRideProcedure } from "./routes/ride/create-ride/route";
 import { searchRidesProcedure } from "./routes/ride/search-rides/route";
 import { getRideDetailProcedure } from "./routes/ride/get-ride-detail/route";
@@ -200,6 +202,8 @@ export const appRouter = createTRPCRouter({
   event: createTRPCRouter({
     createEvent: createEventProcedure,
     getEvents: getEventsProcedure,
+    updateEvent: updateEventProcedure,
+    deleteEvent: deleteEventProcedure,
   }),
   notification: createTRPCRouter({
     getNotifications: getNotificationsProcedure,

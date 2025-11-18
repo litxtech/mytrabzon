@@ -174,7 +174,7 @@ try {
     Write-Host "  3. Verify you have permission to deploy to this project" -ForegroundColor White
     Write-Host ""
     Write-Host "To set access token:" -ForegroundColor Yellow
-    Write-Host '  $env:SUPABASE_ACCESS_TOKEN="your_token_here"' -ForegroundColor White
+    Write-Host "  `$env:SUPABASE_ACCESS_TOKEN=`"your_token_here`"" -ForegroundColor White
     Write-Host ""
     exit 1
 }
