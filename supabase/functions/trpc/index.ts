@@ -350,11 +350,7 @@ const appRouter = createTRPCRouter({
 
         const { data, error, count } = await query;
 
-        console.log('getAllUsers query result:', { 
-          dataLength: data?.length || 0, 
-          count, 
-          error: error?.message 
-        });
+        // Log kaldırıldı - egress optimizasyonu
 
         if (error) {
           console.error('Error fetching users:', error);
@@ -385,10 +381,7 @@ const appRouter = createTRPCRouter({
             username: user.username || null,
           }));
 
-        console.log('getAllUsers filtered result:', { 
-          usersLength: serializedUsers.length,
-          total: count || 0
-        });
+        // Log kaldırıldı - egress optimizasyonu
 
         return {
           users: serializedUsers,
@@ -6670,6 +6663,7 @@ const appRouter = createTRPCRouter({
           body: z.string().min(1).max(500),
           type: z.enum(['SYSTEM', 'EVENT', 'MESSAGE', 'RESERVATION', 'FOOTBALL']).optional().default('SYSTEM'),
           data: z.record(z.string(), z.any()).optional(),
+          mediaUrl: z.string().url().optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -6751,12 +6745,18 @@ const appRouter = createTRPCRouter({
           });
         }
         
+        // Data objesini oluştur (medya URL'i varsa ekle)
+        const notificationData: any = { ...(input.data || {}) };
+        if (input.mediaUrl) {
+          notificationData.mediaUrl = input.mediaUrl;
+        }
+        
         const notifications = targetUserIds.map((userId) => ({
           user_id: userId,
           type: input.type,
           title: input.title,
           body: bodyText, // notifications tablosunda body kolonu var
-          data: input.data || {},
+          data: notificationData,
           push_sent: false,
           is_deleted: false,
         }));
@@ -6908,7 +6908,7 @@ const appRouter = createTRPCRouter({
         }
 
         // Algoritma: Etkilenecek kullanıcıları bul ve bildirim oluştur
-        console.log('📢 Event created:', event.id, 'Severity:', input.severity);
+        // Log kaldırıldı - egress optimizasyonu
         try {
           await createNotificationsForEvent(supabase, event, input.severity, input.district || '', input.city);
         } catch (notificationError) {
@@ -6933,7 +6933,7 @@ const appRouter = createTRPCRouter({
       .query(async ({ ctx, input }) => {
         const { supabase } = ctx;
 
-        console.log('📢 getEvents called with:', input);
+        // Log kaldırıldı - egress optimizasyonu
         
         let query = supabase
           .from('events')
@@ -6960,7 +6960,7 @@ const appRouter = createTRPCRouter({
         const { data, error, count } = await query;
 
         if (error) {
-          console.error('❌ getEvents error:', error);
+          // Log kaldırıldı - egress optimizasyonu
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
         }
 
@@ -6987,7 +6987,7 @@ const appRouter = createTRPCRouter({
           }
         }
 
-        console.log('✅ getEvents returned:', events.length, 'events');
+        // Log kaldırıldı - egress optimizasyonu
 
         // Event like durumlarını kontrol et
         const { user: currentUser } = ctx;
@@ -8505,11 +8505,10 @@ serve(async (req) => {
     req: normalizedReq,
     createContext: async () => await createContext(normalizedReq),
     onError: ({ error, path, type }) => {
-      console.error(`tRPC error on '${path}':`, {
-        code: error.code,
-        message: error.message,
-        type,
-      });
+      // Minimal error logging - sadece kritik hatalar
+      if (error.code === 'INTERNAL_SERVER_ERROR') {
+        console.error(`tRPC error on '${path}':`, error.message);
+      }
     },
   });
   

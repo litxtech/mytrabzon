@@ -21,6 +21,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Footer } from '@/components/Footer';
 import { Video, ResizeMode } from 'expo-av';
+import { compressImage } from '@/lib/image-compression';
 
 export default function CreatePostScreen() {
   const router = useRouter();
@@ -127,10 +128,15 @@ export default function CreatePostScreen() {
     if (!result.canceled && result.assets) {
       // Video ve image'ları ayır
       const videos = result.assets.filter(asset => asset.type === 'video').map(asset => asset.uri);
-      const images = result.assets.filter(asset => asset.type !== 'video').map(asset => asset.uri);
+      const imageUris = result.assets.filter(asset => asset.type !== 'video').map(asset => asset.uri);
+      
+      // Image'ları compress et
+      const compressedImages = await Promise.all(
+        imageUris.map(uri => compressImage(uri, { maxWidth: 1080, quality: 0.8 }))
+      );
       
       setSelectedVideos((prev) => [...prev, ...videos].slice(0, 3));
-      setSelectedImages((prev) => [...prev, ...images].slice(0, 5));
+      setSelectedImages((prev) => [...prev, ...compressedImages].slice(0, 5));
     }
   };
 
@@ -148,7 +154,9 @@ export default function CreatePostScreen() {
     });
 
     if (!result.canceled && result.assets[0]) {
-      setSelectedImages((prev) => [...prev, result.assets[0].uri].slice(0, 5));
+      // Compress et
+      const compressedUri = await compressImage(result.assets[0].uri, { maxWidth: 1080, quality: 0.8 });
+      setSelectedImages((prev) => [...prev, compressedUri].slice(0, 5));
     }
   };
 
@@ -190,7 +198,13 @@ export default function CreatePostScreen() {
           }
 
           // Local file ise upload et
-          const base64 = await FileSystem.readAsStringAsync(media.uri, {
+          // Image'ları compress et (video'lar zaten compress edilmiş olmalı)
+          let finalUri = media.uri;
+          if (media.type === 'image') {
+            finalUri = await compressImage(media.uri, { maxWidth: 1080, quality: 0.8 });
+          }
+          
+          const base64 = await FileSystem.readAsStringAsync(finalUri, {
             encoding: 'base64' as any,
           });
 

@@ -303,9 +303,14 @@ export const [ChatContext, useChat] = createContextHook(() => {
       return;
     }
 
-    console.log('Subscribing to presence channel for user', user.id);
-
-    const presenceChannel = supabase.channel('online-users');
+    // Log kaldırıldı - egress optimizasyonu
+    const presenceChannel = supabase.channel('online-users', {
+      config: {
+        presence: {
+          key: user.id,
+        },
+      },
+    });
     
     presenceChannel
       .on('presence', { event: 'sync' }, () => {
@@ -346,7 +351,22 @@ export const [ChatContext, useChat] = createContextHook(() => {
   const subscribeToRoom = useCallback((roomId: string) => {
     if (!user || channelsRef.current[roomId]) return;
 
-    const channel = supabase.channel(`room:${roomId}`);
+    // Optimize: Sadece aktif room için channel oluştur
+    // Diğer room'ların channel'larını kapat
+    Object.keys(channelsRef.current).forEach((key) => {
+      if (key !== roomId) {
+        channelsRef.current[key].unsubscribe();
+        delete channelsRef.current[key];
+      }
+    });
+
+    const channel = supabase.channel(`room:${roomId}`, {
+      config: {
+        presence: {
+          key: user.id,
+        },
+      },
+    });
     
     channel
       .on(

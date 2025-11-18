@@ -76,6 +76,7 @@ import {
 import { sendNotificationProcedure } from "./routes/admin/send-notification/route";
 import { getRideListProcedure } from "./routes/admin/get-ride-list/route";
 import { getRideDetailProcedure as adminGetRideDetailProcedure } from "./routes/admin/get-ride-detail/route";
+import { generateRidePdfProcedure } from "./routes/admin/generate-ride-pdf/route";
 import { getAllPostsProcedure } from "./routes/admin/get-all-posts/route";
 import { getAllCommentsProcedure } from "./routes/admin/get-all-comments/route";
 import { createKycProcedure } from "./routes/kyc/create-kyc/route";
@@ -187,6 +188,7 @@ export const appRouter = createTRPCRouter({
     sendNotification: sendNotificationProcedure,
     getRideList: getRideListProcedure,
     getRideDetail: adminGetRideDetailProcedure,
+    generateRidePdf: generateRidePdfProcedure,
     deleteUser: deleteUsersProcedure,
     deletePost: adminDeletePostProcedure,
     deleteComment: adminDeleteCommentProcedure,

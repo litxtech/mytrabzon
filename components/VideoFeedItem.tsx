@@ -24,6 +24,7 @@ import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import { Image } from 'expo-image';
 import { CommentSheet } from './CommentSheet';
+import VerifiedBadgeIcon from './VerifiedBadge';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -293,10 +294,12 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
                     router.push(`/profile/${post.author_id}` as any);
                   }
                 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
               >
                 <Text style={[styles.username, { color: COLORS.white }]}>
                   {authorName}
                 </Text>
+                {post.author?.verified && <VerifiedBadgeIcon size={16} />}
               </TouchableOpacity>
               <Text style={[styles.userHandle, { color: COLORS.white }]}>
                 @{authorUsername}

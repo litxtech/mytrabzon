@@ -23,15 +23,24 @@ export const getMessagesProcedure = protectedProcedure
       throw new Error('Not a member of this room');
     }
 
+    // Minimal select - sadece gerekli alanlar
     const { data: messages, error } = await ctx.supabase
       .from('messages')
       .select(`
-        *,
-        user:profiles(*),
+        id,
+        room_id,
+        user_id,
+        content,
+        media_url,
+        media_type,
+        created_at,
+        updated_at,
+        reply_to,
+        user:profiles(id, full_name, avatar_url, username, verified),
         reply_to_message:messages!reply_to(
           id,
           content,
-          user:profiles(full_name, avatar_url)
+          user:profiles(id, full_name, avatar_url)
         )
       `)
       .eq('room_id', input.roomId)

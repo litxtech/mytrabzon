@@ -10,6 +10,7 @@ export const sendNotificationProcedure = protectedProcedure
       body: z.string().min(1).max(500),
       type: z.enum(['SYSTEM', 'EVENT', 'MESSAGE', 'RESERVATION', 'FOOTBALL']).optional().default('SYSTEM'),
       data: z.record(z.string(), z.any()).optional(),
+      mediaUrl: z.string().url().optional(),
     })
   )
   .mutation(async ({ ctx, input }) => {
@@ -91,12 +92,18 @@ export const sendNotificationProcedure = protectedProcedure
       });
     }
     
+    // Data objesini oluştur (medya URL'i varsa ekle)
+    const notificationData: any = { ...(input.data || {}) };
+    if (input.mediaUrl) {
+      notificationData.mediaUrl = input.mediaUrl;
+    }
+
     const notifications = targetUserIds.map((userId) => ({
       user_id: userId,
       type: input.type,
       title: input.title,
       body: bodyText, // notifications tablosunda body kolonu var
-      data: input.data || {},
+      data: notificationData,
       push_sent: false,
       is_deleted: false,
     }));

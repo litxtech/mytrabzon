@@ -28,6 +28,7 @@ import {
   MoreVertical,
 } from 'lucide-react-native';
 import { Footer } from '@/components/Footer';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -219,9 +220,12 @@ export default function PostDetailScreen() {
               activeOpacity={0.7}
             >
               <View style={styles.postAuthorContainer}>
-                <Text style={styles.postAuthor}>
-                  {post.author?.full_name}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.postAuthor}>
+                    {post.author?.full_name}
+                  </Text>
+                  {post.author?.verified && <VerifiedBadgeIcon size={16} />}
+                </View>
               </View>
               {post.author?.username && (
                 <View style={styles.postUsernameContainer}>
@@ -262,11 +266,12 @@ export default function PostDetailScreen() {
           {post.media && post.media.length > 0 && (
             <ScrollView horizontal pagingEnabled style={styles.mediaContainer}>
               {post.media.map((mediaItem: any, index: number) => (
-                <Image
+                <OptimizedImage
                   key={index}
-                  source={{ uri: mediaItem.path }}
+                  source={mediaItem.path}
+                  thumbnail={mediaItem.thumbnail}
+                  isThumbnail={false}
                   style={styles.postImage}
-                  resizeMode="cover"
                 />
               ))}
             </ScrollView>
@@ -307,9 +312,12 @@ export default function PostDetailScreen() {
               />
               <View style={styles.commentContent}>
                 <View style={styles.commentAuthorContainer}>
-                  <Text style={styles.commentAuthor}>
-                    {comment.user?.full_name}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.commentAuthor}>
+                      {comment.user?.full_name}
+                    </Text>
+                    {comment.user?.verified && <VerifiedBadgeIcon size={14} />}
+                  </View>
                 </View>
                 {comment.user?.username && (
                   <View style={styles.commentUsernameContainer}>

@@ -10,12 +10,33 @@ export const getPostDetailProcedure = publicProcedure
   .query(async ({ ctx, input }) => {
     const { supabase, user } = ctx;
 
+    // Lightweight select - sadece gerekli alanlar
     const { data: post, error } = await supabase
       .from("posts")
       .select(
         `
-        *,
-        author:profiles!posts_author_id_fkey(*)
+        id,
+        author_id,
+        content,
+        media,
+        like_count,
+        comment_count,
+        share_count,
+        views_count,
+        created_at,
+        updated_at,
+        district,
+        visibility,
+        author:profiles!posts_author_id_fkey(
+          id,
+          full_name,
+          username,
+          avatar_url,
+          verified,
+          supporter_badge,
+          supporter_badge_visible,
+          supporter_badge_color
+        )
       `
       )
       .eq("id", input.postId)
@@ -37,8 +58,32 @@ export const getPostDetailProcedure = publicProcedure
       is_liked = !!liked;
     }
 
+    // Media URL'lerini optimize et
+    const SUPABASE_URL = ctx.supabaseUrl || '';
+    let optimizedMedia = post.media;
+    if (post.media && Array.isArray(post.media)) {
+      optimizedMedia = post.media.map((mediaItem: any) => {
+        if (mediaItem.path && !mediaItem.path.startsWith('http')) {
+          const path = mediaItem.path.startsWith('posts/') 
+            ? mediaItem.path 
+            : `posts/${mediaItem.path}`;
+          
+          const fullUrl = `${SUPABASE_URL}/storage/v1/object/public/posts/${path}`;
+          const thumbnailUrl = `${SUPABASE_URL}/storage/v1/object/public/posts/${path}?width=128&height=128&resize=cover`;
+          
+          return {
+            ...mediaItem,
+            path: fullUrl,
+            thumbnail: thumbnailUrl,
+          };
+        }
+        return mediaItem;
+      });
+    }
+
     return {
       ...post,
+      media: optimizedMedia,
       is_liked,
     };
   });

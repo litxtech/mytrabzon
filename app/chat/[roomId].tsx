@@ -22,6 +22,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
 import { trpc } from '@/lib/trpc';
 import { Send, Paperclip, Smile, MoreVertical, ImageIcon, Plus, Heart, MessageCircle, Share2, Phone, Video as VideoIcon, Users, Search, Check, X, UserMinus, Trash2, LogOut, Edit3 } from 'lucide-react-native';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Video as ExpoVideo } from 'expo-av';
@@ -568,8 +569,10 @@ export default function ChatRoomScreen() {
               <TouchableOpacity
                 onPress={() => router.push(`/profile/${message.user_id}` as any)}
                 activeOpacity={0.7}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
               >
                 <Text style={styles.senderName}>{message.user.full_name}</Text>
+                {message.user.verified && <VerifiedBadgeIcon size={14} />}
               </TouchableOpacity>
             )}
 
@@ -582,7 +585,11 @@ export default function ChatRoomScreen() {
                 onPress={() => Linking.openURL(message.media_url!)}
                 activeOpacity={0.9}
               >
-                <Image source={{ uri: message.media_url }} style={styles.messageImage} />
+                <OptimizedImage
+                  source={message.media_url}
+                  isThumbnail={true}
+                  style={styles.messageImage}
+                />
               </TouchableOpacity>
             )}
 

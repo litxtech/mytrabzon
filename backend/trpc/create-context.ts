@@ -45,6 +45,7 @@ export const createContext = async (opts: FetchCreateContextFnOptions) => {
     req: opts.req,
     supabase: supabaseAdminClient,
     user,
+    supabaseUrl, // Media URL'leri için
   };
 };
 

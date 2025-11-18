@@ -17,12 +17,33 @@ export const getPostsProcedure = publicProcedure
     const { supabase, user } = ctx;
 
     try {
+      // Lightweight select - sadece gerekli alanlar
       let query = supabase
         .from("posts")
         .select(
           `
-          *,
-          author:profiles!posts_author_id_fkey(*)
+          id,
+          author_id,
+          content,
+          media,
+          like_count,
+          comment_count,
+          share_count,
+          views_count,
+          created_at,
+          updated_at,
+          district,
+          visibility,
+          author:profiles!posts_author_id_fkey(
+            id,
+            full_name,
+            username,
+            avatar_url,
+            verified,
+            supporter_badge,
+            supporter_badge_visible,
+            supporter_badge_color
+          )
         `,
           { count: "exact" }
         )
@@ -86,8 +107,46 @@ export const getPostsProcedure = publicProcedure
         }
       }
 
+      // Media URL'lerini optimize et - thumbnail ve full URL'leri ekle
+      const SUPABASE_URL = ctx.supabaseUrl || '';
+      const optimizedPosts = postsWithLikes.map(post => {
+        if (post.media && Array.isArray(post.media)) {
+          const optimizedMedia = post.media.map((mediaItem: any) => {
+            if (mediaItem.path) {
+              // Storage path'inden URL oluştur
+              let fullUrl = mediaItem.path;
+              let thumbnailUrl = mediaItem.path;
+
+              // Eğer path zaten URL değilse, Supabase storage URL'i oluştur
+              if (!mediaItem.path.startsWith('http')) {
+                const path = mediaItem.path.startsWith('posts/') 
+                  ? mediaItem.path 
+                  : `posts/${mediaItem.path}`;
+                
+                fullUrl = `${SUPABASE_URL}/storage/v1/object/public/posts/${path}`;
+                // Thumbnail için transform ekle (128px)
+                thumbnailUrl = `${SUPABASE_URL}/storage/v1/object/public/posts/${path}?width=128&height=128&resize=cover`;
+              }
+
+              return {
+                ...mediaItem,
+                path: fullUrl,
+                thumbnail: thumbnailUrl,
+              };
+            }
+            return mediaItem;
+          });
+
+          return {
+            ...post,
+            media: optimizedMedia,
+          };
+        }
+        return post;
+      });
+
       return {
-        posts: postsWithLikes,
+        posts: optimizedPosts,
         total: count || 0,
       };
     } catch (error) {

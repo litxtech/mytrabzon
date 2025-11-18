@@ -16,7 +16,9 @@ import { trpc } from '@/lib/trpc';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { Calendar, Car, Download, Phone, RefreshCcw } from 'lucide-react-native';
+import { Calendar, Car, Download, Phone, RefreshCcw, FileText, Eye } from 'lucide-react-native';
+import { useAuth } from '@/contexts/AuthContext';
+import { Linking } from 'react-native';
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return '-';
@@ -51,93 +53,76 @@ export default function AdminRidesScreen() {
     }
   };
 
-  const handleDownloadPdf = async () => {
-    if (!rideDetailQuery.data) {
+  const generatePdfMutation = (trpc as any).admin.generateRidePdf.useMutation({
+    onSuccess: async (data: any) => {
+      setGeneratingPdf(false);
+      if (data.pdfUrl) {
+        setPdfUrl(data.pdfUrl);
+        Alert.alert('Başarılı', 'PDF oluşturuldu ve kaydedildi. İndirmek için butona tıklayın.');
+      } else if (data.pdfBase64) {
+        // Eğer URL yoksa base64'ten dosya oluştur
+        const fileUri = `${FileSystem.documentDirectory}${data.fileName}`;
+        await FileSystem.writeAsStringAsync(fileUri, data.pdfBase64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(fileUri, { dialogTitle: 'Yolculuk PDF İndir' });
+        } else {
+          Alert.alert('PDF Oluşturuldu', `Dosya kaydedildi: ${fileUri}`);
+        }
+      }
+    },
+    onError: (error: any) => {
+      setGeneratingPdf(false);
+      Alert.alert('Hata', error.message || 'PDF oluşturulamadı');
+    },
+  });
+
+  const handleGeneratePdf = async () => {
+    if (!selectedRideId) {
       Alert.alert('Bilgi', 'Lütfen önce bir yolculuk seçin.');
       return;
     }
 
-    try {
-      const detail = rideDetailQuery.data;
-      const pdfDoc = await PDFDocument.create();
-      const page = pdfDoc.addPage();
-      const { height } = page.getSize();
-      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    setGeneratingPdf(true);
+    setPdfUrl(null);
+    generatePdfMutation.mutate({ ride_id: selectedRideId });
+  };
 
-      let cursorY = height - 40;
-      const lineHeight = 18;
-
-      const addLine = (text: string, bold = false) => {
-        if (cursorY < 60) {
-          cursorY = height - 40;
-          pdfDoc.addPage();
-        }
-        page.drawText(text, {
-          x: 40,
-          y: cursorY,
-          size: 12,
-          font: bold ? fontBold : font,
-        });
-        cursorY -= lineHeight;
-      };
-
-      addLine('Yolculuk Özeti', true);
-      addLine(`Yolculuk ID: ${detail.ride.id}`);
-      addLine(`Kalkış: ${detail.ride.departure_title}`);
-      if (detail.ride.departure_description) {
-        addLine(`Tarif: ${detail.ride.departure_description}`);
-      }
-      addLine(`Varış: ${detail.ride.destination_title}`);
-      if (detail.ride.destination_description) {
-        addLine(`Varış Tarifi: ${detail.ride.destination_description}`);
-      }
-      addLine(`Zaman: ${formatDateTime(detail.ride.departure_time)}`);
-      addLine(`Durum: ${detail.ride.status}`);
-      addLine('');
-
-      addLine('Sürücü Bilgileri', true);
-      addLine(`Ad Soyad: ${detail.ride.driver_full_name}`);
-      addLine(`Telefon: ${detail.ride.driver_phone || '-'}`);
-      addLine(`Araç: ${detail.ride.vehicle_brand || '-'} ${detail.ride.vehicle_model || ''}`.trim());
-      if (detail.ride.vehicle_color) addLine(`Renk: ${detail.ride.vehicle_color}`);
-      if (detail.ride.vehicle_plate) addLine(`Plaka: ${detail.ride.vehicle_plate}`);
-      addLine('');
-
-      addLine('Rezervasyonlar', true);
-      if (detail.bookings.length === 0) {
-        addLine('Rezervasyon yok.');
-      } else {
-        detail.bookings.forEach((booking: any, index: number) => {
-          addLine(`${index + 1}. ${booking.passenger_name} • ${booking.seats_requested} koltuk`);
-          addLine(`   Telefon: ${booking.passenger_phone || '-'}`);
-          addLine(`   Durum: ${booking.status}`);
-          if (booking.notes) {
-            addLine(`   Not: ${booking.notes}`);
+  const handleDownloadPdf = async () => {
+    if (pdfUrl) {
+      // URL'den indir - React Native için
+      try {
+        const fileUri = `${FileSystem.documentDirectory}yolculuk-${selectedRideId}.pdf`;
+        const downloadResult = await FileSystem.downloadAsync(pdfUrl, fileUri);
+        
+        if (downloadResult.status === 200) {
+          if (await Sharing.isAvailableAsync()) {
+            await Sharing.shareAsync(fileUri, { dialogTitle: 'Yolculuk PDF İndir' });
+          } else {
+            Alert.alert('PDF İndirildi', `Dosya kaydedildi: ${fileUri}`);
           }
-          addLine('');
-        });
+        } else {
+          throw new Error('İndirme başarısız');
+        }
+      } catch (error: any) {
+        console.error('PDF download error:', error);
+        Alert.alert('Hata', 'PDF indirilemedi: ' + (error.message || 'Bilinmeyen hata'));
       }
+    } else {
+      // Eğer PDF yoksa oluştur
+      handleGeneratePdf();
+    }
+  };
 
-      if (detail.ride.notes) {
-        addLine('Sürücü Notu', true);
-        addLine(detail.ride.notes);
-      }
-
-      const pdfBase64 = await pdfDoc.saveAsBase64({ dataUri: false });
-      const fileUri = `${FileSystem.documentDirectory}yolculuk-${detail.ride.id}.pdf`;
-      await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
-        encoding: FileSystem.EncodingType.Base64,
+  const handleViewPdf = () => {
+    if (pdfUrl) {
+      // PDF'i web view'de aç
+      Linking.openURL(pdfUrl).catch((err: any) => {
+        Alert.alert('Hata', 'PDF açılamadı');
       });
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, { dialogTitle: 'Yolculuk PDF İndir' });
-      } else {
-        Alert.alert('PDF Oluşturuldu', `Dosya kaydedildi: ${fileUri}`);
-      }
-    } catch (error: any) {
-      console.error('PDF generation error:', error);
-      Alert.alert('Hata', error?.message || 'PDF oluşturulamadı');
+    } else {
+      Alert.alert('Bilgi', 'Önce PDF oluşturun');
     }
   };
 
@@ -268,20 +253,42 @@ export default function AdminRidesScreen() {
             ))
           )}
 
-          <TouchableOpacity
-            style={[styles.pdfButton, rideDetailQuery.isFetching && styles.pdfButtonDisabled]}
-            disabled={rideDetailQuery.isFetching}
-            onPress={handleDownloadPdf}
-          >
-            {rideDetailQuery.isFetching ? (
-              <ActivityIndicator size="small" color={COLORS.white} />
-            ) : (
+          <View style={styles.pdfButtonsContainer}>
+            <TouchableOpacity
+              style={[styles.pdfButton, (generatingPdf || rideDetailQuery.isFetching) && styles.pdfButtonDisabled]}
+              disabled={generatingPdf || rideDetailQuery.isFetching}
+              onPress={handleGeneratePdf}
+            >
+              {generatingPdf ? (
+                <ActivityIndicator size="small" color={COLORS.white} />
+              ) : (
+                <>
+                  <FileText size={18} color={COLORS.white} />
+                  <Text style={styles.pdfButtonText}>PDF Oluştur</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            {pdfUrl && (
               <>
-                <Download size={18} color={COLORS.white} />
-                <Text style={styles.pdfButtonText}>PDF İndir</Text>
+                <TouchableOpacity
+                  style={[styles.pdfButton, styles.pdfViewButton]}
+                  onPress={handleViewPdf}
+                >
+                  <Eye size={18} color={COLORS.white} />
+                  <Text style={styles.pdfButtonText}>Görüntüle</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.pdfButton, styles.pdfDownloadButton]}
+                  onPress={handleDownloadPdf}
+                >
+                  <Download size={18} color={COLORS.white} />
+                  <Text style={styles.pdfButtonText}>İndir</Text>
+                </TouchableOpacity>
               </>
             )}
-          </TouchableOpacity>
+          </View>
         </ScrollView>
       )}
     </View>
@@ -455,8 +462,11 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     marginTop: 2,
   },
-  pdfButton: {
+  pdfButtonsContainer: {
     marginTop: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  pdfButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -464,6 +474,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     paddingVertical: SPACING.md,
     borderRadius: 12,
+  },
+  pdfViewButton: {
+    backgroundColor: COLORS.secondary,
+  },
+  pdfDownloadButton: {
+    backgroundColor: COLORS.success,
   },
   pdfButtonDisabled: {
     opacity: 0.6,

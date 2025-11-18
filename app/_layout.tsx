@@ -230,11 +230,12 @@ export default function RootLayout() {
                 }
                 if (data.session) {
                   console.log('Session created from code exchange');
-                  const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', data.session.user.id)
-                    .single();
+                // Lazy loading - sadece full_name kontrolü için minimal select
+                const { data: profile } = await supabase
+                  .from('profiles')
+                  .select('full_name')
+                  .eq('id', data.session.user.id)
+                  .single();
 
                   if (profile && profile.full_name) {
                     router.replace('/(tabs)/feed');
@@ -437,13 +438,14 @@ export default function RootLayout() {
               // redirect_to yoksa veya deep link değilse session kontrolü yap
               const { data: { session } } = await supabase.auth.getSession();
               if (session?.user) {
+                // Lazy loading - sadece full_name kontrolü için minimal select
                 const { data: profile } = await supabase
                   .from('profiles')
-                  .select('*')
+                  .select('full_name')
                   .eq('id', session.user.id)
                   .single();
                 
-                if (profile && profile.full_name) {
+                if (profile?.full_name) {
                   router.replace('/(tabs)/feed');
                 } else {
                   router.replace('/auth/onboarding');

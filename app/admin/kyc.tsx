@@ -31,11 +31,23 @@ export default function AdminKycScreen() {
 
   const { data, isLoading, refetch, error } = trpc.admin.getKycRequests.useQuery({
     status: selectedStatus,
-    limit: 50,
+    limit: 100, // Limit'i artırdık
     offset: 0,
   }, {
     retry: 1,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
+
+  // Debug için
+  React.useEffect(() => {
+    if (error) {
+      console.error('KYC Requests Error:', error);
+    }
+    if (data) {
+      console.log('KYC Requests Data:', data?.requests?.length || 0, 'requests found');
+    }
+  }, [data, error]);
 
   useFocusEffect(
     useCallback(() => {

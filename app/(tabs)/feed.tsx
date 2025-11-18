@@ -15,6 +15,7 @@ import {
   Share,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { OptimizedImage } from '@/components/OptimizedImage';
 
 import { useRouter } from 'expo-router';
 import { trpc } from '@/lib/trpc';
@@ -27,6 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLogo } from '@/components/AppLogo';
 import { SupporterBadge } from '@/components/SupporterBadge';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 import { formatTimeAgo } from '@/lib/time-utils';
 import { Footer } from '@/components/Footer';
 import { VideoPlayer } from '@/components/VideoPlayer';
@@ -85,10 +87,10 @@ export default function FeedScreen() {
       offset: 0,
     },
     {
-      staleTime: 30 * 1000, // 30 saniye (daha sık refresh)
-      gcTime: 5 * 60 * 1000, // 5 dakika
-      refetchOnMount: true, // Her mount'ta refetch et
-      refetchOnWindowFocus: true, // Focus olduğunda refetch et
+      staleTime: 2 * 60 * 1000, // 2 dakika (egress optimizasyonu)
+      gcTime: 10 * 60 * 1000, // 10 dakika
+      refetchOnMount: false, // Cache'den kullan
+      refetchOnWindowFocus: false, // Egress optimizasyonu
     }
   );
 
@@ -259,16 +261,10 @@ export default function FeedScreen() {
             onPress={() => event.user_id && router.push(`/profile/${event.user_id}` as any)}
             activeOpacity={0.7}
           >
-            <Image
-              source={{
-                uri: event.user?.avatar_url || 'https://via.placeholder.com/40',
-              }}
+            <OptimizedImage
+              source={event.user?.avatar_url || 'https://via.placeholder.com/40'}
               style={styles.avatar}
-              contentFit="cover"
-              transition={200}
-              cachePolicy="memory-disk"
-              priority="normal"
-              placeholder={{ blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.' }}
+              isThumbnail={true}
             />
           </TouchableOpacity>
           <TouchableOpacity
@@ -344,17 +340,11 @@ export default function FeedScreen() {
                 activeOpacity={0.9}
                 style={styles.imageContainer}
               >
-                <Image
-                  source={{ uri: firstMedia }}
+                <OptimizedImage
+                  source={firstMedia}
+                  thumbnail={firstMedia?.thumbnail}
+                  isThumbnail={true}
                   style={styles.postImage}
-                  contentFit="cover"
-                  transition={100}
-                  cachePolicy="memory-disk"
-                  priority="high"
-                  recyclingKey={firstMedia}
-                  allowDownscaling={false}
-                  placeholderContentFit="cover"
-                  backgroundColor="#1a1a1a"
                 />
               </TouchableOpacity>
             )}
@@ -428,16 +418,10 @@ export default function FeedScreen() {
             onPress={() => item.author_id && router.push(`/profile/${item.author_id}` as any)}
             activeOpacity={0.7}
           >
-            <Image
-              source={{
-                uri: item.author?.avatar_url || 'https://via.placeholder.com/40',
-              }}
+            <OptimizedImage
+              source={item.author?.avatar_url || 'https://via.placeholder.com/40'}
               style={styles.avatar}
-              contentFit="cover"
-              transition={200}
-              cachePolicy="memory-disk"
-              priority="normal"
-              placeholder={{ blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.' }}
+              isThumbnail={true}
             />
           </TouchableOpacity>
           <TouchableOpacity
@@ -446,16 +430,19 @@ export default function FeedScreen() {
             activeOpacity={0.7}
           >
             <View style={styles.postAuthorContainer}>
-              <Text style={[styles.postAuthor, { color: theme.colors.text }]} numberOfLines={1} ellipsizeMode="tail">
-                {item.author?.full_name}
-              </Text>
-              {item.author?.supporter_badge && item.author?.supporter_badge_visible && (
-                <SupporterBadge 
-                  visible={true} 
-                  size="small" 
-                  color={item.author?.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
-                />
-              )}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[styles.postAuthor, { color: theme.colors.text }]} numberOfLines={1} ellipsizeMode="tail">
+                  {item.author?.full_name}
+                </Text>
+                {item.author?.verified && <VerifiedBadgeIcon size={16} />}
+                {item.author?.supporter_badge && item.author?.supporter_badge_visible && (
+                  <SupporterBadge 
+                    visible={true} 
+                    size="small" 
+                    color={item.author?.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
+                  />
+                )}
+              </View>
             </View>
             {item.author?.username && (
               <View style={styles.postUsernameContainer}>
@@ -551,17 +538,11 @@ export default function FeedScreen() {
                 activeOpacity={0.9}
                 style={styles.imageContainer}
               >
-                <Image
-                  source={{ uri: firstMedia.path }}
+                <OptimizedImage
+                  source={firstMedia.path}
+                  thumbnail={firstMedia.thumbnail}
+                  isThumbnail={true}
                   style={styles.postImage}
-                  contentFit="cover"
-                  transition={100}
-                  cachePolicy="memory-disk"
-                  priority="high"
-                  recyclingKey={firstMedia.path}
-                  allowDownscaling={false}
-                  placeholderContentFit="cover"
-                  backgroundColor="#1a1a1a"
                 />
               </TouchableOpacity>
             )}

@@ -65,12 +65,12 @@ export const createEventProcedure = protectedProcedure
 
       // Algoritma: Etkilenecek kullanıcıları bul ve bildirim oluştur
       // Bu işlem Supabase Edge Function'da yapılabilir, şimdilik basit versiyon
-      console.log('📢 Event created:', event.id, 'Severity:', input.severity);
+      // Log kaldırıldı - egress optimizasyonu
       try {
         await createNotificationsForEvent(supabase, event, input.severity, input.district || '', input.city);
       } catch (notificationError) {
-        console.error('❌ Notification creation failed:', notificationError);
         // Bildirim hatası olsa bile event oluşturuldu, devam et
+        // Log kaldırıldı - egress optimizasyonu
       }
 
       return event;

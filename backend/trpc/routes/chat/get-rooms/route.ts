@@ -41,11 +41,7 @@ export const getRoomsProcedure = protectedProcedure
   .query(async ({ ctx, input }) => {
     const userId = ctx.user.id;
 
-    console.log('Fetching chat rooms for user via tRPC', {
-      userId,
-      limit: input.limit,
-      offset: input.offset,
-    });
+    // Log kaldırıldı - egress optimizasyonu
 
     const { data: membershipRows, error: membershipError } = await ctx.supabase
       .from('chat_members')
@@ -105,59 +101,80 @@ export const getRoomsProcedure = protectedProcedure
 
     const paginatedRooms = sortedRooms.slice(input.offset, input.offset + input.limit);
 
-    const roomsWithLastMessage = await Promise.all(
-      paginatedRooms.map(async (room) => {
-        const { data: lastMessage, error: lastMessageError } = await ctx.supabase
-          .from('messages')
-          .select('*, user:profiles(*)')
-          .eq('room_id', room.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+    // Optimize: Tüm last message'ları tek query'de al
+    const roomIds = paginatedRooms.map(r => r.id);
+    const { data: lastMessagesData } = await ctx.supabase
+      .from('messages')
+      .select('room_id, id, content, created_at, user:profiles(id, full_name, avatar_url)')
+      .in('room_id', roomIds)
+      .order('created_at', { ascending: false });
 
-        if (lastMessageError) {
-          console.error('Failed to load last message for room', {
-            roomId: room.id,
-            message: lastMessageError.message,
-            details: lastMessageError.details,
-          });
-        }
-
-        const { data: memberRows, error: membersError } = await ctx.supabase
-          .from('chat_members')
-          .select('id, room_id, user_id, role, unread_count, last_read_at, joined_at, user:profiles(*)')
-          .eq('room_id', room.id);
-
-        if (membersError) {
-          console.error('Failed to load members for room', {
-            roomId: room.id,
-            message: membersError.message,
-            details: membersError.details,
-          });
-        }
-
-        const members = (memberRows ?? []) as RawMemberWithProfile[];
-
-        const otherUser = room.type === 'direct'
-          ? members.find((member) => member.user_id !== userId)?.user ?? null
-          : null;
-
-        const membership = membershipMap[room.id];
-
-        return {
-          ...room,
-          last_message: lastMessage ?? null,
-          members,
-          other_user: otherUser,
-          unread_count: membership?.unread_count ?? 0,
-        };
-      })
-    );
-
-    console.log('Chat rooms fetched successfully', {
-      userId,
-      count: roomsWithLastMessage.length,
+    // Her room için en son mesajı bul
+    const lastMessagesMap = new Map<string, any>();
+    const processedRooms = new Set<string>();
+    (lastMessagesData || []).forEach((msg: any) => {
+      if (!processedRooms.has(msg.room_id)) {
+        lastMessagesMap.set(msg.room_id, {
+          id: msg.id,
+          content: msg.content,
+          created_at: msg.created_at,
+          user: msg.user ? {
+            id: msg.user.id,
+            full_name: msg.user.full_name,
+            avatar_url: msg.user.avatar_url,
+          } : null,
+        });
+        processedRooms.add(msg.room_id);
+      }
     });
+
+    // Optimize: Tüm members'ları tek query'de al
+    const { data: allMembersData } = await ctx.supabase
+      .from('chat_members')
+      .select('room_id, user_id, role, user:profiles(id, full_name, avatar_url, username)')
+      .in('room_id', roomIds);
+
+    // Room'a göre members'ları grupla
+    const membersMap = new Map<string, any[]>();
+    (allMembersData || []).forEach((member: any) => {
+      if (!membersMap.has(member.room_id)) {
+        membersMap.set(member.room_id, []);
+      }
+      membersMap.get(member.room_id)!.push({
+        user_id: member.user_id,
+        role: member.role,
+        user: member.user ? {
+          id: member.user.id,
+          full_name: member.user.full_name,
+          avatar_url: member.user.avatar_url,
+          username: member.user.username,
+        } : null,
+      });
+    });
+
+    // Minimal response oluştur
+    const roomsWithLastMessage = paginatedRooms.map((room) => {
+      const members = membersMap.get(room.id) || [];
+      const otherUser = room.type === 'direct'
+        ? members.find((member: any) => member.user_id !== userId)?.user ?? null
+        : null;
+      const membership = membershipMap[room.id];
+
+      return {
+        id: room.id,
+        name: room.name,
+        avatar_url: room.avatar_url,
+        type: room.type,
+        district: room.district,
+        last_message: lastMessagesMap.get(room.id) ?? null,
+        other_user: otherUser,
+        unread_count: membership?.unread_count ?? 0,
+        // Members sadece direct chat için minimal
+        members: room.type === 'direct' ? members : [],
+      };
+    });
+
+    // Log kaldırıldı - egress optimizasyonu
 
     return roomsWithLastMessage;
   });

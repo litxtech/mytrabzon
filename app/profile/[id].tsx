@@ -614,10 +614,11 @@ export default function UserProfileScreen() {
                           useNativeControls={false}
                         />
                       ) : (
-                        <Image
-                          source={{ uri: firstMedia.path }}
+                        <OptimizedImage
+                          source={firstMedia.path}
+                          thumbnail={firstMedia.thumbnail}
+                          isThumbnail={true}
                           style={styles.postImage}
-                          resizeMode="cover"
                         />
                       )
                     ) : (

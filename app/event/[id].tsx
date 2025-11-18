@@ -12,6 +12,7 @@ import {
   Alert,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { OptimizedImage } from '@/components/OptimizedImage';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
@@ -29,6 +30,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { formatTimeAgo } from '@/lib/time-utils';
 import { VideoPlayer } from '@/components/VideoPlayer';
 import { Footer } from '@/components/Footer';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -181,9 +183,12 @@ export default function EventDetailScreen() {
             />
             <View style={styles.authorInfo}>
               <View style={styles.authorNameRow}>
-                <Text style={[styles.authorName, { color: theme.colors.text }]}>
-                  {event.user?.full_name || 'Bilinmeyen'}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.authorName, { color: theme.colors.text }]}>
+                    {event.user?.full_name || 'Bilinmeyen'}
+                  </Text>
+                  {event.user?.verified && <VerifiedBadgeIcon size={16} />}
+                </View>
                 <View style={[styles.eventBadge, { backgroundColor: severityColor + '20' }]}>
                   <AlertCircle size={14} color={severityColor} />
                   <Text style={[styles.eventBadgeText, { color: severityColor }]}>Olay Var</Text>
@@ -225,10 +230,10 @@ export default function EventDetailScreen() {
                 previewMode={true}
               />
             ) : (
-              <Image
-                source={{ uri: firstMedia }}
+              <OptimizedImage
+                source={firstMedia}
+                isThumbnail={false}
                 style={styles.eventImage}
-                contentFit="cover"
               />
             )}
           </View>

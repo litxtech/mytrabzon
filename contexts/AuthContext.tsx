@@ -135,7 +135,12 @@ export const [AuthContext, useAuth] = createContextHook(() => {
 
     console.log('Setting up real-time subscription for user:', user.id);
     const subscription = supabase
-      .channel(`profile_changes_${user.id}`)
+      // Optimize: Profile changes için minimal subscription
+      .channel(`profile_changes_${user.id}`, {
+        config: {
+          broadcast: { self: false },
+        },
+      })
       .on(
         'postgres_changes',
         {
