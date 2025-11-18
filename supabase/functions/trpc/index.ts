@@ -8329,10 +8329,25 @@ async function cleanupExpiredRides(supabase: any) {
   }
 }
 
+const maskPlate = (plate?: string | null) => {
+  if (!plate) return plate;
+  const trimmed = plate.trim();
+  if (trimmed.length <= 2) {
+    return '*'.repeat(trimmed.length);
+  }
+  const visibleLength = Math.max(2, trimmed.length - 3);
+  const visible = trimmed.slice(0, visibleLength);
+  const hidden = '*'.repeat(trimmed.length - visibleLength);
+  return `${visible}${hidden}`;
+};
+
 const sanitizeRideForClient = (ride: any) => {
   if (!ride) return ride;
   const { driver_phone, ...rest } = ride;
-  return rest;
+  return {
+    ...rest,
+    vehicle_plate: maskPlate(ride.vehicle_plate),
+  };
 };
 
 const sanitizeBookingForClient = (booking: any) => {

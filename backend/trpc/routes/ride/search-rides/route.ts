@@ -3,6 +3,16 @@ import { protectedProcedure } from '../../../create-context';
 
 const UPCOMING_BUFFER_MINUTES = 5;
 
+const maskPlate = (plate?: string | null) => {
+  if (!plate) return plate;
+  const trimmed = plate.trim();
+  if (trimmed.length <= 2) return '*'.repeat(trimmed.length);
+  const visibleLength = Math.max(2, trimmed.length - 3);
+  const visible = trimmed.slice(0, visibleLength);
+  const hidden = '*'.repeat(trimmed.length - visibleLength);
+  return `${visible}${hidden}`;
+};
+
 export const searchRidesProcedure = protectedProcedure
   .input(
     z.object({
@@ -64,7 +74,10 @@ export const searchRidesProcedure = protectedProcedure
 
     const rides = (data || []).map((ride: any) => {
       const { driver_phone, ...rest } = ride;
-      return rest;
+      return {
+        ...rest,
+        vehicle_plate: maskPlate(rest.vehicle_plate),
+      };
     });
 
     return { rides };

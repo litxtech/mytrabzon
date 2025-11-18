@@ -898,7 +898,7 @@ export default function LoginScreen() {
             <ActivityIndicator color={COLORS.white} />
           ) : (
             <Text style={styles.googleButtonText}>
-              🔐 Google ile {mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
+              Google ile {mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
             </Text>
           )}
         </TouchableOpacity>
@@ -913,7 +913,7 @@ export default function LoginScreen() {
               <ActivityIndicator color={COLORS.white} />
             ) : (
               <Text style={styles.appleButtonText}>
-                🍎 Apple ile {mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
+                Apple ile {mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
               </Text>
             )}
           </TouchableOpacity>
@@ -924,7 +924,7 @@ export default function LoginScreen() {
           onPress={() => setMode('magic')}
           disabled={loading}
         >
-          <Text style={styles.magicLinkButtonText}>✉️ Link ile Giriş</Text>
+          <Text style={styles.magicLinkButtonText}>Link ile Giriş</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -936,7 +936,7 @@ export default function LoginScreen() {
           }}
           disabled={loading}
         >
-          <Text style={styles.magicLinkButtonText}>📱 Telefon ile Giriş</Text>
+          <Text style={styles.magicLinkButtonText}>Telefon ile Giriş</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => setMode(mode === 'login' ? 'register' : 'login')}>

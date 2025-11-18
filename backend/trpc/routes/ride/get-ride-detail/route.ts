@@ -1,6 +1,16 @@
 import { z } from 'zod';
 import { protectedProcedure } from '../../../create-context';
 
+const maskPlate = (plate?: string | null) => {
+  if (!plate) return plate;
+  const trimmed = plate.trim();
+  if (trimmed.length <= 2) return '*'.repeat(trimmed.length);
+  const visibleLength = Math.max(2, trimmed.length - 3);
+  const visible = trimmed.slice(0, visibleLength);
+  const hidden = '*'.repeat(trimmed.length - visibleLength);
+  return `${visible}${hidden}`;
+};
+
 export const getRideDetailProcedure = protectedProcedure
   .input(
     z.object({
@@ -67,7 +77,10 @@ export const getRideDetailProcedure = protectedProcedure
     });
 
     return {
-      ride: rideData,
+      ride: {
+        ...rideData,
+        vehicle_plate: maskPlate(rideData.vehicle_plate),
+      },
       userBooking: sanitizedUserBooking,
       bookings: sanitizedDriverBookings,
       isDriver: user ? data.driver_id === user.id : false,
