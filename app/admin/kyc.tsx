@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,8 +13,8 @@ import {
   Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, CheckCircle2, XCircle, Clock, Eye, X } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { ArrowLeft, CheckCircle2, XCircle, Clock, X } from 'lucide-react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { trpc } from '../../lib/trpc';
 
@@ -34,6 +34,12 @@ export default function AdminKycScreen() {
     limit: 50,
     offset: 0,
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
 
   const approveMutation = trpc.admin.approveKyc.useMutation({
     onSuccess: () => {

@@ -3,7 +3,7 @@
 
 import { initTRPC, TRPCError } from "npm:@trpc/server@^11.7.1";
 import superjson from "npm:superjson@^2.2.5";
-import { createClient, SupabaseClient, User } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, SupabaseClient, User } from "npm:@supabase/supabase-js@2";
 
 // Get Supabase configuration from environment
 function getSupabaseAdmin(): SupabaseClient {

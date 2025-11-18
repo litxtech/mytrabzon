@@ -12,10 +12,11 @@ import {
   Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Search, Ban, ShieldCheck, XCircle, CheckCircle2, EyeOff, Square, CheckSquare, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, Search, Ban, XCircle, CheckCircle2, EyeOff, Square, CheckSquare, Trash2 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { trpc } from '../../lib/trpc';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 
 type FilterType = 'all' | 'today' | 'banned' | 'blueTick' | 'hidden' | 'live';
 
@@ -305,7 +306,7 @@ export default function AdminUsersScreen() {
                     <Text style={styles.userName}>{user.full_name || 'İsimsiz'}</Text>
                     {hasBlueTick && (
                       <View style={styles.blueTickBadge}>
-                        <ShieldCheck size={16} color={COLORS.primary} />
+                        <VerifiedBadgeIcon size={18} />
                       </View>
                     )}
                   </View>
@@ -514,9 +515,7 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
   blueTickBadge: {
-    backgroundColor: COLORS.primary + '20',
-    borderRadius: 12,
-    padding: 2,
+    marginLeft: SPACING.xs,
   },
   userEmail: {
     fontSize: FONT_SIZES.sm,

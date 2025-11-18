@@ -14,7 +14,8 @@ import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowLeft, Users, Trophy, Plus, Star } from 'lucide-react-native';
+import { ArrowLeft, Users, Trophy, Plus } from 'lucide-react-native';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 
 export default function TeamsScreen() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function TeamsScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   // Takımları getir
-  const { data: teamsData, isLoading, refetch } = trpc.football.getTeams.useQuery(
+  const { data: teamsData, isLoading, refetch } = (trpc as any).football.getTeams.useQuery(
     { limit: 50, offset: 0 },
     { enabled: !!user }
   );
@@ -50,11 +51,7 @@ export default function TeamsScreen() {
       <View style={styles.teamInfo}>
         <View style={styles.teamHeader}>
           <Text style={styles.teamName}>{item.name}</Text>
-          {item.is_verified && (
-            <View style={styles.verifiedBadge}>
-              <Star size={14} color={COLORS.primary} fill={COLORS.primary} />
-            </View>
-          )}
+          {item.is_verified && <VerifiedBadgeIcon size={18} />}
         </View>
         
         <View style={styles.teamStats}>
@@ -197,9 +194,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.text,
     marginRight: SPACING.xs,
-  },
-  verifiedBadge: {
-    padding: 2,
   },
   teamStats: {
     flexDirection: 'row',

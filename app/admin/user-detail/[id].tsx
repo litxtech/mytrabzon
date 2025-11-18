@@ -11,11 +11,12 @@ import {
   Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Ban, CheckCircle, XCircle, Shield, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, Ban, XCircle, Shield, CheckCircle } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { COLORS, SPACING, FONT_SIZES } from '../../../constants/theme';
 import { trpc } from '../../../lib/trpc';
 import { Footer } from '@/components/Footer';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 
 export default function AdminUserDetailScreen() {
   const router = useRouter();
@@ -89,7 +90,7 @@ export default function AdminUserDetailScreen() {
                 { text: 'İptal', style: 'cancel' },
                 {
                   text: 'Banla',
-                  onPress: (days) => {
+                  onPress: (days?: string) => {
                     if (days && !isNaN(Number(days))) {
                       const banUntil = new Date();
                       banUntil.setDate(banUntil.getDate() + Number(days));
@@ -238,7 +239,7 @@ export default function AdminUserDetailScreen() {
                 <Text style={styles.profileName}>{profile.full_name || 'İsimsiz'}</Text>
                 {hasBlueTick && (
                   <View style={styles.blueTickBadge}>
-                    <CheckCircle size={20} color={COLORS.primary} fill={COLORS.primary} />
+                    <VerifiedBadgeIcon size={20} />
                   </View>
                 )}
                 {hasSupporterBadge && (

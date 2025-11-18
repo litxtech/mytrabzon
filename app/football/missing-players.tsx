@@ -17,7 +17,6 @@ import { useRouter, Stack } from 'expo-router';
 import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuth } from '@/contexts/AuthContext';
 import { ArrowLeft, MapPin, Clock, MessageCircle, UserPlus } from 'lucide-react-native';
 
 type MissingPlayerPost = {
@@ -58,7 +57,6 @@ type MissingPlayerPost = {
 export default function MissingPlayersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
   const [city, setCity] = useState<'Trabzon' | 'Giresun'>('Trabzon');
   const [searchType, setSearchType] = useState<'all' | 'team' | 'player'>('all');
   const [modalVisible, setModalVisible] = useState(false);
@@ -66,8 +64,7 @@ export default function MissingPlayersScreen() {
   const [message, setMessage] = useState('Ben oynamak istiyorum');
 
   const { data: response, isLoading, refetch } = (trpc as any).football.getMissingPlayerPosts.useQuery(
-    { city, limit: 50, offset: 0 },
-    { enabled: !!user }
+    { city, limit: 50, offset: 0 }
   );
 
   const posts = useMemo<MissingPlayerPost[]>(() => response?.posts ?? [], [response]);

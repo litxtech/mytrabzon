@@ -17,6 +17,7 @@ import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import { CallButtons } from '@/components/CallButtons';
 import { Footer } from '@/components/Footer';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 
 interface UserListItem {
   id: string;
@@ -106,7 +107,7 @@ export default function AllUsersScreen() {
         <View style={styles.userInfo}>
           <View style={styles.nameRow}>
             <Text style={styles.userName}>{item.full_name}</Text>
-            {item.verified && <Text style={styles.verifiedBadge}>✓</Text>}
+            {item.verified && <VerifiedBadgeIcon size={16} />}
           </View>
           {item.bio && (
             <Text style={styles.userBio} numberOfLines={1}>
@@ -398,11 +399,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     fontWeight: '700',
     color: COLORS.text,
-  },
-  verifiedBadge: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.primary,
-    fontWeight: '700',
   },
   userBio: {
     fontSize: FONT_SIZES.sm,

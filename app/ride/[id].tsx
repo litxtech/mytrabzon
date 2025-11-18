@@ -15,6 +15,7 @@ import { ArrowLeft, Clock, Users, FileText, CheckCircle, XCircle, Car } from 'lu
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 
 export default function RideDetailScreen() {
   const router = useRouter();
@@ -186,11 +187,7 @@ export default function RideDetailScreen() {
           <View style={styles.driverInfo}>
             <View style={styles.driverHeader}>
               <Text style={styles.driverName}>{driver?.full_name || 'İsimsiz'}</Text>
-              {driver?.verified && (
-                <View style={styles.verifiedBadge}>
-                  <Text style={styles.verifiedText}>✓</Text>
-                </View>
-              )}
+            {driver?.verified && <VerifiedBadgeIcon size={18} />}
             </View>
             {ride.driver_full_name && ride.driver_full_name !== driver?.full_name && (
               <Text style={styles.driverMeta}>İlan sahibi: {ride.driver_full_name}</Text>
@@ -407,6 +404,20 @@ export default function RideDetailScreen() {
                     </View>
                   </View>
 
+                  {booking.notes ? (
+                    <View style={styles.bookingNoteBox}>
+                      <FileText size={16} color={COLORS.textLight} style={{ marginTop: 2 }} />
+                      <Text style={styles.bookingNoteText}>{booking.notes}</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.bookingNoteBox}>
+                      <FileText size={16} color={COLORS.textLight} style={{ marginTop: 2 }} />
+                      <Text style={[styles.bookingNoteText, { fontStyle: 'italic', color: COLORS.textLight }]}>
+                        Yolcu not bırakmadı.
+                      </Text>
+                    </View>
+                  )}
+
                   {booking.status === 'pending' && (
                     <View style={styles.bookingActions}>
                       <TouchableOpacity
@@ -521,19 +532,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.lg,
     fontWeight: '700',
     color: COLORS.text,
-  },
-  verifiedBadge: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  verifiedText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '700',
   },
   driverBio: {
     fontSize: FONT_SIZES.sm,
@@ -728,6 +726,22 @@ const styles = StyleSheet.create({
   bookingPassengerMeta: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
+  },
+  bookingNoteBox: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    backgroundColor: COLORS.white,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  bookingNoteText: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: FONT_SIZES.sm,
+    lineHeight: 20,
   },
   bookingActions: {
     flexDirection: 'row',

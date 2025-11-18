@@ -3026,6 +3026,10 @@ const appRouter = createTRPCRouter({
           .order('start_time', { ascending: true })
           .range(input.offset, input.offset + input.limit - 1);
 
+        const currentTime = turkeyTime.toTimeString().slice(0, 8);
+        query = query.or(
+          `match_date.gt.${today},and(match_date.eq.${today},start_time.gte.${currentTime})`
+        );
         if (input.city) {
           query = query.eq('city', input.city);
         }
@@ -4536,19 +4540,25 @@ const appRouter = createTRPCRouter({
         const { supabase, user } = ctx;
         if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
 
-        // Sahanın o saatte müsait olup olmadığını kontrol et
+        // Sahanın o saatte kayıtlı bir slotu var mı kontrol et
         const { data: existing } = await supabase
           .from('field_reservations')
-          .select('id')
+          .select('*')
           .eq('field_id', input.field_id)
           .eq('reservation_date', input.reservation_date)
           .eq('start_time', input.start_time)
-          .eq('is_available', true)
           .maybeSingle();
 
         let reservationId: string;
 
         if (existing) {
+          if (!existing.is_available && existing.reserved_by && existing.reserved_by !== user.id) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Bu saat dilimi zaten rezerve edilmiş.',
+            });
+          }
+
           // Mevcut rezervasyon kaydını güncelle
           const { data, error } = await supabase
             .from('field_reservations')
@@ -6112,7 +6122,7 @@ const appRouter = createTRPCRouter({
       .input(
         z.object({
           search: z.string().optional(),
-          filter: z.enum(['all', 'today', 'banned', 'blueTick']).default('all'),
+          filter: z.enum(['all', 'today', 'banned', 'blueTick', 'hidden', 'live']).default('all'),
           limit: z.number().min(1).max(100).default(50),
           offset: z.number().min(0).default(0),
         })
@@ -6137,12 +6147,25 @@ const appRouter = createTRPCRouter({
           }
         }
         
+        const [
+          { count: totalUsers },
+          { count: liveUsers },
+          { count: bannedUsers },
+          { count: hiddenUsers },
+        ] = await Promise.all([
+          supabase.from("profiles").select("id", { count: "exact", head: true }),
+          supabase.from("profiles").select("id", { count: "exact", head: true }).eq("is_online", true),
+          supabase.from("user_bans").select("id", { count: "exact", head: true }).eq("is_active", true),
+          supabase.from("hidden_users").select("id", { count: "exact", head: true }),
+        ]);
+
         let query = supabase
           .from("profiles")
           .select(`
             *,
             blue_ticks!left(id, verified_at, verification_type, is_active),
-            user_bans!left(id, reason, ban_type, ban_until, is_active)
+            user_bans!left(id, reason, ban_type, ban_until, is_active),
+            hidden_users!left(id, hidden_at)
           `, { count: "exact" });
         
         // Filtreler
@@ -6178,6 +6201,19 @@ const appRouter = createTRPCRouter({
             // Mavi tikli kullanıcı yoksa boş sonuç döndür
             query = query.eq('id', '00000000-0000-0000-0000-000000000000');
           }
+        } else if (input.filter === 'hidden') {
+          const { data: hiddenUserIds } = await supabase
+            .from('hidden_users')
+            .select('user_id');
+
+          if (hiddenUserIds && hiddenUserIds.length > 0) {
+            const userIds = hiddenUserIds.map((h) => h.user_id);
+            query = query.in('id', userIds);
+          } else {
+            query = query.eq('id', '00000000-0000-0000-0000-000000000000');
+          }
+        } else if (input.filter === 'live') {
+          query = query.eq('is_online', true);
         }
         
         if (input.search) {
@@ -6195,6 +6231,12 @@ const appRouter = createTRPCRouter({
         return {
           users: data || [],
           total: count || 0,
+          stats: {
+            totalUsers: totalUsers ?? 0,
+            liveUsers: liveUsers ?? 0,
+            bannedUsers: bannedUsers ?? 0,
+            hiddenUsers: hiddenUsers ?? 0,
+          },
         };
       }),
 
@@ -6335,8 +6377,8 @@ const appRouter = createTRPCRouter({
           .eq("user_id", input.userId)
           .maybeSingle();
         
+        let blueTickRecord;
         if (existing) {
-          // Güncelle
           const { data, error } = await supabase
             .from("blue_ticks")
             .update({
@@ -6349,25 +6391,29 @@ const appRouter = createTRPCRouter({
             .single();
           
           if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+          blueTickRecord = data;
+        } else {
+          const { data, error } = await supabase
+            .from("blue_ticks")
+            .insert({
+              user_id: input.userId,
+              verified_by: adminUserId,
+              verification_type: input.verificationType,
+              is_active: true,
+            })
+            .select()
+            .single();
           
-          return data;
+          if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+          blueTickRecord = data;
         }
-        
-        // Yeni blue tick ekle
-        const { data, error } = await supabase
-          .from("blue_ticks")
-          .insert({
-            user_id: input.userId,
-            verified_by: adminUserId,
-            verification_type: input.verificationType,
-            is_active: true,
-          })
-          .select()
-          .single();
-        
-        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-        
-        return data;
+
+        await supabase
+          .from("profiles")
+          .update({ verified: true })
+          .eq("id", input.userId);
+
+        return blueTickRecord;
       }),
 
     removeBlueTick: protectedProcedure
@@ -6399,7 +6445,20 @@ const appRouter = createTRPCRouter({
           .eq("is_active", true);
         
         if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-        
+
+        const { data: profileRow } = await supabase
+          .from("profiles")
+          .select("is_verified")
+          .eq("id", input.userId)
+          .single();
+
+        const stillVerified = profileRow?.is_verified === true;
+
+        await supabase
+          .from("profiles")
+          .update({ verified: stillVerified })
+          .eq("id", input.userId);
+
         return { success: true };
       }),
 
@@ -7285,7 +7344,7 @@ const appRouter = createTRPCRouter({
         // Profile'ı güncelle (trigger otomatik yapacak ama emin olmak için)
         await supabase
           .from("profiles")
-          .update({ is_verified: true })
+          .update({ is_verified: true, verified: true })
           .eq("id", kycRequest.user_id);
         
         return data;
@@ -7355,7 +7414,7 @@ const appRouter = createTRPCRouter({
         // Profile'ı güncelle (trigger otomatik yapacak ama emin olmak için)
         await supabase
           .from("profiles")
-          .update({ is_verified: false })
+          .update({ is_verified: false, verified: false })
           .eq("id", kycRequest.user_id);
         
         return data;
@@ -7589,14 +7648,34 @@ const appRouter = createTRPCRouter({
           driverBookings = bookingRows ?? [];
         }
 
+        const { data: reviewRows } = await supabase
+          .from('ride_reviews')
+          .select(`
+            *,
+            passenger:profiles(id, full_name, avatar_url)
+          `)
+          .eq('ride_offer_id', input.ride_id)
+          .order('created_at', { ascending: false });
+
+        const sanitizedReviews = (reviewRows || []).map(sanitizeReview);
+        const userHasReview = userId
+          ? sanitizedReviews.some((review) => review.passenger_id === userId)
+          : false;
+
         const sanitizedRide = sanitizeRideForClient(data);
         const sanitizedUserBooking = sanitizeBookingForClient(userBooking);
-        const sanitizedDriverBookings = (driverBookings || []).map((booking) => sanitizeBookingForClient(booking));
+        if (sanitizedUserBooking) {
+          sanitizedUserBooking.has_review = userHasReview;
+        }
+        const sanitizedDriverBookings = (driverBookings || []).map((booking) =>
+          sanitizeBookingForClient(booking)
+        );
 
         return {
           ride: sanitizedRide,
           userBooking: sanitizedUserBooking,
           bookings: sanitizedDriverBookings,
+          reviews: sanitizedReviews,
           isDriver: userId ? data.driver_id === userId : false,
         };
       }),
@@ -7758,6 +7837,107 @@ const appRouter = createTRPCRouter({
         }
 
         return sanitizeBookingForClient(booking);
+      }),
+
+    createReview: protectedProcedure
+      .input(
+        z.object({
+          booking_id: z.string().uuid(),
+          rating: z.number().int().min(1).max(5),
+          comment: z.string().max(1000).optional().nullable(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const { data: booking, error: bookingError } = await supabase
+          .from('ride_bookings')
+          .select(`
+            *,
+            ride:ride_offers(id, driver_id, departure_time)
+          `)
+          .eq('id', input.booking_id)
+          .single();
+
+        if (bookingError || !booking) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Rezervasyon bulunamadı' });
+        }
+
+        if (booking.passenger_id !== user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Bu rezervasyon size ait değil' });
+        }
+
+        if (booking.status !== 'approved') {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Sadece onaylanan rezervasyonlar değerlendirilebilir' });
+        }
+
+        if (new Date(booking.ride.departure_time) > new Date()) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Yolculuk tamamlanmadan değerlendirme bırakılamaz' });
+        }
+
+        const { data: existingReview } = await supabase
+          .from('ride_reviews')
+          .select('id')
+          .eq('booking_id', input.booking_id)
+          .maybeSingle();
+
+        if (existingReview) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Bu yolculuk için zaten bir yorum bıraktınız' });
+        }
+
+        const { data: review, error } = await supabase
+          .from('ride_reviews')
+          .insert({
+            ride_offer_id: booking.ride_offer_id,
+            booking_id: booking.id,
+            passenger_id: user.id,
+            driver_id: booking.ride.driver_id,
+            rating: input.rating,
+            comment: input.comment || null,
+          })
+          .select(`
+            *,
+            passenger:profiles(id, full_name, avatar_url),
+            ride:ride_offers(id, departure_title, destination_title, departure_time)
+          `)
+          .single();
+
+        if (error) {
+          console.error('Create review error:', error);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message || 'Yorum kaydedilemedi' });
+        }
+
+        return sanitizeReview(review);
+      }),
+
+    getDriverReviews: publicProcedure
+      .input(
+        z.object({
+          driver_id: z.string().uuid(),
+          limit: z.number().int().min(1).max(100).optional().default(20),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+
+        const { data, error } = await supabase
+          .from('ride_reviews')
+          .select(`
+            *,
+            passenger:profiles(id, full_name, avatar_url),
+            ride:ride_offers(id, departure_title, destination_title, departure_time)
+          `)
+          .eq('driver_id', input.driver_id)
+          .order('created_at', { ascending: false })
+          .limit(input.limit);
+
+        if (error) {
+          console.error('Get driver reviews error:', error);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message || 'Yorumlar getirilemedi' });
+        }
+
+        return (data || []).map(sanitizeReview);
       }),
 
     approveBooking: protectedProcedure
@@ -8374,4 +8554,28 @@ const ensureAdminAccess = async (supabase: any, userId: string) => {
 
   return data;
 };
+
+const sanitizeReview = (review: any) => ({
+  id: review.id,
+  ride_offer_id: review.ride_offer_id,
+  rating: review.rating,
+  comment: review.comment,
+  created_at: review.created_at,
+  passenger_id: review.passenger_id,
+  passenger: review.passenger
+    ? {
+        id: review.passenger.id,
+        full_name: review.passenger.full_name,
+        avatar_url: review.passenger.avatar_url,
+      }
+    : null,
+  ride: review.ride
+    ? {
+        id: review.ride.id,
+        departure_title: review.ride.departure_title,
+        destination_title: review.ride.destination_title,
+        departure_time: review.ride.departure_time,
+      }
+    : null,
+});
 

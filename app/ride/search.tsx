@@ -19,6 +19,7 @@ import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '@/contexts/AuthContext';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 
 export default function RideSearchScreen() {
   const router = useRouter();
@@ -153,11 +154,7 @@ export default function RideSearchScreen() {
             <View style={styles.driverInfo}>
               <View style={styles.driverNameRow}>
                 <Text style={styles.driverName}>{driver?.full_name || 'İsimsiz'}</Text>
-                {driver?.verified && (
-                  <View style={styles.verifiedBadge}>
-                    <Text style={styles.verifiedText}>✓</Text>
-                  </View>
-                )}
+                {driver?.verified && <VerifiedBadgeIcon size={16} />}
               </View>
               {(item.vehicle_brand || item.vehicle_model || item.vehicle_color) && (
                 <Text style={styles.vehicleInfoText}>
@@ -466,19 +463,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
     fontWeight: '600',
-  },
-  verifiedBadge: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  verifiedText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '700',
   },
   priceBadge: {
     flexDirection: 'row',

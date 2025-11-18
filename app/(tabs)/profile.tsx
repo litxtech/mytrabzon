@@ -11,6 +11,7 @@ import { useRouter } from 'expo-router';
 import { Footer } from '../../components/Footer';
 import { SupportPanel } from '../../components/SupportPanel';
 import { SupporterBadge } from '../../components/SupporterBadge';
+import VerifiedBadgeIcon from '../../components/VerifiedBadge';
 import { trpc } from '../../lib/trpc';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -537,11 +538,7 @@ export default function ProfileScreen() {
           <View style={styles.profileInfo}>
             <View style={styles.nameRow}>
               <Text style={[styles.name, { color: theme.colors.text }]}>{profile.full_name}</Text>
-              {profile.verified && (
-                <View style={styles.verifiedDot}>
-                  <Text style={styles.verifiedText}>✓</Text>
-                </View>
-              )}
+              {profile.verified && <VerifiedBadgeIcon size={20} />}
               {profile.supporter_badge && profile.supporter_badge_visible && (
                 <SupporterBadge 
                   visible={true} 
@@ -917,19 +914,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
     color: COLORS.text,
-  },
-  verifiedDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  verifiedText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '700',
   },
   bio: {
     fontSize: FONT_SIZES.xs,

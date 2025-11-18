@@ -25,11 +25,13 @@ import {
   Clock,
   MapPin,
   Users,
+  Star,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CallButtons } from '@/components/CallButtons';
 import { SupporterBadge } from '@/components/SupporterBadge';
 import { Footer } from '@/components/Footer';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 
 // Mesaj butonu component'i
 function MessageButton({ targetUserId }: { targetUserId: string }) {
@@ -104,6 +106,10 @@ export default function UserProfileScreen() {
   const [showRideHistory, setShowRideHistory] = useState(false);
   const { data: driverRides, isLoading: driverRidesLoading } = trpc.ride.getDriverRides.useQuery(
     { driver_id: id!, includePast: true },
+    { enabled: !!id }
+  );
+  const { data: driverReviews } = (trpc as any).ride.getDriverReviews.useQuery(
+    { driver_id: id!, limit: 20 },
     { enabled: !!id }
   );
 
@@ -301,6 +307,11 @@ export default function UserProfileScreen() {
     </View>
   );
 
+  const averageRating =
+    driverReviews && driverReviews.length > 0
+      ? driverReviews.reduce((sum: number, review: any) => sum + review.rating, 0) / driverReviews.length
+      : null;
+
   return (
     <SafeAreaView style={styles.container}>
       <Stack.Screen
@@ -349,11 +360,7 @@ export default function UserProfileScreen() {
 
           <View style={styles.nameRow}>
             <Text style={styles.name}>{profile.full_name || 'İsimsiz'}</Text>
-            {profile.verified && (
-              <View style={styles.verifiedBadge}>
-                <Text style={styles.verifiedText}>✓</Text>
-              </View>
-            )}
+            {profile.verified && <VerifiedBadgeIcon size={20} />}
             {profile.supporter_badge && profile.supporter_badge_visible && (
               <SupporterBadge 
                 visible={true} 
@@ -454,6 +461,53 @@ export default function UserProfileScreen() {
                 Yolculuklar
               </Text>
             </TouchableOpacity>
+          )}
+
+          {driverReviews && driverReviews.length > 0 && (
+            <View style={styles.reviewSummaryCard}>
+              <View style={styles.reviewHeader}>
+                <Text style={styles.reviewTitle}>Değerlendirmeler</Text>
+                <View style={styles.ratingRow}>
+                  <Star size={18} color={COLORS.warning} fill={COLORS.warning} />
+                  <Text style={styles.ratingValue}>
+                    {averageRating?.toFixed(1)}
+                  </Text>
+                  <Text style={styles.ratingCount}>
+                    ({driverReviews.length})
+                  </Text>
+                </View>
+              </View>
+              {driverReviews.slice(0, 3).map((review: any) => (
+                <View key={review.id} style={styles.reviewItem}>
+                  <View style={styles.reviewHeaderRow}>
+                    <Text style={styles.reviewName}>
+                      {review.passenger?.full_name || 'Kullanıcı'}
+                    </Text>
+                    <View style={styles.ratingRow}>
+                      {Array.from({ length: 5 }).map((_, index) => (
+                        <Star
+                          key={index}
+                          size={14}
+                          color={index < review.rating ? COLORS.warning : COLORS.border}
+                          fill={index < review.rating ? COLORS.warning : 'transparent'}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                  {review.comment ? (
+                    <Text style={styles.reviewComment}>{review.comment}</Text>
+                  ) : null}
+                  <Text style={styles.reviewDate}>
+                    {new Date(review.created_at).toLocaleDateString('tr-TR')}
+                  </Text>
+                </View>
+              ))}
+              {driverReviews.length > 3 && (
+                <Text style={styles.reviewMoreText}>
+                  {driverReviews.length - 3} yorumu görmek için yakında!
+                </Text>
+              )}
+            </View>
           )}
 
           {isOwnProfile && (
@@ -681,21 +735,6 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     marginBottom: SPACING.xs,
   },
-  verifiedBadge: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.white,
-  },
-  verifiedText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '700',
-  },
   name: {
     fontSize: FONT_SIZES.xxl,
     fontWeight: '700',
@@ -762,6 +801,70 @@ const styles = StyleSheet.create({
   },
   rideHistoryButtonTextActive: {
     color: COLORS.white,
+  },
+  reviewSummaryCard: {
+    width: '100%',
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.md,
+    marginTop: SPACING.md,
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  reviewTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  ratingValue: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  ratingCount: {
+    color: COLORS.textLight,
+  },
+  reviewItem: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  reviewHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  reviewName: {
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  reviewComment: {
+    color: COLORS.text,
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  reviewDate: {
+    color: COLORS.textLight,
+    fontSize: FONT_SIZES.xs,
+    marginTop: 4,
+  },
+  reviewMoreText: {
+    marginTop: SPACING.sm,
+    color: COLORS.primary,
+    fontWeight: '600',
   },
   messageButton: {
     width: 44,

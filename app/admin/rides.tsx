@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -159,6 +159,20 @@ export default function AdminRidesScreen() {
   }
 
   const rides = ridesQuery.data || [];
+
+  useEffect(() => {
+    if (!rides || rides.length === 0) {
+      if (selectedRideId) {
+        setSelectedRideId(null);
+      }
+      return;
+    }
+
+    const exists = selectedRideId && rides.some((ride) => ride.id === selectedRideId);
+    if (!exists) {
+      setSelectedRideId(rides[0].id);
+    }
+  }, [rides, selectedRideId]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
