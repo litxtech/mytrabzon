@@ -158,7 +158,7 @@ export default function AdminRidesScreen() {
     );
   }
 
-  const rides = ridesQuery.data || [];
+  const rides = useMemo(() => ridesQuery.data || [], [ridesQuery.data]);
 
   useEffect(() => {
     if (!rides || rides.length === 0) {

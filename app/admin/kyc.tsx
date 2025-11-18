@@ -29,10 +29,12 @@ export default function AdminKycScreen() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
 
-  const { data, isLoading, refetch } = trpc.admin.getKycRequests.useQuery({
+  const { data, isLoading, refetch, error } = trpc.admin.getKycRequests.useQuery({
     status: selectedStatus,
     limit: 50,
     offset: 0,
+  }, {
+    retry: 1,
   });
 
   useFocusEffect(
@@ -123,6 +125,20 @@ export default function AdminKycScreen() {
       <View style={[styles.container, styles.centerContent, { paddingTop: insets.top }]}>
         <ActivityIndicator size="large" color={COLORS.primary} />
         <Text style={styles.loadingText}>Yükleniyor...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, styles.centerContent, { paddingTop: insets.top }]}>
+        <Text style={[styles.loadingText, { color: COLORS.error }]}>Hata: {error.message}</Text>
+        <TouchableOpacity
+          style={[styles.loadMoreButton, { marginTop: SPACING.md }]}
+          onPress={() => refetch()}
+        >
+          <Text style={styles.loadMoreText}>Tekrar Dene</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -260,7 +276,13 @@ export default function AdminKycScreen() {
                 <View style={styles.detailSection}>
                   <Text style={styles.detailLabel}>Doğum Tarihi</Text>
                   <Text style={styles.detailValue}>
-                    {new Date(selectedRequest.birth_date).toLocaleDateString('tr-TR')}
+                    {(() => {
+                      const date = new Date(selectedRequest.birth_date);
+                      const day = date.getDate().toString().padStart(2, '0');
+                      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+                      const year = date.getFullYear();
+                      return `${day}.${month}.${year}`;
+                    })()}
                   </Text>
                 </View>
 
@@ -733,6 +755,19 @@ const styles = StyleSheet.create({
   submitRejectButtonText: {
     fontSize: FONT_SIZES.md,
     color: COLORS.white,
+    fontWeight: '600',
+  },
+  loadMoreButton: {
+    margin: SPACING.md,
+    padding: SPACING.md,
+    backgroundColor: COLORS.primary,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadMoreText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
     fontWeight: '600',
   },
 });

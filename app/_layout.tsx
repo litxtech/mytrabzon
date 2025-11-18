@@ -44,6 +44,7 @@ function RootLayoutNav() {
       <Stack.Screen name="admin/support" options={{ title: "Destek Ticket'ları" }} />
       <Stack.Screen name="admin/policy-view/[id]" options={{ title: "Politika" }} />
       <Stack.Screen name="post/[id]" options={{ title: "Gönderi" }} />
+      <Stack.Screen name="video-feed" options={{ title: "Video", headerShown: false }} />
       <Stack.Screen name="profile/[id]" options={{ title: "Profil" }} />
             <Stack.Screen name="chat/[roomId]" options={{ title: "Sohbet" }} />
             <Stack.Screen name="chat/create-group" options={{ title: "Yeni Grup" }} />

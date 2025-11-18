@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -24,15 +24,39 @@ export default function AdminUsersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [refreshing, setRefreshing] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+  const [offset, setOffset] = useState(0);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const limit = 100;
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { data, isLoading, refetch } = trpc.admin.getUsers.useQuery({
-    search: search || undefined,
+  // Debounce search
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 500); // 500ms debounce
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [search]);
+
+  const { data, isLoading, refetch, error } = trpc.admin.getUsers.useQuery({
+    search: debouncedSearch || undefined,
     filter: filter,
-    limit: 100,
-    offset: 0,
+    limit: limit,
+    offset: offset,
+  }, {
+    retry: 1,
   });
 
   const banUserMutation = trpc.admin.banUser.useMutation({
@@ -88,13 +112,35 @@ export default function AdminUsersScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
+    setOffset(0);
+    setAllUsers([]);
     await refetch();
     setRefreshing(false);
   };
 
+  // Data geldiğinde allUsers'ı güncelle
   useEffect(() => {
+    if (data?.users) {
+      if (offset === 0) {
+        // İlk yükleme veya filtre değiştiğinde listeyi sıfırla
+        setAllUsers(data.users);
+      } else {
+        // Sayfalama ile yeni kullanıcıları ekle
+        setAllUsers((prev) => {
+          const existingIds = new Set(prev.map((u: any) => u.id));
+          const newUsers = data.users.filter((u: any) => !existingIds.has(u.id));
+          return [...prev, ...newUsers];
+        });
+      }
+    }
+  }, [data?.users, offset]);
+
+  // Filter veya debouncedSearch değiştiğinde offset'i sıfırla ve listeyi temizle
+  useEffect(() => {
+    setOffset(0);
+    setAllUsers([]);
     setSelectedUsers(new Set());
-  }, [filter, search]);
+  }, [filter, debouncedSearch]);
 
   const handleBan = (userId: string, fullName: string) => {
     Alert.alert(
@@ -189,6 +235,20 @@ export default function AdminUsersScreen() {
     );
   }
 
+  if (error) {
+    return (
+      <View style={[styles.container, styles.centerContent, { paddingTop: insets.top }]}>
+        <Text style={[styles.loadingText, { color: COLORS.error }]}>Hata: {error.message}</Text>
+        <TouchableOpacity
+          style={[styles.loadMoreButton, { marginTop: SPACING.md }]}
+          onPress={() => refetch()}
+        >
+          <Text style={styles.loadMoreText}>Tekrar Dene</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -262,8 +322,8 @@ export default function AdminUsersScreen() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {data?.users && data.users.length > 0 ? (
-          [...data.users].sort((a: any, b: any) => {
+        {allUsers && allUsers.length > 0 ? (
+          [...allUsers].sort((a: any, b: any) => {
             // created_at'e göre sırala (yeni → eski)
             const dateA = new Date(a.created_at || 0).getTime();
             const dateB = new Date(b.created_at || 0).getTime();
@@ -376,6 +436,25 @@ export default function AdminUsersScreen() {
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>Kullanıcı bulunamadı</Text>
           </View>
+        )}
+
+        {/* Daha Fazla Yükle Butonu */}
+        {data && data.total > allUsers.length && (
+          <TouchableOpacity
+            style={styles.loadMoreButton}
+            onPress={() => {
+              setOffset((prev) => prev + limit);
+            }}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            ) : (
+              <Text style={styles.loadMoreText}>
+                Daha Fazla Yükle ({data.total - allUsers.length} kullanıcı kaldı)
+              </Text>
+            )}
+          </TouchableOpacity>
         )}
       </ScrollView>
     </View>
@@ -622,6 +701,19 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
     marginTop: SPACING.xs,
+  },
+  loadMoreButton: {
+    margin: SPACING.md,
+    padding: SPACING.md,
+    backgroundColor: COLORS.primary,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadMoreText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
   },
 });
 

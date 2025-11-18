@@ -101,6 +101,7 @@ import {
   markAllAsReadProcedure,
   deleteAllNotificationsProcedure,
 } from "./routes/notification/update-notification/route";
+import { createTicketProcedure } from "./routes/support/create-ticket/route";
 
 export const appRouter = createTRPCRouter({
   example: createTRPCRouter({
@@ -214,6 +215,9 @@ export const appRouter = createTRPCRouter({
     bookRide: bookRideProcedure,
     approveBooking: approveBookingProcedure,
     rejectBooking: rejectBookingProcedure,
+  }),
+  support: createTRPCRouter({
+    createTicket: createTicketProcedure,
   }),
 });
 

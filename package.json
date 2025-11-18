@@ -14,7 +14,9 @@
     "ios": "expo run:ios",
     "bump-version": "node scripts/bump-version.js",
     "version": "node scripts/bump-version.js",
-    "generate-apple-jwt": "node scripts/generate-apple-jwt.js"
+    "generate-apple-jwt": "node scripts/generate-apple-jwt.js",
+    "deploy:trpc": "supabase functions deploy trpc --no-verify-jwt",
+    "deploy:functions": "supabase functions deploy --no-verify-jwt"
   },
   "dependencies": {
     "@expo/cli": "^54.0.16",

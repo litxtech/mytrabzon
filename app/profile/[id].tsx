@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Video, ResizeMode } from 'expo-av';
@@ -104,6 +105,8 @@ export default function UserProfileScreen() {
   );
 
   const [showRideHistory, setShowRideHistory] = useState(false);
+  const [followersModalVisible, setFollowersModalVisible] = useState(false);
+  const [followingModalVisible, setFollowingModalVisible] = useState(false);
   const { data: driverRides, isLoading: driverRidesLoading } = trpc.ride.getDriverRides.useQuery(
     { driver_id: id!, includePast: true },
     { enabled: !!id }
@@ -201,16 +204,15 @@ export default function UserProfileScreen() {
       // Takip durumunu güncelle
       await refetchFollowStatus();
       
-      // Tüm ilgili query'leri invalidate et ve refetch yap
+      // Sadece refetch yap, invalidate yapma (optimistic update'i korumak için)
       await Promise.all([
-        utils.user.getFollowStats.invalidate({ user_id: id! }),
-        currentUser?.id ? utils.user.getFollowStats.invalidate({ user_id: currentUser.id }) : Promise.resolve(),
         refetchFollowStats(),
-        utils.user.getProfile.invalidate({ userId: id! }),
-        utils.user.getFollowers.invalidate(),
-        utils.user.getFollowing.invalidate(),
         refetchProfile(),
       ]);
+      
+      // Diğer query'leri invalidate et (liste güncellemeleri için)
+      utils.user.getFollowers.invalidate();
+      utils.user.getFollowing.invalidate();
     },
     onError: () => {
       // Hata durumunda optimistic update'i geri al
@@ -394,14 +396,22 @@ export default function UserProfileScreen() {
               <Text style={styles.statNumber}>{totalPosts}</Text>
               <Text style={styles.statLabel}>Gönderi</Text>
             </View>
-            <View style={styles.statItem}>
+            <TouchableOpacity
+              style={styles.statItem}
+              onPress={() => setFollowersModalVisible(true)}
+              activeOpacity={0.7}
+            >
               <Text style={styles.statNumber}>{followersCount}</Text>
               <Text style={styles.statLabel}>Takipçi</Text>
-            </View>
-            <View style={styles.statItem}>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.statItem}
+              onPress={() => setFollowingModalVisible(true)}
+              activeOpacity={0.7}
+            >
               <Text style={styles.statNumber}>{followingCount}</Text>
               <Text style={styles.statLabel}>Takip</Text>
-            </View>
+            </TouchableOpacity>
           </View>
 
           {/* Action Buttons */}
@@ -648,7 +658,159 @@ export default function UserProfileScreen() {
         
         <Footer />
       </ScrollView>
+
+      {/* Takipçiler Modal */}
+      <Modal
+        visible={followersModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setFollowersModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.followersModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Takipçiler</Text>
+              <TouchableOpacity onPress={() => setFollowersModalVisible(false)}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <FollowersList userId={id!} />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Takip Edilenler Modal */}
+      <Modal
+        visible={followingModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setFollowingModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.followersModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Takip Edilenler</Text>
+              <TouchableOpacity onPress={() => setFollowingModalVisible(false)}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <FollowingList userId={id!} />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
+  );
+}
+
+// Takipçiler Listesi Component
+function FollowersList({ userId }: { userId: string }) {
+  const router = useRouter();
+  const { data, isLoading } = trpc.user.getFollowers.useQuery(
+    { user_id: userId, limit: 100, offset: 0 },
+    { enabled: !!userId }
+  );
+
+  if (isLoading) {
+    return (
+      <View style={styles.modalLoadingContainer}>
+        <ActivityIndicator size="small" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (!data?.followers || data.followers.length === 0) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Users size={48} color={COLORS.textLight} />
+        <Text style={styles.emptyText}>Henüz takipçi yok</Text>
+        <Text style={styles.emptySubtext}>
+          Paylaşımlarınızı artırarak daha fazla takipçi kazanabilirsiniz
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <FlatList
+      data={data.followers}
+      keyExtractor={(item) => item.id}
+      renderItem={({ item }) => (
+        <TouchableOpacity
+          style={styles.followerItem}
+          onPress={() => {
+            router.push(`/profile/${item.id}` as any);
+          }}
+        >
+          <Image
+            source={{ uri: item.avatar_url || 'https://via.placeholder.com/50' }}
+            style={styles.followerAvatar}
+          />
+          <View style={styles.followerInfo}>
+            <Text style={styles.followerName}>{item.full_name}</Text>
+            {item.username && (
+              <Text style={styles.followerUsername}>@{item.username}</Text>
+            )}
+          </View>
+        </TouchableOpacity>
+      )}
+      contentContainerStyle={styles.modalListContent}
+    />
+  );
+}
+
+// Takip Edilenler Listesi Component
+function FollowingList({ userId }: { userId: string }) {
+  const router = useRouter();
+  const { data, isLoading } = trpc.user.getFollowing.useQuery(
+    { user_id: userId, limit: 100, offset: 0 },
+    { enabled: !!userId }
+  );
+
+  if (isLoading) {
+    return (
+      <View style={styles.modalLoadingContainer}>
+        <ActivityIndicator size="small" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (!data?.following || data.following.length === 0) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Users size={48} color={COLORS.textLight} />
+        <Text style={styles.emptyText}>Henüz kimseyi takip etmiyor</Text>
+        <Text style={styles.emptySubtext}>
+          İlginizi çeken kullanıcıları takip ederek içeriklerini görebilirsiniz
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <FlatList
+      data={data.following}
+      keyExtractor={(item) => item.id}
+      renderItem={({ item }) => (
+        <TouchableOpacity
+          style={styles.followerItem}
+          onPress={() => {
+            router.push(`/profile/${item.id}` as any);
+          }}
+        >
+          <Image
+            source={{ uri: item.avatar_url || 'https://via.placeholder.com/50' }}
+            style={styles.followerAvatar}
+          />
+          <View style={styles.followerInfo}>
+            <Text style={styles.followerName}>{item.full_name}</Text>
+            {item.username && (
+              <Text style={styles.followerUsername}>@{item.username}</Text>
+            )}
+          </View>
+        </TouchableOpacity>
+      )}
+      contentContainerStyle={styles.modalListContent}
+    />
   );
 }
 
@@ -1085,6 +1247,77 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.primary,
     fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  followersModalContent: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: SPACING.lg,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  modalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  modalCloseText: {
+    fontSize: FONT_SIZES.xl,
+    color: COLORS.textLight,
+    fontWeight: '300',
+  },
+  modalLoadingContainer: {
+    padding: SPACING.xl,
+    alignItems: 'center',
+  },
+  modalListContent: {
+    padding: SPACING.md,
+  },
+  followerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    gap: SPACING.md,
+  },
+  followerAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+  followerInfo: {
+    flex: 1,
+  },
+  followerName: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 2,
+  },
+  followerUsername: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+  },
+  emptySubtext: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+    textAlign: 'center',
+    marginTop: SPACING.xs,
   },
 });
 

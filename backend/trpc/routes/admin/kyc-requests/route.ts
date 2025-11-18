@@ -37,11 +37,11 @@ export const getKycRequestsProcedure = protectedProcedure
     
     await checkAdmin(supabase, user.id);
     
+    // Önce kyc_requests'leri al, sonra profiles ile join et
     let query = supabase
       .from("kyc_requests")
       .select(`
         *,
-        user:profiles!kyc_requests_user_id_fkey(id, full_name, email, avatar_url),
         documents:kyc_documents(*),
         reviewer:admin_users!kyc_requests_reviewed_by_fkey(id, email)
       `, { count: "exact" })
@@ -57,8 +57,31 @@ export const getKycRequestsProcedure = protectedProcedure
     
     if (error) throw new Error(error.message);
     
+    // Profiles bilgilerini ayrı query ile al
+    const userIds = (data || []).map((req: any) => req.user_id);
+    let userProfiles: Record<string, any> = {};
+    
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, avatar_url")
+        .in("id", userIds);
+      
+      if (profiles) {
+        profiles.forEach((profile: any) => {
+          userProfiles[profile.id] = profile;
+        });
+      }
+    }
+    
+    // Her request'e user bilgisini ekle
+    const requestsWithUsers = (data || []).map((req: any) => ({
+      ...req,
+      user: userProfiles[req.user_id] || null,
+    }));
+    
     return {
-      requests: data || [],
+      requests: requestsWithUsers,
       total: count || 0,
     };
   });

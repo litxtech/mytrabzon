@@ -184,12 +184,63 @@ export default function KycVerifyScreen() {
     }
   };
   
+  // Tarih formatını DD.MM.YYYY'den YYYY-MM-DD'ye çevir
+  const convertDateToISO = (dateStr: string): string | null => {
+    // DD.MM.YYYY formatını kontrol et
+    const datePattern = /^(\d{2})\.(\d{2})\.(\d{4})$/;
+    const match = dateStr.trim().match(datePattern);
+    
+    if (!match) {
+      return null;
+    }
+    
+    const day = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10);
+    const year = parseInt(match[3], 10);
+    
+    // Tarih geçerliliğini kontrol et
+    if (day < 1 || day > 31 || month < 1 || month > 12 || year < 1900 || year > new Date().getFullYear()) {
+      return null;
+    }
+    
+    // YYYY-MM-DD formatına çevir
+    return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+  };
+
+  // Tarih girişini formatla (DD.MM.YYYY)
+  const handleBirthDateChange = (text: string) => {
+    // Sadece rakam ve nokta kabul et
+    const cleaned = text.replace(/[^\d.]/g, '');
+    
+    // Maksimum uzunluk kontrolü
+    if (cleaned.length > 10) return;
+    
+    // Otomatik nokta ekleme
+    let formatted = cleaned;
+    if (cleaned.length > 2 && cleaned[2] !== '.') {
+      formatted = cleaned.slice(0, 2) + '.' + cleaned.slice(2);
+    }
+    if (formatted.length > 5 && formatted[5] !== '.') {
+      formatted = formatted.slice(0, 5) + '.' + formatted.slice(5);
+    }
+    
+    setBirthDate(formatted);
+  };
+
   const handleNext = () => {
     if (step === 1) {
       if (!fullName || !nationalId || !birthDate) {
         Alert.alert('Eksik Bilgi', 'Lütfen tüm zorunlu alanları doldurun');
         return;
       }
+      
+      // Tarih formatını kontrol et
+      const isoDate = convertDateToISO(birthDate);
+      if (!isoDate) {
+        Alert.alert('Geçersiz Tarih', 'Lütfen tarihi DD.MM.YYYY formatında girin (örn: 01.05.1997)');
+        return;
+      }
+      
       setStep(2);
     } else if (step === 2) {
       if (!idFront) {
@@ -215,6 +266,14 @@ export default function KycVerifyScreen() {
   const handleSubmit = async () => {
     setLoading(true);
     try {
+      // Tarihi ISO formatına çevir
+      const isoDate = convertDateToISO(birthDate);
+      if (!isoDate) {
+        Alert.alert('Geçersiz Tarih', 'Lütfen tarihi DD.MM.YYYY formatında girin (örn: 01.05.1997)');
+        setLoading(false);
+        return;
+      }
+      
       const documents = [
         { type: 'id_front' as DocumentType, fileUrl: idFront! },
         { type: 'id_back' as DocumentType, fileUrl: idBack! },
@@ -224,7 +283,7 @@ export default function KycVerifyScreen() {
       await createKycMutation.mutateAsync({
         fullName,
         nationalId,
-        birthDate,
+        birthDate: isoDate,
         country,
         city,
         email: email || undefined,
@@ -265,9 +324,11 @@ export default function KycVerifyScreen() {
       <TextInput
         style={styles.input}
         value={birthDate}
-        onChangeText={setBirthDate}
-        placeholder="YYYY-MM-DD (örn: 1990-01-15)"
+        onChangeText={handleBirthDateChange}
+        placeholder="DD.MM.YYYY (örn: 01.05.1997)"
         placeholderTextColor={COLORS.textLight}
+        keyboardType="numeric"
+        maxLength={10}
       />
       
       <Text style={styles.label}>Ülke</Text>

@@ -8,8 +8,8 @@ export const sendNotificationProcedure = protectedProcedure
       userId: z.string().uuid().optional(), // Tek kullanıcı için
       title: z.string().min(1).max(100),
       body: z.string().min(1).max(500),
-      type: z.enum(['SYSTEM', 'EVENT', 'MESSAGE', 'RESERVATION', 'FOOTBALL']).default('SYSTEM'),
-      data: z.record(z.any()).optional(),
+      type: z.enum(['SYSTEM', 'EVENT', 'MESSAGE', 'RESERVATION', 'FOOTBALL']).optional().default('SYSTEM'),
+      data: z.record(z.string(), z.any()).optional(),
     })
   )
   .mutation(async ({ ctx, input }) => {
@@ -81,14 +81,21 @@ export const sendNotificationProcedure = protectedProcedure
     }
 
     // Bildirim kayıtlarını oluştur
-    // message alanı NOT NULL olduğu için boş olamaz
-    const messageText = input.body?.trim() || input.title?.trim() || 'Bildirim';
+    // body alanı NOT NULL olduğu için boş olamaz
+    const bodyText = input.body?.trim() || input.title?.trim() || 'Bildirim';
+    
+    if (!bodyText || bodyText.length === 0) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'Mesaj içeriği boş olamaz',
+      });
+    }
     
     const notifications = targetUserIds.map((userId) => ({
       user_id: userId,
       type: input.type,
       title: input.title,
-      message: messageText, // body yerine message kullan (notifications tablosunda message var)
+      body: bodyText, // notifications tablosunda body kolonu var
       data: input.data || {},
       push_sent: false,
       is_deleted: false,

@@ -6123,7 +6123,7 @@ const appRouter = createTRPCRouter({
         z.object({
           search: z.string().optional(),
           filter: z.enum(['all', 'today', 'banned', 'blueTick', 'hidden', 'live']).default('all'),
-          limit: z.number().min(1).max(100).default(50),
+          limit: z.number().min(1).max(1000).default(100),
           offset: z.number().min(0).default(0),
         })
       )
@@ -6161,12 +6161,7 @@ const appRouter = createTRPCRouter({
 
         let query = supabase
           .from("profiles")
-          .select(`
-            *,
-            blue_ticks!left(id, verified_at, verification_type, is_active),
-            user_bans!left(id, reason, ban_type, ban_until, is_active),
-            hidden_users!left(id, hidden_at)
-          `, { count: "exact" });
+          .select("*", { count: "exact" });
         
         // Filtreler
         if (input.filter === 'today') {
@@ -6228,8 +6223,45 @@ const appRouter = createTRPCRouter({
         
         if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
         
+        // Manuel olarak blue_ticks, user_bans ve hidden_users verilerini ekle
+        const userIds = (data || []).map((u: any) => u.id);
+        
+        const [blueTicksData, userBansData, hiddenUsersData] = await Promise.all([
+          userIds.length > 0 ? supabase
+            .from('blue_ticks')
+            .select('user_id, id, verified_at, verification_type, is_active')
+            .in('user_id', userIds)
+            .eq('is_active', true)
+            .then(({ data }) => data || []) : Promise.resolve([]),
+          userIds.length > 0 ? supabase
+            .from('user_bans')
+            .select('user_id, id, reason, ban_type, ban_until, is_active')
+            .in('user_id', userIds)
+            .eq('is_active', true)
+            .then(({ data }) => data || []) : Promise.resolve([]),
+          userIds.length > 0 ? supabase
+            .from('hidden_users')
+            .select('user_id, id, hidden_at')
+            .in('user_id', userIds)
+            .then(({ data }) => data || []) : Promise.resolve([]),
+        ]);
+        
+        // Verileri birleştir
+        const usersWithRelations = (data || []).map((user: any) => {
+          const blueTicks = blueTicksData.filter((bt: any) => bt.user_id === user.id);
+          const userBans = userBansData.filter((ub: any) => ub.user_id === user.id);
+          const hiddenUsers = hiddenUsersData.filter((hu: any) => hu.user_id === user.id);
+          
+          return {
+            ...user,
+            blue_ticks: blueTicks.length > 0 ? blueTicks : null,
+            user_bans: userBans.length > 0 ? userBans : null,
+            hidden_users: hiddenUsers.length > 0 ? hiddenUsers : null,
+          };
+        });
+        
         return {
-          users: data || [],
+          users: usersWithRelations,
           total: count || 0,
           stats: {
             totalUsers: totalUsers ?? 0,
@@ -6636,8 +6668,8 @@ const appRouter = createTRPCRouter({
           userId: z.string().uuid().optional(), // Tek kullanıcı için
           title: z.string().min(1).max(100),
           body: z.string().min(1).max(500),
-          type: z.enum(['SYSTEM', 'EVENT', 'MESSAGE', 'RESERVATION', 'FOOTBALL']).default('SYSTEM'),
-          data: z.record(z.any()).optional(),
+          type: z.enum(['SYSTEM', 'EVENT', 'MESSAGE', 'RESERVATION', 'FOOTBALL']).optional().default('SYSTEM'),
+          data: z.record(z.string(), z.any()).optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -6709,11 +6741,21 @@ const appRouter = createTRPCRouter({
         }
 
         // Bildirim kayıtlarını oluştur
+        // body alanı NOT NULL olduğu için boş olamaz
+        const bodyText = input.body?.trim() || input.title?.trim() || 'Bildirim';
+        
+        if (!bodyText || bodyText.length === 0) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Mesaj içeriği boş olamaz',
+          });
+        }
+        
         const notifications = targetUserIds.map((userId) => ({
           user_id: userId,
           type: input.type,
           title: input.title,
-          body: input.body,
+          body: bodyText, // notifications tablosunda body kolonu var
           data: input.data || {},
           push_sent: false,
           is_deleted: false,
@@ -7260,13 +7302,21 @@ const appRouter = createTRPCRouter({
           }
         }
         
+        // Önce toplam sayıyı al
+        let countQuery = supabase
+          .from("kyc_requests")
+          .select("*", { count: "exact", head: true });
+        
+        if (input.status) {
+          countQuery = countQuery.eq("status", input.status);
+        }
+        
+        const { count } = await countQuery;
+        
+        // KYC isteklerini al
         let query = supabase
           .from("kyc_requests")
-          .select(`
-            *,
-            user:profiles!kyc_requests_user_id_fkey(id, full_name, avatar_url, username, email),
-            documents:kyc_documents(*)
-          `, { count: "exact" });
+          .select("*");
         
         if (input.status) {
           query = query.eq("status", input.status);
@@ -7276,12 +7326,41 @@ const appRouter = createTRPCRouter({
           .order("created_at", { ascending: false })
           .range(input.offset, input.offset + input.limit - 1);
         
-        const { data, error, count } = await query;
+        const { data: requestsData, error } = await query;
         
         if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
         
+        // Manuel olarak user ve documents verilerini ekle
+        const userIds = (requestsData || []).map((r: any) => r.user_id);
+        const requestIds = (requestsData || []).map((r: any) => r.id);
+        
+        const [usersData, documentsData] = await Promise.all([
+          userIds.length > 0 ? supabase
+            .from('profiles')
+            .select('id, full_name, avatar_url, username, email')
+            .in('id', userIds)
+            .then(({ data }) => data || []) : Promise.resolve([]),
+          requestIds.length > 0 ? supabase
+            .from('kyc_documents')
+            .select('*')
+            .in('kyc_request_id', requestIds)
+            .then(({ data }) => data || []) : Promise.resolve([]),
+        ]);
+        
+        // Verileri birleştir
+        const requestsWithRelations = (requestsData || []).map((request: any) => {
+          const user = usersData.find((u: any) => u.id === request.user_id) || null;
+          const documents = documentsData.filter((d: any) => d.kyc_request_id === request.id);
+          
+          return {
+            ...request,
+            user,
+            documents,
+          };
+        });
+        
         return {
-          requests: data || [],
+          requests: requestsWithRelations,
           total: count || 0,
         };
       }),

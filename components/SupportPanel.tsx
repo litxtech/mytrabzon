@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, Modal, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { X, Phone, Mail, Globe, MessageCircle } from 'lucide-react-native';
+import { trpc } from '@/lib/trpc';
 
 interface SupportPanelProps {
   visible: boolean;
@@ -10,6 +11,17 @@ interface SupportPanelProps {
 
 export function SupportPanel({ visible, onClose }: SupportPanelProps) {
   const [message, setMessage] = useState('');
+
+  const createTicketMutation = (trpc as any).support.createTicket.useMutation({
+    onSuccess: () => {
+      setMessage('');
+      Alert.alert('Başarılı', 'Destek başvurunuz alındı. En kısa sürede size dönüş yapılacaktır.');
+      onClose();
+    },
+    onError: (error: any) => {
+      Alert.alert('Hata', error.message || 'Bir hata oluştu. Lütfen tekrar deneyin.');
+    },
+  });
 
   const handleContact = (type: 'phone' | 'email' | 'web') => {
     switch (type) {
@@ -26,12 +38,15 @@ export function SupportPanel({ visible, onClose }: SupportPanelProps) {
   };
 
   const handleSendMessage = () => {
-    if (message.trim()) {
-      Linking.openURL(`mailto:support@litxtech.com?subject=MyTrabzon Destek&body=${encodeURIComponent(message)}`);
-      setMessage('');
-      Alert.alert('Başarılı', 'Mesajınız gönderildi. En kısa sürede size dönüş yapılacaktır.');
-      onClose();
+    if (!message.trim()) {
+      Alert.alert('Uyarı', 'Lütfen mesajınızı yazın.');
+      return;
     }
+
+    createTicketMutation.mutate({
+      subject: 'MyTrabzon Destek Başvurusu',
+      message: message.trim(),
+    });
   };
 
   return (
@@ -41,7 +56,11 @@ export function SupportPanel({ visible, onClose }: SupportPanelProps) {
       transparent={true}
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
         <View style={styles.container}>
           <View style={styles.header}>
             <Text style={styles.title}>Destek</Text>
@@ -50,7 +69,11 @@ export function SupportPanel({ visible, onClose }: SupportPanelProps) {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.content}>
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={styles.subtitle}>İletişim Bilgileri</Text>
 
             <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('phone')}>
@@ -95,15 +118,22 @@ export function SupportPanel({ visible, onClose }: SupportPanelProps) {
               multiline
               numberOfLines={4}
               textAlignVertical="top"
+              maxLength={1000}
             />
 
-            <TouchableOpacity style={styles.sendButton} onPress={handleSendMessage}>
+            <TouchableOpacity
+              style={[styles.sendButton, createTicketMutation.isPending && styles.sendButtonDisabled]}
+              onPress={handleSendMessage}
+              disabled={createTicketMutation.isPending}
+            >
               <MessageCircle size={20} color={COLORS.white} />
-              <Text style={styles.sendButtonText}>Mesaj Gönder</Text>
+              <Text style={styles.sendButtonText}>
+                {createTicketMutation.isPending ? 'Gönderiliyor...' : 'Mesaj Gönder'}
+              </Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -136,8 +166,12 @@ const styles = StyleSheet.create({
   closeButton: {
     padding: SPACING.xs,
   },
-  content: {
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
     padding: SPACING.lg,
+    paddingBottom: SPACING.xl,
   },
   subtitle: {
     fontSize: FONT_SIZES.md,
@@ -197,6 +231,9 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderRadius: 12,
     gap: SPACING.sm,
+  },
+  sendButtonDisabled: {
+    opacity: 0.6,
   },
   sendButtonText: {
     fontSize: FONT_SIZES.md,

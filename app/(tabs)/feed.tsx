@@ -348,12 +348,13 @@ export default function FeedScreen() {
                   source={{ uri: firstMedia }}
                   style={styles.postImage}
                   contentFit="cover"
-                  transition={200}
+                  transition={100}
                   cachePolicy="memory-disk"
                   priority="high"
                   recyclingKey={firstMedia}
                   allowDownscaling={false}
-                  placeholder={{ blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.' }}
+                  placeholderContentFit="cover"
+                  backgroundColor="#1a1a1a"
                 />
               </TouchableOpacity>
             )}
@@ -505,14 +506,7 @@ export default function FeedScreen() {
         {firstMedia && (
           <>
             {isVideo ? (
-              <TouchableOpacity
-                onPress={() => {
-                  // Video feed'e yönlendir
-                  router.push(`/video-feed?postId=${item.id}` as any);
-                }}
-                activeOpacity={0.9}
-                style={styles.videoContainer}
-              >
+              <View style={styles.videoContainer}>
                 <VideoPlayer
                   videoUrl={firstMedia.path}
                   postId={item.id}
@@ -542,8 +536,12 @@ export default function FeedScreen() {
                   }}
                   autoPlay={true}
                   previewMode={true}
+                  onFullScreen={() => {
+                    // Video feed sayfasına yönlendir
+                    router.push(`/video-feed?postId=${item.id}` as any);
+                  }}
                 />
-              </TouchableOpacity>
+              </View>
             ) : (
               <TouchableOpacity
                 onPress={() => {
@@ -557,12 +555,13 @@ export default function FeedScreen() {
                   source={{ uri: firstMedia.path }}
                   style={styles.postImage}
                   contentFit="cover"
-                  transition={200}
+                  transition={100}
                   cachePolicy="memory-disk"
                   priority="high"
                   recyclingKey={firstMedia.path}
                   allowDownscaling={false}
-                  placeholder={{ blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.' }}
+                  placeholderContentFit="cover"
+                  backgroundColor="#1a1a1a"
                 />
               </TouchableOpacity>
             )}

@@ -14,15 +14,14 @@ import {
   Dimensions,
   Animated,
   PanResponder,
+  Pressable,
 } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode, Audio } from 'expo-av';
 import { Heart, MessageCircle, Share2, Bookmark, X } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
-import { formatTimeAgo } from '@/lib/time-utils';
 import { Image } from 'expo-image';
 import { CommentSheet } from './CommentSheet';
 
@@ -31,44 +30,121 @@ const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 interface VideoFeedItemProps {
   post: any;
   isActive: boolean;
+  isViewable: boolean;
   index: number;
 }
 
-export function VideoFeedItem({ post, isActive, index }: VideoFeedItemProps) {
+export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedItemProps) {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const videoRef = useRef<Video>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted] = useState(true);
   const [showComments, setShowComments] = useState(false);
   const [isLiked, setIsLiked] = useState(post.is_liked || false);
   const [likeCount, setLikeCount] = useState(post.like_count || 0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
   const commentSheetY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+  const lastTap = useRef(0);
 
   const firstMedia = post.media && post.media.length > 0 ? post.media[0] : null;
   const videoUrl = firstMedia?.path;
+  const isEvent = post.isEvent || false;
 
   const likePostMutation = trpc.post.likePost.useMutation({
     onSuccess: () => {
       setIsLiked(!isLiked);
-      setLikeCount((prev) => (isLiked ? prev - 1 : prev + 1));
+      setLikeCount((prev: number) => (isLiked ? prev - 1 : prev + 1));
+    },
+    onError: (error) => {
+      console.error('Like post error:', error);
     },
   });
 
-  // Video aktif olduğunda oynat
+  const likeEventMutation = (trpc as any).event.likeEvent.useMutation({
+    onSuccess: () => {
+      setIsLiked(!isLiked);
+      // Event'ler için upvotes - downvotes kullanılıyor
+      setLikeCount((prev: number) => (isLiked ? prev - 1 : prev + 1));
+    },
+    onError: (error) => {
+      console.error('Like event error:', error);
+    },
+  });
+
+  // Audio session'ı aktif et
+  useEffect(() => {
+    let mounted = true;
+    Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      staysActiveInBackground: false,
+      playsInSilentModeIOS: true,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    })
+      .then(() => {
+        if (mounted) {
+          console.log('✅ Audio session activated (VideoFeedItem)');
+        }
+      })
+      .catch((error) => {
+        console.error('❌ Audio session activation error:', error);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Sadece aktif video oynatılır - diğerleri durur
   useEffect(() => {
     if (isActive && videoRef.current && videoUrl) {
-      videoRef.current.playAsync().catch(console.error);
-      setIsPlaying(true);
+      // Audio session aktif olduğundan emin ol
+      Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        staysActiveInBackground: false,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      })
+        .then(() => {
+          if (videoRef.current) {
+            return videoRef.current.playAsync();
+          }
+        })
+        .then(() => {
+          setIsPlaying(true);
+        })
+        .catch((error) => {
+          console.error('Video play error:', error);
+          setIsLoading(false);
+        });
     } else if (!isActive && videoRef.current) {
-      videoRef.current.pauseAsync().catch(console.error);
+      // Aktif değilse durdur
+      videoRef.current.pauseAsync().catch((error) => {
+        console.error('Video pause error:', error);
+      });
       setIsPlaying(false);
     }
   }, [isActive, videoUrl]);
 
+  // Sadece aktif video sesli olmalı
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.setIsMutedAsync(!isActive).catch((error) => {
+        console.error('Video mute error:', error);
+      });
+    }
+  }, [isActive]);
+
   const handleLike = () => {
-    likePostMutation.mutate({ postId: post.id });
+    if (isEvent) {
+      // Event'ler için event_id'yi çıkar (event_ prefix'ini kaldır)
+      const eventId = post.id.replace('event_', '');
+      likeEventMutation.mutate({ event_id: eventId });
+    } else {
+      likePostMutation.mutate({ postId: post.id });
+    }
   };
 
   const handleComment = () => {
@@ -90,6 +166,35 @@ export function VideoFeedItem({ post, isActive, index }: VideoFeedItemProps) {
     }).start(() => {
       setShowComments(false);
     });
+  };
+
+  // Video üzerine tıklama - çift tıklama beğeni, tek tıklama pause/play
+  const handleVideoPress = () => {
+    if (showComments) return; // Yorum paneli açıksa video tıklamalarını engelle
+    
+    const now = Date.now();
+    const DOUBLE_TAP_DELAY = 300;
+
+    if (now - lastTap.current < DOUBLE_TAP_DELAY) {
+      // Çift tıklama - beğeni
+      handleLike();
+    } else {
+      // Tek tıklama - pause/play toggle
+      if (videoRef.current) {
+        if (isPlaying) {
+          videoRef.current.pauseAsync().catch((error) => {
+            console.error('Video pause error:', error);
+          });
+          setIsPlaying(false);
+        } else {
+          videoRef.current.playAsync().catch((error) => {
+            console.error('Video play error:', error);
+          });
+          setIsPlaying(true);
+        }
+      }
+    }
+    lastTap.current = now;
   };
 
   // Yorum paneli için pan responder (aşağı çekme)
@@ -121,48 +226,92 @@ export function VideoFeedItem({ post, isActive, index }: VideoFeedItemProps) {
 
   if (!videoUrl) return null;
 
+  // Güvenli author bilgileri
+  const authorName = post.author?.full_name || 'Kullanıcı';
+  const authorUsername = post.author?.username || authorName.toLowerCase().replace(/\s+/g, '') || 'kullanici';
+  const authorAvatar = post.author?.avatar_url || 'https://via.placeholder.com/40';
+
   return (
     <View style={[styles.container, { height: SCREEN_HEIGHT }]}>
-      <Video
-        ref={videoRef}
-        source={{ uri: videoUrl, overrideFileExtensionAndroid: 'mp4' }}
-        style={styles.video}
-        resizeMode={ResizeMode.COVER}
-        isLooping
-        isMuted={isMuted}
-        shouldPlay={isActive}
-        useNativeControls={false}
-      />
+      {videoUrl && (
+        <Pressable 
+          style={styles.videoContainer}
+          onPress={handleVideoPress}
+          disabled={showComments}
+        >
+          <Video
+            ref={videoRef}
+            source={{ uri: videoUrl, overrideFileExtensionAndroid: 'mp4' }}
+            style={styles.video}
+            resizeMode={ResizeMode.COVER}
+            isLooping
+            isMuted={isMuted}
+            shouldPlay={isActive}
+            useNativeControls={false}
+            onError={(error) => {
+              console.error('Video error:', error);
+              setIsLoading(false);
+            }}
+            onLoadStart={() => {
+              setIsLoading(true);
+            }}
+            onLoad={() => {
+              setIsLoading(false);
+            }}
+          />
+          {isLoading && (
+            <View style={styles.loadingOverlay}>
+              <View style={styles.loadingIndicator} />
+            </View>
+          )}
+        </Pressable>
+      )}
 
       {/* Overlay - Kullanıcı bilgisi ve içerik */}
-      <View style={styles.overlay}>
-        <View style={styles.userInfo}>
-          <TouchableOpacity
-            onPress={() => router.push(`/profile/${post.author_id}` as any)}
-            style={styles.userAvatarContainer}
-          >
-            <Image
-              source={{ uri: post.author?.avatar_url || 'https://via.placeholder.com/40' }}
-              style={styles.userAvatar}
-              contentFit="cover"
-            />
-          </TouchableOpacity>
-          <View style={styles.userDetails}>
+      <View style={styles.overlay} pointerEvents="box-none">
+        {/* Sol alt - Kullanıcı bilgisi */}
+        <View style={styles.bottomSection} pointerEvents="auto">
+          <View style={styles.userInfo}>
             <TouchableOpacity
-              onPress={() => router.push(`/profile/${post.author_id}` as any)}
+              onPress={() => {
+                if (post.author_id) {
+                  router.push(`/profile/${post.author_id}` as any);
+                }
+              }}
+              style={styles.userAvatarContainer}
             >
-              <Text style={[styles.username, { color: COLORS.white }]}>
-                @{post.author?.username || post.author?.full_name}
-              </Text>
+              <Image
+                source={{ uri: authorAvatar }}
+                style={styles.userAvatar}
+                contentFit="cover"
+              />
             </TouchableOpacity>
-            <Text style={[styles.caption, { color: COLORS.white }]} numberOfLines={3}>
-              {post.content}
-            </Text>
+            <View style={styles.userDetails}>
+              <TouchableOpacity
+                onPress={() => {
+                  if (post.author_id) {
+                    router.push(`/profile/${post.author_id}` as any);
+                  }
+                }}
+              >
+                <Text style={[styles.username, { color: COLORS.white }]}>
+                  {authorName}
+                </Text>
+              </TouchableOpacity>
+              <Text style={[styles.userHandle, { color: COLORS.white }]}>
+                @{authorUsername}
+              </Text>
+              {post.content && (
+                <Text style={[styles.caption, { color: COLORS.white }]} numberOfLines={2}>
+                  {post.content}
+                </Text>
+              )}
+            </View>
           </View>
         </View>
 
         {/* Sağ taraf - Aksiyon butonları */}
-        <View style={styles.rightActions}>
+        <View style={styles.rightActions} pointerEvents="auto">
           <TouchableOpacity style={styles.actionButton} onPress={handleLike}>
             <Heart
               size={32}
@@ -225,21 +374,29 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH,
     backgroundColor: '#000',
   },
+  videoContainer: {
+    width: '100%',
+    height: '100%',
+  },
   video: {
     width: '100%',
     height: '100%',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
     justifyContent: 'space-between',
     paddingBottom: SPACING.xl,
     paddingHorizontal: SPACING.md,
   },
+  bottomSection: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    paddingBottom: SPACING.md,
+  },
   userInfo: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    marginTop: 'auto',
-    marginBottom: SPACING.lg,
   },
   userAvatarContainer: {
     marginRight: SPACING.sm,
@@ -257,6 +414,11 @@ const styles = StyleSheet.create({
   username: {
     fontSize: FONT_SIZES.md,
     fontWeight: '700',
+    marginBottom: SPACING.xs / 2,
+  },
+  userHandle: {
+    fontSize: FONT_SIZES.sm,
+    opacity: 0.9,
     marginBottom: SPACING.xs,
   },
   caption: {
@@ -264,8 +426,11 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   rightActions: {
+    justifyContent: 'flex-end',
     alignItems: 'center',
     gap: SPACING.lg,
+    paddingRight: SPACING.sm,
+    paddingBottom: SPACING.xl,
   },
   actionButton: {
     alignItems: 'center',
@@ -312,6 +477,21 @@ const styles = StyleSheet.create({
   commentSheetTitle: {
     fontSize: FONT_SIZES.lg,
     fontWeight: '700',
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  loadingIndicator: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 3,
+    borderColor: COLORS.white,
+    borderTopColor: 'transparent',
   },
 });
 

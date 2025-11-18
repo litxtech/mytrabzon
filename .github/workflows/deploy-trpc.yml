@@ -5,8 +5,12 @@ on:
     branches: [main, master]
     paths:
       - 'supabase/functions/trpc/**'
+      - 'backend/trpc/routes/**'
       - '.github/workflows/deploy-trpc.yml'
   workflow_dispatch:
+  schedule:
+    # Her gün saat 02:00'de otomatik deploy (opsiyonel)
+    - cron: '0 2 * * *'
 
 jobs:
   deploy:
@@ -33,16 +37,23 @@ jobs:
           if [ -z "$PROJECT_REF" ]; then
             PROJECT_REF="xcvcplwimicylaxghiak"
           fi
-          echo "Linking to project: $PROJECT_REF"
-          supabase link --project-ref "$PROJECT_REF"
+          echo "📌 Linking to project: $PROJECT_REF"
+          supabase link --project-ref "$PROJECT_REF" || echo "⚠️  Link may have failed (might already be linked)"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: Deploy trpc
         run: |
-          echo "🚀 Deploying trpc..."
+          echo "🚀 Deploying trpc function..."
+          echo "📦 Uploading files..."
           supabase functions deploy trpc --no-verify-jwt
-          echo "✅ Successfully deployed trpc"
+          if [ $? -eq 0 ]; then
+            echo "✅ Successfully deployed trpc"
+            echo "🔗 Function URL: https://xcvcplwimicylaxghiak.supabase.co/functions/v1/trpc"
+          else
+            echo "❌ Deployment failed!"
+            exit 1
+          fi
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 

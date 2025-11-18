@@ -25,7 +25,7 @@ type QuickAction = {
 };
 
 // Post Grid Item Component (Instagram benzeri overlay ile) - Video desteği ile
-function PostGridItem({ post, firstMedia, router }: { post: any; firstMedia: any; router: any }) {
+function PostGridItem({ post, firstMedia, router, onDelete }: { post: any; firstMedia: any; router: any; onDelete?: (postId: string) => void }) {
   const [isPressed, setIsPressed] = useState(false);
   const [isVideo, setIsVideo] = useState(false);
   const videoRef = React.useRef<any>(null);
@@ -57,10 +57,28 @@ function PostGridItem({ post, firstMedia, router }: { post: any; firstMedia: any
     }
   };
 
+  const handleLongPress = () => {
+    if (onDelete) {
+      Alert.alert(
+        'Gönderiyi Sil',
+        'Bu gönderiyi silmek istediğinizden emin misiniz?',
+        [
+          { text: 'İptal', style: 'cancel' },
+          {
+            text: 'Sil',
+            style: 'destructive',
+            onPress: () => onDelete(post.id),
+          },
+        ]
+      );
+    }
+  };
+
   return (
     <TouchableOpacity
       style={styles.postGridItem}
       onPress={handlePress}
+      onLongPress={handleLongPress}
       onPressIn={() => setIsPressed(true)}
       onPressOut={() => setIsPressed(false)}
       activeOpacity={1}
@@ -285,6 +303,7 @@ export default function ProfileScreen() {
   });
 
   // Kullanıcının gönderilerini getir
+  const utils = trpc.useUtils();
   const { data: postsData, isLoading: postsLoading } = trpc.post.getPosts.useQuery({
     author_id: user?.id,
     limit: 50,
@@ -292,6 +311,22 @@ export default function ProfileScreen() {
   }, {
     enabled: !!user?.id, // Sadece user varsa query çalışsın
   });
+
+  // Gönderi silme mutation'ı
+  const deletePostMutation = trpc.post.deletePost.useMutation({
+    onSuccess: () => {
+      // Gönderileri yeniden yükle
+      utils.post.getPosts.invalidate({ author_id: user?.id });
+      Alert.alert('Başarılı', 'Gönderi silindi');
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Gönderi silinemedi');
+    },
+  });
+
+  const handleDeletePost = (postId: string) => {
+    deletePostMutation.mutate({ postId });
+  };
 
   // Kullanıcının geçmiş maçlarını getir
   const { data: userMatchesData } = (trpc as any).football.getUserMatches.useQuery(
@@ -447,15 +482,15 @@ export default function ProfileScreen() {
   const quickActions: QuickAction[] = [
     { id: 'edit', label: 'Profili Düzenle', icon: Edit3, onPress: () => handleNavigate('/profile/edit') },
     { id: 'donate', label: 'Destekle', icon: Heart, onPress: () => handleNavigate('/support/donate') },
-    { id: 'matches', label: 'Paylaşılan Maçlar', icon: Trophy, onPress: () => {
-      setMenuVisible(false);
-      router.push('/profile/my-matches' as any);
-    }, disabled: pastMatches.length === 0 },
   ];
 
   // Menüye eklenecek butonlar
   const menuActions: QuickAction[] = [
     { id: 'share', label: 'Profili Paylaş', icon: Share2, onPress: handleShareProfile },
+    { id: 'matches', label: 'Paylaşılan Maçlar', icon: Trophy, onPress: () => {
+      setMenuVisible(false);
+      router.push('/profile/my-matches' as any);
+    }, disabled: pastMatches.length === 0 },
     { id: 'settings', label: 'Ayarlar', icon: Settings, onPress: () => handleNavigate('/profile/settings') },
     { id: 'support', label: 'Destek', icon: HelpCircle, onPress: () => { setMenuVisible(false); setSupportVisible(true); } },
     kycAction as QuickAction,
@@ -625,6 +660,7 @@ export default function ProfileScreen() {
                   post={post}
                   firstMedia={firstMedia}
                   router={router}
+                  onDelete={handleDeletePost}
                 />
               );
             })}

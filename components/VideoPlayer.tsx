@@ -55,6 +55,7 @@ interface VideoPlayerProps {
   autoPlay?: boolean;
   showControls?: boolean;
   previewMode?: boolean; // Önizleme modu (feed'de)
+  onFullScreen?: () => void; // Fullscreen'e geçiş callback'i
 }
 
 export function VideoPlayer({
@@ -73,6 +74,7 @@ export function VideoPlayer({
   autoPlay = false,
   showControls = true,
   previewMode = true,
+  onFullScreen,
 }: VideoPlayerProps) {
   const { theme } = useTheme();
   const videoRef = useRef<Video>(null);
@@ -199,13 +201,18 @@ export function VideoPlayer({
 
   const handleSingleTap = async () => {
     if (previewMode) {
-      // Önizleme modunda tek tıklama = oynat/durdur veya tam ekran aç
-      if (!isPlaying && !isLoading) {
-        // Video durmuşsa oynat
-        await togglePlayPause();
+      // Önizleme modunda tek tıklama = direkt tam ekran aç (video-feed sayfasına git)
+      if (onFullScreen) {
+        onFullScreen();
       } else {
-        // Video oynuyorsa tam ekran aç
-        setShowFullScreen(true);
+        // onFullScreen yoksa eski davranış
+        if (!isPlaying && !isLoading) {
+          // Video durmuşsa oynat
+          await togglePlayPause();
+        } else {
+          // Video oynuyorsa tam ekran aç
+          setShowFullScreen(true);
+        }
       }
     } else {
       // Tam ekranda tek tıklama = kontrolleri göster/gizle
@@ -291,7 +298,13 @@ export function VideoPlayer({
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.fullScreenButton}
-              onPress={() => setShowFullScreen(true)}
+              onPress={() => {
+                if (onFullScreen) {
+                  onFullScreen();
+                } else {
+                  setShowFullScreen(true);
+                }
+              }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Maximize size={18} color={COLORS.white} />

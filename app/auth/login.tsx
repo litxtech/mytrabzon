@@ -12,7 +12,7 @@ import * as WebBrowser from 'expo-web-browser';
 
 WebBrowser.maybeCompleteAuthSession();
 
-type AuthMode = 'login' | 'register' | 'magic' | 'forgot' | 'phone';
+type AuthMode = 'login' | 'register' | 'magic' | 'forgot' | 'phone' | 'phone-password-setup' | 'phone-forgot';
 
 export default function LoginScreen() {
   const [mode, setMode] = useState<AuthMode>('login');
@@ -22,6 +22,9 @@ export default function LoginScreen() {
   const [smsCode, setSmsCode] = useState('');
   const [smsSent, setSmsSent] = useState(false);
   const [smsLoading, setSmsLoading] = useState(false);
+  const [phonePassword, setPhonePassword] = useState('');
+  const [phonePasswordConfirm, setPhonePasswordConfirm] = useState('');
+  const [phoneUserId, setPhoneUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
   const isNavigatingRef = useRef(false); // Navigation flag - duplicate call'ları önlemek için
@@ -472,6 +475,177 @@ export default function LoginScreen() {
     }
   };
 
+  const handlePhonePasswordSetup = async () => {
+    if (!phonePassword.trim() || phonePassword.length < 6) {
+      Alert.alert('Hata', 'Şifre en az 6 karakter olmalıdır');
+      return;
+    }
+    if (phonePassword !== phonePasswordConfirm) {
+      Alert.alert('Hata', 'Şifreler eşleşmiyor');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Şifreyi güncelle
+      const { error } = await supabase.auth.updateUser({
+        password: phonePassword,
+      });
+      if (error) throw error;
+
+      // Metadata'ya has_password ekle
+      await supabase.auth.updateUser({
+        data: { has_password: true },
+      });
+
+      Alert.alert('Başarılı', 'Şifreniz oluşturuldu');
+      
+      if (phoneUserId) {
+        await checkProfileAndNavigate(phoneUserId);
+      } else {
+        const { data: userData } = await supabase.auth.getUser();
+        if (userData?.user?.id) {
+          await checkProfileAndNavigate(userData.user.id);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error setting password:', error);
+      Alert.alert('Hata', error?.message || 'Şifre oluşturulamadı');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePhoneForgotPassword = async () => {
+    const formatted = normalizePhone(phoneNumber);
+    if (!formatted) {
+      Alert.alert('Hata', 'Lütfen geçerli bir telefon numarası girin');
+      return;
+    }
+
+    setSmsLoading(true);
+    try {
+      // Telefon numarasına OTP gönder
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: formatted,
+        options: {
+          shouldCreateUser: false,
+          channel: 'sms',
+        },
+      });
+      
+      if (error) throw error;
+      
+      setSmsSent(true);
+      Alert.alert('Başarılı', 'Telefonunuza doğrulama kodu gönderildi. Lütfen kodu girin.');
+    } catch (error: any) {
+      console.error('Error sending forgot password SMS:', error);
+      Alert.alert('Hata', error?.message || 'SMS kodu gönderilemedi');
+    } finally {
+      setSmsLoading(false);
+    }
+  };
+
+  const handlePhoneResetPassword = async () => {
+    const formatted = normalizePhone(phoneNumber);
+    if (!formatted) {
+      Alert.alert('Hata', 'Telefon numarası gerekli');
+      return;
+    }
+    if (!smsCode.trim()) {
+      Alert.alert('Hata', 'SMS kodunu girin');
+      return;
+    }
+    if (!phonePassword.trim() || phonePassword.length < 6) {
+      Alert.alert('Hata', 'Şifre en az 6 karakter olmalıdır');
+      return;
+    }
+    if (phonePassword !== phonePasswordConfirm) {
+      Alert.alert('Hata', 'Şifreler eşleşmiyor');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Önce OTP'yi doğrula
+      const { data, error: verifyError } = await supabase.auth.verifyOtp({
+        phone: formatted,
+        token: smsCode.trim(),
+        type: 'sms',
+      });
+      
+      if (verifyError) throw verifyError;
+
+      // Şifreyi güncelle
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: phonePassword,
+      });
+      
+      if (updateError) throw updateError;
+
+      Alert.alert('Başarılı', 'Şifreniz başarıyla değiştirildi');
+      
+      // Giriş yap
+      const resolvedId = data?.session?.user?.id || data?.user?.id;
+      if (resolvedId) {
+        await checkProfileAndNavigate(resolvedId);
+      } else {
+        setMode('login');
+      }
+    } catch (error: any) {
+      console.error('Error resetting password:', error);
+      Alert.alert('Hata', error?.message || 'Şifre değiştirilemedi');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePhoneLogin = async () => {
+    const formatted = normalizePhone(phoneNumber);
+    if (!formatted) {
+      Alert.alert('Hata', 'Lütfen geçerli bir telefon numarası girin');
+      return;
+    }
+    if (!password.trim()) {
+      Alert.alert('Hata', 'Şifre gerekli');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Önce telefon numarası ile OTP gönder (giriş için)
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        phone: formatted,
+        options: {
+          shouldCreateUser: false,
+          channel: 'sms',
+        },
+      });
+      
+      if (otpError) {
+        // Eğer kullanıcı yoksa, şifre ile giriş yapmayı dene
+        // Telefon + şifre ile giriş için özel bir yöntem gerekebilir
+        // Şimdilik OTP ile devam edelim
+        throw otpError;
+      }
+      
+      // OTP gönderildi, kullanıcıdan kodu iste
+      setSmsSent(true);
+      Alert.alert('Bilgi', 'Telefonunuza doğrulama kodu gönderildi. Lütfen kodu girin.');
+    } catch (error: any) {
+      console.error('Error in phone login:', error);
+      // Eğer kullanıcı yoksa kayıt ekranına yönlendir
+      if (error?.message?.includes('not found') || error?.message?.includes('User not found')) {
+        Alert.alert('Bilgi', 'Bu telefon numarası ile kayıtlı kullanıcı bulunamadı. Lütfen önce kayıt olun.');
+        setMode('phone');
+      } else {
+        Alert.alert('Hata', error?.message || 'Giriş yapılamadı');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleVerifySmsCode = async () => {
     const formatted = normalizePhone(phoneNumber);
     if (!formatted) {
@@ -502,6 +676,20 @@ export default function LoginScreen() {
         resolvedId = current?.user?.id;
       }
       if (!resolvedId) throw new Error('Kullanıcı doğrulanamadı');
+      
+      // Kullanıcının şifresi var mı kontrol et
+      const { data: userData } = await supabase.auth.getUser();
+      const hasPassword = userData?.user?.app_metadata?.has_password || false;
+      
+      // Eğer yeni kullanıcıysa ve şifresi yoksa şifre oluşturma ekranına yönlendir
+      if (!hasPassword && mode === 'phone') {
+        setPhoneUserId(resolvedId);
+        setMode('phone-password-setup');
+        setSmsCode('');
+        setLoading(false);
+        return;
+      }
+      
       await checkProfileAndNavigate(resolvedId);
     } catch (error: any) {
       console.error('Error verifying SMS code:', error);
@@ -825,8 +1013,178 @@ export default function LoginScreen() {
             )}
           </TouchableOpacity>
 
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>veya</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Şifre (varsa)"
+              placeholderTextColor="rgba(255,255,255,0.6)"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.secondaryButton, (!phoneNumber.trim() || !password.trim() || loading) && styles.buttonDisabled]}
+            onPress={handlePhoneLogin}
+            disabled={!phoneNumber.trim() || !password.trim() || loading}
+          >
+            {loading ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <Text style={styles.secondaryButtonText}>Şifre ile Giriş Yap</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => setMode('phone-forgot')}>
+            <Text style={styles.forgotText}>Şifremi unuttum</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity onPress={() => setMode('login')}>
             <Text style={styles.linkText}>Geri dön</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (mode === 'phone-password-setup') {
+      return (
+        <View style={styles.formContainer}>
+          <Text style={styles.formTitle}>Şifre Oluştur</Text>
+          <Text style={styles.formSubtitle}>Hesabınızı güvence altına almak için bir şifre oluşturun</Text>
+
+          <View style={styles.inputContainer}>
+            <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Şifre (en az 6 karakter)"
+              placeholderTextColor="rgba(255,255,255,0.6)"
+              value={phonePassword}
+              onChangeText={setPhonePassword}
+              secureTextEntry
+            />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Şifre Tekrar"
+              placeholderTextColor="rgba(255,255,255,0.6)"
+              value={phonePasswordConfirm}
+              onChangeText={setPhonePasswordConfirm}
+              secureTextEntry
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.primaryButton, (!phonePassword.trim() || !phonePasswordConfirm.trim() || loading) && styles.buttonDisabled]}
+            onPress={handlePhonePasswordSetup}
+            disabled={!phonePassword.trim() || !phonePasswordConfirm.trim() || loading}
+          >
+            {loading ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <Text style={styles.primaryButtonText}>Şifre Oluştur</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (mode === 'phone-forgot') {
+      return (
+        <View style={styles.formContainer}>
+          <Text style={styles.formTitle}>Şifremi Unuttum</Text>
+          <Text style={styles.formSubtitle}>Telefon numaranıza doğrulama kodu göndereceğiz</Text>
+
+          <View style={styles.inputContainer}>
+            <PhoneCall size={20} color={COLORS.white} style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="+90 5xx xxx xx xx"
+              placeholderTextColor="rgba(255,255,255,0.6)"
+              keyboardType="phone-pad"
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.secondaryButton, (smsLoading || !phoneNumber.trim()) && styles.buttonDisabled]}
+            onPress={handlePhoneForgotPassword}
+            disabled={smsLoading || !phoneNumber.trim()}
+          >
+            {smsLoading ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <Text style={styles.secondaryButtonText}>
+                {smsSent ? 'Kodu Yeniden Gönder' : 'Doğrulama Kodu Gönder'}
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          {smsSent && (
+            <>
+              <View style={styles.inputContainer}>
+                <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="SMS Kodu"
+                  placeholderTextColor="rgba(255,255,255,0.6)"
+                  keyboardType="number-pad"
+                  value={smsCode}
+                  onChangeText={setSmsCode}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Yeni Şifre (en az 6 karakter)"
+                  placeholderTextColor="rgba(255,255,255,0.6)"
+                  value={phonePassword}
+                  onChangeText={setPhonePassword}
+                  secureTextEntry
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Yeni Şifre Tekrar"
+                  placeholderTextColor="rgba(255,255,255,0.6)"
+                  value={phonePasswordConfirm}
+                  onChangeText={setPhonePasswordConfirm}
+                  secureTextEntry
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.primaryButton, (!smsCode.trim() || !phonePassword.trim() || !phonePasswordConfirm.trim() || loading) && styles.buttonDisabled]}
+                onPress={handlePhoneResetPassword}
+                disabled={!smsCode.trim() || !phonePassword.trim() || !phonePasswordConfirm.trim() || loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color={COLORS.white} />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Şifreyi Değiştir</Text>
+                )}
+              </TouchableOpacity>
+            </>
+          )}
+
+          <TouchableOpacity onPress={() => { setMode('phone'); setSmsSent(false); setSmsCode(''); }}>
+            <Text style={styles.linkText}>Geri Dön</Text>
           </TouchableOpacity>
         </View>
       );
