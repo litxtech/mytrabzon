@@ -201,7 +201,7 @@ export default function CreateEventScreen() {
         description: formData.description,
         category: formData.category as any,
         severity: formData.severity,
-        district: districtToSend || '',
+        district: districtToSend, // null veya string olabilir
         city: formData.city,
         latitude: formData.latitude,
         longitude: formData.longitude,

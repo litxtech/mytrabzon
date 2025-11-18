@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, MapPin, Clock, Users, DollarSign, FileText, CheckCircle, XCircle } from 'lucide-react-native';
+import { ArrowLeft, Clock, Users, TurkishLira, FileText, CheckCircle, XCircle, Car } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,11 +21,34 @@ export default function RideDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
+  const [actionBookingId, setActionBookingId] = useState<string | null>(null);
 
-  const { data, isLoading, refetch } = trpc.ride.getRideDetail.useQuery(
-    { rideId: id! },
+  const { data: rideData, isLoading, refetch } = trpc.ride.getRideDetail.useQuery(
+    { ride_id: id! },
     { enabled: !!id }
   );
+  const approveBookingMutation = trpc.ride.approveBooking.useMutation({
+    onSuccess: () => {
+      Alert.alert('Başarılı', 'Rezervasyon onaylandı!');
+      refetch();
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Rezervasyon onaylanamadı');
+    },
+    onSettled: () => setActionBookingId(null),
+  });
+
+  const rejectBookingMutation = trpc.ride.rejectBooking.useMutation({
+    onSuccess: () => {
+      Alert.alert('Bilgi', 'Rezervasyon reddedildi.');
+      refetch();
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Rezervasyon reddedilemedi');
+    },
+    onSettled: () => setActionBookingId(null),
+  });
+
 
   const bookRideMutation = trpc.ride.bookRide.useMutation({
     onSuccess: () => {
@@ -69,7 +92,7 @@ export default function RideDetailScreen() {
     );
   };
 
-  if (isLoading || !data) {
+  if (isLoading || !rideData) {
     return (
       <View style={[styles.container, styles.loadingContainer, { paddingTop: insets.top }]}>
         <ActivityIndicator size="large" color={COLORS.primary} />
@@ -77,10 +100,54 @@ export default function RideDetailScreen() {
     );
   }
 
-  const { ride, userBooking } = data;
-  const driver = ride.driver as any;
-  const isDriver = user?.id === ride.driver_id;
+  const ride = rideData?.ride || rideData;
+  const userBooking = rideData?.userBooking || null;
+  const driverBookings = rideData?.bookings || [];
+  const driver = ride?.driver as any;
+  const isDriverFromApi = rideData?.isDriver ?? false;
+  const isDriver = isDriverFromApi || user?.id === ride?.driver_id;
   const hasBooking = userBooking !== null;
+
+  const handleApproveBooking = (bookingId: string) => {
+    Alert.alert(
+      'Rezervasyonu Onayla',
+      'Bu yolculuk talebini onaylamak istediğinize emin misiniz?',
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Onayla',
+          onPress: () => {
+            setActionBookingId(bookingId);
+            approveBookingMutation.mutate({ booking_id: bookingId });
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRejectBooking = (bookingId: string) => {
+    Alert.alert(
+      'Rezervasyonu Reddet',
+      'Bu yolculuk talebini reddetmek istediğinize emin misiniz?',
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Reddet',
+          style: 'destructive',
+          onPress: () => {
+            setActionBookingId(bookingId);
+            rejectBookingMutation.mutate({ booking_id: bookingId });
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDriverPress = () => {
+    if (driver?.id) {
+      router.push(`/profile/${driver.id}` as any);
+    }
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -97,7 +164,7 @@ export default function RideDetailScreen() {
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* Sürücü Bilgisi */}
-        <View style={styles.driverCard}>
+        <TouchableOpacity style={styles.driverCard} activeOpacity={0.85} onPress={handleDriverPress}>
           <Image
             source={{ uri: driver?.avatar_url || 'https://via.placeholder.com/60' }}
             style={styles.driverAvatar}
@@ -111,11 +178,56 @@ export default function RideDetailScreen() {
                 </View>
               )}
             </View>
-            {driver?.bio && (
-              <Text style={styles.driverBio}>{driver.bio}</Text>
+            {ride.driver_full_name && ride.driver_full_name !== driver?.full_name && (
+              <Text style={styles.driverMeta}>İlan sahibi: {ride.driver_full_name}</Text>
+            )}
+            {driver?.bio && <Text style={styles.driverBio}>{driver.bio}</Text>}
+            {(ride.vehicle_brand || ride.vehicle_model) && (
+              <Text style={styles.driverMeta}>
+                Araç: {[ride.vehicle_brand, ride.vehicle_model].filter(Boolean).join(' ')}
+                {ride.vehicle_color ? ` • ${ride.vehicle_color}` : ''}
+              </Text>
             )}
           </View>
-        </View>
+        </TouchableOpacity>
+
+        {(ride.vehicle_brand || ride.vehicle_plate || ride.vehicle_color) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Araç Bilgileri</Text>
+
+            {ride.vehicle_brand && ride.vehicle_model && (
+              <View style={styles.detailRow}>
+                <Car size={20} color={COLORS.primary} />
+                <View style={styles.detailContent}>
+                  <Text style={styles.detailLabel}>Marka & Model</Text>
+                  <Text style={styles.detailValue}>
+                    {ride.vehicle_brand} {ride.vehicle_model}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {ride.vehicle_color && (
+              <View style={styles.detailRow}>
+                <FileText size={20} color={COLORS.primary} />
+                <View style={styles.detailContent}>
+                  <Text style={styles.detailLabel}>Renk</Text>
+                  <Text style={styles.detailValue}>{ride.vehicle_color}</Text>
+                </View>
+              </View>
+            )}
+
+            {ride.vehicle_plate && (
+              <View style={styles.detailRow}>
+                <FileText size={20} color={COLORS.primary} />
+                <View style={styles.detailContent}>
+                  <Text style={styles.detailLabel}>Plaka</Text>
+                  <Text style={styles.plateValue}>{ride.vehicle_plate}</Text>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Rota */}
         <View style={styles.section}>
@@ -182,10 +294,12 @@ export default function RideDetailScreen() {
 
           {ride.price_per_seat && (
             <View style={styles.detailRow}>
-              <DollarSign size={20} color={COLORS.primary} />
+              <TurkishLira size={20} color={COLORS.primary} />
               <View style={styles.detailContent}>
                 <Text style={styles.detailLabel}>Kişi Başı Fiyat</Text>
-                <Text style={styles.detailValue}>{ride.price_per_seat} TL</Text>
+                <Text style={styles.detailValue}>
+                  {ride.price_per_seat} {ride.currency || 'TL'}
+                </Text>
               </View>
             </View>
           )}
@@ -230,7 +344,7 @@ export default function RideDetailScreen() {
         )}
 
         {/* Rezervasyon Durumu */}
-        {hasBooking && userBooking && (
+        {hasBooking && userBooking && ride && (
           <View style={styles.bookingStatusCard}>
             <Text style={styles.bookingStatusTitle}>Rezervasyon Durumunuz</Text>
             <Text style={styles.bookingStatusText}>
@@ -244,8 +358,83 @@ export default function RideDetailScreen() {
           </View>
         )}
 
+        {isDriver && driverBookings.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Rezervasyon Talepleri</Text>
+            {driverBookings.map((booking: any) => {
+              const passenger = booking.passenger || {};
+              const isActionPending =
+                actionBookingId === booking.id &&
+                (approveBookingMutation.isPending || rejectBookingMutation.isPending);
+              const isApproving =
+                actionBookingId === booking.id && approveBookingMutation.isPending;
+              const isRejecting =
+                actionBookingId === booking.id && rejectBookingMutation.isPending;
+
+              return (
+                <View key={booking.id} style={styles.bookingRequestCard}>
+                  <View style={styles.bookingPassengerRow}>
+                    <Image
+                      source={{ uri: passenger.avatar_url || 'https://via.placeholder.com/48' }}
+                      style={styles.bookingAvatar}
+                    />
+                    <View style={styles.bookingPassengerInfo}>
+                      <Text style={styles.bookingPassengerName}>{passenger.full_name || 'Kullanıcı'}</Text>
+                      <Text style={styles.bookingPassengerMeta}>
+                        {booking.seats_requested} koltuk ·{' '}
+                        {booking.status === 'pending'
+                          ? 'Beklemede'
+                          : booking.status === 'approved'
+                          ? 'Onaylandı'
+                          : booking.status === 'rejected'
+                          ? 'Reddedildi'
+                          : 'İptal Edildi'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {booking.status === 'pending' && (
+                    <View style={styles.bookingActions}>
+                      <TouchableOpacity
+                        style={[
+                          styles.actionButton,
+                          styles.rejectButton,
+                          isActionPending && styles.actionButtonDisabled,
+                        ]}
+                        disabled={isActionPending}
+                        onPress={() => handleRejectBooking(booking.id)}
+                      >
+                        {isRejecting ? (
+                          <ActivityIndicator size="small" color={COLORS.white} />
+                        ) : (
+                          <Text style={styles.actionButtonText}>Reddet</Text>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.actionButton,
+                          styles.approveButton,
+                          isActionPending && styles.actionButtonDisabled,
+                        ]}
+                        disabled={isActionPending}
+                        onPress={() => handleApproveBooking(booking.id)}
+                      >
+                        {isApproving ? (
+                          <ActivityIndicator size="small" color={COLORS.white} />
+                        ) : (
+                          <Text style={styles.actionButtonText}>Onayla</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+
         {/* Beni de Al Butonu */}
-        {!isDriver && !hasBooking && ride.available_seats > 0 && (
+        {!isDriver && !hasBooking && ride && ride.available_seats > 0 && (
           <TouchableOpacity
             style={[styles.bookButton, bookRideMutation.isPending && styles.bookButtonDisabled]}
             onPress={handleBookRide}
@@ -335,6 +524,11 @@ const styles = StyleSheet.create({
   driverBio: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
+  },
+  driverMeta: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+    marginTop: 2,
   },
   section: {
     backgroundColor: COLORS.white,
@@ -436,6 +630,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.text,
   },
+  plateValue: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.text,
+    letterSpacing: 1,
+  },
   ruleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -479,6 +679,62 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
     marginTop: SPACING.xs,
+  },
+  bookingRequestCard: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    backgroundColor: COLORS.background,
+  },
+  bookingPassengerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  bookingAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  bookingPassengerInfo: {
+    flex: 1,
+  },
+  bookingPassengerName: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  bookingPassengerMeta: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+  },
+  bookingActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  actionButton: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  approveButton: {
+    backgroundColor: COLORS.success,
+  },
+  rejectButton: {
+    backgroundColor: COLORS.error,
+  },
+  actionButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
+  },
+  actionButtonDisabled: {
+    opacity: 0.5,
   },
   bookButton: {
     backgroundColor: COLORS.primary,

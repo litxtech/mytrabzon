@@ -4,7 +4,7 @@ import { protectedProcedure } from '../../../create-context';
 export const getRideDetailProcedure = protectedProcedure
   .input(
     z.object({
-      rideId: z.string().uuid(),
+      ride_id: z.string().uuid(),
     })
   )
   .query(async ({ ctx, input }) => {
@@ -16,7 +16,7 @@ export const getRideDetailProcedure = protectedProcedure
         *,
         driver:profiles(id, full_name, avatar_url, verified, phone, bio)
       `)
-      .eq('id', input.rideId)
+      .eq('id', input.ride_id)
       .single();
 
     if (error) {
@@ -34,16 +34,34 @@ export const getRideDetailProcedure = protectedProcedure
       const { data: booking } = await supabase
         .from('ride_bookings')
         .select('*')
-        .eq('ride_offer_id', input.rideId)
+        .eq('ride_offer_id', input.ride_id)
         .eq('passenger_id', user.id)
+        .order('created_at', { ascending: false })
         .maybeSingle();
-      
+
       userBooking = booking;
+    }
+
+    // If driver, load all bookings
+    let driverBookings: any[] = [];
+    if (user && data.driver_id === user.id) {
+      const { data: bookingRows } = await supabase
+        .from('ride_bookings')
+        .select(`
+          *,
+          passenger:profiles(id, full_name, avatar_url, verified, phone)
+        `)
+        .eq('ride_offer_id', input.ride_id)
+        .order('created_at', { ascending: true });
+
+      driverBookings = bookingRows ?? [];
     }
 
     return {
       ride: data,
       userBooking,
+      bookings: driverBookings,
+      isDriver: user ? data.driver_id === user.id : false,
     };
   });
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,9 @@ import {
   Heart,
   Edit3,
   Settings,
+  Clock,
+  MapPin,
+  Users,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CallButtons } from '@/components/CallButtons';
@@ -64,13 +67,13 @@ export default function UserProfileScreen() {
   const isOwnProfile = currentUser?.id === id;
 
   // Kullanıcı profilini getir
-  const { data: profile, isLoading: profileLoading, error: profileError } = trpc.user.getProfile.useQuery(
+  const { data: profile, isLoading: profileLoading, error: profileError, refetch: refetchProfile } = trpc.user.getProfile.useQuery(
     { userId: id! },
     { enabled: !!id }
   );
 
   // KTÜ öğrenci bilgilerini getir
-  const { data: ktuStudent } = trpc.ktu.getStudentInfo.useQuery(undefined, {
+  const { data: ktuStudent } = (trpc as any).ktu.getStudentInfo.useQuery(undefined, {
     enabled: !!id && id === currentUser?.id, // Sadece kendi bilgilerini göster
   });
 
@@ -98,12 +101,27 @@ export default function UserProfileScreen() {
     { enabled: !!id }
   );
 
+  const [showRideHistory, setShowRideHistory] = useState(false);
+  const { data: driverRides, isLoading: driverRidesLoading } = trpc.ride.getDriverRides.useQuery(
+    { driver_id: id!, includePast: true },
+    { enabled: !!id }
+  );
+
   // Query client ve utils
   const utils = trpc.useUtils();
+  const scrollRef = useRef<ScrollView>(null);
+  const rideHistorySectionY = useRef(0);
 
   // Takip/Takipten çık mutation'ları
+  const updateFollowStatusCache = (value: boolean) => {
+    if (!currentUser || isOwnProfile) return;
+    utils.user.checkFollowStatus.setData({ user_id: id! }, { is_following: value });
+  };
+
   const followMutation = trpc.user.follow.useMutation({
     onMutate: async () => {
+      updateFollowStatusCache(true);
+
       // Optimistic update - anında güncelle (takip edilen kullanıcının takipçi sayısı)
       utils.user.getFollowStats.setData({ user_id: id! }, (old) => {
         if (!old) return { followers_count: 1, following_count: 0 };
@@ -134,6 +152,8 @@ export default function UserProfileScreen() {
         currentUser?.id ? utils.user.getFollowStats.invalidate({ user_id: currentUser.id }) : Promise.resolve(),
         refetchFollowStats(),
         utils.user.getProfile.invalidate({ userId: id! }),
+        utils.user.getFollowers.invalidate(),
+        utils.user.getFollowing.invalidate(),
         refetchProfile(),
       ]);
     },
@@ -143,11 +163,14 @@ export default function UserProfileScreen() {
       if (currentUser?.id) {
         utils.user.getFollowStats.invalidate({ user_id: currentUser.id });
       }
+      updateFollowStatusCache(false);
     },
   });
 
   const unfollowMutation = trpc.user.unfollow.useMutation({
     onMutate: async () => {
+      updateFollowStatusCache(false);
+
       // Optimistic update - anında güncelle (takip edilen kullanıcının takipçi sayısı)
       utils.user.getFollowStats.setData({ user_id: id! }, (old) => {
         if (!old) return { followers_count: 0, following_count: 0 };
@@ -178,6 +201,9 @@ export default function UserProfileScreen() {
         currentUser?.id ? utils.user.getFollowStats.invalidate({ user_id: currentUser.id }) : Promise.resolve(),
         refetchFollowStats(),
         utils.user.getProfile.invalidate({ userId: id! }),
+        utils.user.getFollowers.invalidate(),
+        utils.user.getFollowing.invalidate(),
+        refetchProfile(),
       ]);
     },
     onError: () => {
@@ -186,6 +212,7 @@ export default function UserProfileScreen() {
       if (currentUser?.id) {
         utils.user.getFollowStats.invalidate({ user_id: currentUser.id });
       }
+      updateFollowStatusCache(true);
     },
   });
 
@@ -227,8 +254,52 @@ export default function UserProfileScreen() {
     : null;
 
   const totalPosts = postsData?.posts?.length || 0;
-  const totalLikes =
-    postsData?.posts?.reduce((sum, post) => sum + (post.likes_count || 0), 0) || 0;
+  const rideHistoryAvailable =
+    (driverRides?.upcoming?.length || 0) + (driverRides?.past?.length || 0) > 0;
+
+  const formatRideDate = (isoString: string) =>
+    new Date(isoString).toLocaleString('tr-TR', {
+      day: '2-digit',
+      month: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+  const handleRideHistoryPress = () => {
+    if (!rideHistoryAvailable) return;
+    setShowRideHistory(true);
+    requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        const target = Math.max(rideHistorySectionY.current - 80, 0);
+        scrollRef.current.scrollTo({ y: target, animated: true });
+      }
+    });
+  };
+
+  const renderRideCard = (ride: any, isPast: boolean) => (
+    <View key={ride.id} style={styles.rideHistoryCard}>
+      <View style={styles.rideHistoryRow}>
+        <MapPin size={16} color={COLORS.primary} />
+        <View style={styles.rideHistoryTextGroup}>
+          <Text style={styles.rideHistoryTitle}>{ride.departure_title}</Text>
+          <Text style={styles.rideHistorySubtitle}>→ {ride.destination_title}</Text>
+        </View>
+      </View>
+      <View style={styles.rideHistoryRow}>
+        <Clock size={16} color={COLORS.textLight} />
+        <Text style={styles.rideHistoryDate}>{formatRideDate(ride.departure_time)}</Text>
+      </View>
+      <View style={styles.rideHistoryRow}>
+        <Users size={16} color={COLORS.textLight} />
+        <Text style={styles.rideHistoryMeta}>
+          {ride.available_seats}/{ride.total_seats} koltuk
+        </Text>
+      </View>
+      <Text style={[styles.rideHistoryStatus, isPast ? styles.rideHistoryStatusPast : styles.rideHistoryStatusUpcoming]}>
+        {isPast ? 'Tamamlandı' : 'Yaklaşan yolculuk'}
+      </Text>
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -255,7 +326,11 @@ export default function UserProfileScreen() {
         }}
       />
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.avatarContainer}>
@@ -267,7 +342,7 @@ export default function UserProfileScreen() {
             />
             {districtBadge && (
               <View style={styles.badgeContainer}>
-                <Text style={styles.badgeText}>{districtBadge.emoji}</Text>
+                <Text style={styles.badgeText}>{districtBadge}</Text>
               </View>
             )}
           </View>
@@ -358,6 +433,29 @@ export default function UserProfileScreen() {
             </View>
           )}
 
+          {rideHistoryAvailable && (
+            <TouchableOpacity
+              style={[
+                styles.rideHistoryButton,
+                showRideHistory && styles.rideHistoryButtonActive,
+              ]}
+              onPress={handleRideHistoryPress}
+            >
+              <Clock
+                size={18}
+                color={showRideHistory ? COLORS.white : COLORS.primary}
+              />
+              <Text
+                style={[
+                  styles.rideHistoryButtonText,
+                  showRideHistory && styles.rideHistoryButtonTextActive,
+                ]}
+              >
+                Yolculuklar
+              </Text>
+            </TouchableOpacity>
+          )}
+
           {isOwnProfile && (
             <TouchableOpacity
               style={styles.editButton}
@@ -366,6 +464,53 @@ export default function UserProfileScreen() {
               <Edit3 size={20} color={COLORS.primary} />
               <Text style={styles.editButtonText}>Profili Düzenle</Text>
             </TouchableOpacity>
+          )}
+
+          {rideHistoryAvailable && (
+            <View
+              style={styles.rideHistorySection}
+              onLayout={(event) => {
+                rideHistorySectionY.current = event.nativeEvent.layout.y;
+              }}
+            >
+              <TouchableOpacity
+                style={styles.rideHistoryToggle}
+                onPress={() => setShowRideHistory((prev) => !prev)}
+              >
+                <Text style={styles.rideHistoryTitleText}>
+                  Geçmiş Yolculuklar
+                  {driverRides?.past?.length ? ` (${driverRides.past.length})` : ''}
+                </Text>
+                <Text style={styles.rideHistoryToggleText}>
+                  {showRideHistory ? 'Gizle' : 'Göster'}
+                </Text>
+              </TouchableOpacity>
+              {showRideHistory && (
+                driverRidesLoading ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" color={COLORS.primary} />
+                  </View>
+                ) : (
+                  <View style={styles.rideHistoryList}>
+                    {driverRides?.upcoming?.length ? (
+                      <>
+                        <Text style={styles.rideHistorySectionLabel}>Yaklaşan Yolculuklar</Text>
+                        {driverRides.upcoming.map((ride) => renderRideCard(ride, false))}
+                      </>
+                    ) : null}
+                    {driverRides?.past?.length ? (
+                      <>
+                        <Text style={styles.rideHistorySectionLabel}>Geçmiş Yolculuklar</Text>
+                        {driverRides.past.map((ride) => renderRideCard(ride, true))}
+                      </>
+                    ) : null}
+                    {!driverRides?.upcoming?.length && !driverRides?.past?.length && (
+                      <Text style={styles.rideHistoryEmptyText}>Henüz yolculuk paylaşmadınız.</Text>
+                    )}
+                  </View>
+                )
+              )}
+            </View>
           )}
         </View>
 
@@ -596,6 +741,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     alignItems: 'center' as const,
   },
+  rideHistoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  rideHistoryButtonActive: {
+    backgroundColor: COLORS.primary,
+  },
+  rideHistoryButtonText: {
+    color: COLORS.primary,
+    fontWeight: '600',
+    fontSize: FONT_SIZES.md,
+  },
+  rideHistoryButtonTextActive: {
+    color: COLORS.white,
+  },
   messageButton: {
     width: 44,
     height: 44,
@@ -648,6 +815,85 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
+  },
+  rideHistorySection: {
+    marginTop: SPACING.md,
+    width: '100%',
+    gap: SPACING.sm,
+  },
+  rideHistoryToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.sm,
+  },
+  rideHistoryTitleText: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  rideHistoryToggleText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  rideHistoryList: {
+    gap: SPACING.sm,
+  },
+  rideHistorySectionLabel: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.textLight,
+    marginTop: SPACING.sm,
+  },
+  rideHistoryCard: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    padding: SPACING.md,
+    backgroundColor: COLORS.white,
+    gap: SPACING.xs,
+  },
+  rideHistoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  rideHistoryTextGroup: {
+    flex: 1,
+  },
+  rideHistoryTitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  rideHistorySubtitle: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+  },
+  rideHistoryDate: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+  },
+  rideHistoryMeta: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+  },
+  rideHistoryStatus: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    marginTop: SPACING.xs,
+  },
+  rideHistoryStatusUpcoming: {
+    color: COLORS.success,
+  },
+  rideHistoryStatusPast: {
+    color: COLORS.textLight,
+  },
+  rideHistoryEmptyText: {
+    textAlign: 'center',
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
   },
   postsSection: {
     padding: SPACING.lg,

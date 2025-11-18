@@ -14,7 +14,7 @@ export const createEventProcedure = protectedProcedure
           'sel_riski', 'ciddi_olay', 'normal_trafik', 'esnaf_duyuru'
         ]),
         severity: z.enum(['CRITICAL', 'HIGH', 'NORMAL', 'LOW']).default('NORMAL'),
-        district: z.string(),
+        district: z.string().optional().nullable(),
         city: z.enum(['Trabzon', 'Giresun']).default('Trabzon'),
         latitude: z.number().optional(),
         longitude: z.number().optional(),

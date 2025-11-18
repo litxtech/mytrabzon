@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,17 +10,24 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  FlatList,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Plus, X, Calendar, Users, DollarSign } from 'lucide-react-native';
+import { ArrowLeft, Plus, X, Calendar, Users, TurkishLira, Check } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
+import { useAuth } from '@/contexts/AuthContext';
+
+const PRICE_OPTIONS = Array.from({ length: 500 }, (_, index) => (index + 1) * 10);
 
 export default function RideCreateScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const utils = trpc.useUtils();
+  const { profile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -33,15 +40,32 @@ export default function RideCreateScreen() {
   const [stopInput, setStopInput] = useState('');
   const [departureTime, setDepartureTime] = useState(new Date());
   const [totalSeats, setTotalSeats] = useState('3');
-  const [pricePerSeat, setPricePerSeat] = useState('');
+  const [selectedPrice, setSelectedPrice] = useState<number | null>(null);
+  const [showPricePicker, setShowPricePicker] = useState(false);
   const [notes, setNotes] = useState('');
   const [allowPets, setAllowPets] = useState(false);
   const [allowSmoking, setAllowSmoking] = useState(false);
+  const [vehicleBrand, setVehicleBrand] = useState('');
+  const [vehicleModel, setVehicleModel] = useState('');
+  const [vehicleColor, setVehicleColor] = useState('');
+  const [vehiclePlate, setVehiclePlate] = useState('');
+  const [driverFullName, setDriverFullName] = useState('');
+
+  useEffect(() => {
+    if (profile?.full_name && !driverFullName) {
+      setDriverFullName(profile.full_name);
+    }
+  }, [profile?.full_name, driverFullName]);
 
   const createRideMutation = trpc.ride.createRide.useMutation({
-    onSuccess: () => {
-      Alert.alert('Başarılı', 'Yolculuk ilanı oluşturuldu!');
-      router.back();
+    onSuccess: async () => {
+      await utils.ride.searchRides.invalidate();
+      Alert.alert('Başarılı', 'Yolculuk ilanı oluşturuldu!', [
+        {
+          text: 'Tamam',
+          onPress: () => router.replace('/ride/search' as any),
+        },
+      ]);
     },
     onError: (error) => {
       Alert.alert('Hata', error.message || 'Yolculuk oluşturulamadı');
@@ -71,6 +95,26 @@ export default function RideCreateScreen() {
       return;
     }
 
+    if (!selectedPrice) {
+      Alert.alert('Hata', 'Lütfen kişi başı ücret seçin');
+      return;
+    }
+
+    if (!vehicleBrand.trim() || !vehicleModel.trim() || !vehicleColor.trim()) {
+      Alert.alert('Hata', 'Araç marka, model ve renk bilgilerini eksiksiz girin');
+      return;
+    }
+
+    if (!vehiclePlate.trim()) {
+      Alert.alert('Hata', 'Araç plakasını girin');
+      return;
+    }
+
+    if (!driverFullName.trim()) {
+      Alert.alert('Hata', 'Şoför adını ve soyadını girin');
+      return;
+    }
+
     setLoading(true);
     try {
       await createRideMutation.mutateAsync({
@@ -81,10 +125,15 @@ export default function RideCreateScreen() {
         stops: stops,
         departure_time: departureTime.toISOString(),
         total_seats: parseInt(totalSeats),
-        price_per_seat: pricePerSeat ? parseFloat(pricePerSeat) : null,
+        price_per_seat: selectedPrice,
         notes: notes.trim() || null,
         allow_pets: allowPets,
         allow_smoking: allowSmoking,
+        vehicle_brand: vehicleBrand.trim(),
+        vehicle_model: vehicleModel.trim(),
+        vehicle_color: vehicleColor.trim(),
+        vehicle_plate: vehiclePlate.trim().toUpperCase(),
+        driver_full_name: driverFullName.trim(),
       });
     } catch (error) {
       console.error('Create ride error:', error);
@@ -272,18 +321,89 @@ export default function RideCreateScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Kişi başı fiyat (TL) - Opsiyonel</Text>
-            <View style={styles.iconInput}>
-              <DollarSign size={20} color={COLORS.textLight} />
-              <TextInput
-                style={styles.input}
-                placeholder="Örn: 50"
-                placeholderTextColor={COLORS.textLight}
-                value={pricePerSeat}
-                onChangeText={setPricePerSeat}
-                keyboardType="decimal-pad"
-              />
-            </View>
+            <Text style={styles.label}>Kişi başı fiyat *</Text>
+            <TouchableOpacity
+              style={styles.priceSelector}
+              onPress={() => setShowPricePicker(true)}
+            >
+              <TurkishLira size={20} color={COLORS.primary} />
+              <Text style={styles.priceSelectorText}>
+                {selectedPrice
+                  ? `${selectedPrice.toLocaleString('tr-TR')} TL`
+                  : "Ücret seç"}
+              </Text>
+            </TouchableOpacity>
+            <Text style={styles.sectionSubtitle}>
+              10 TL&#39;den 5.000 TL&#39;ye kadar hazır seçenekler
+            </Text>
+          </View>
+        </View>
+
+        {/* Araç & Şoför Bilgileri */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Araç & Şoför Bilgileri</Text>
+          <Text style={styles.sectionSubtitle}>
+            Yolcular yolculuğa katılmadan önce aracı ve sürücüyü burada görecek. Lütfen doğru bilgileri girin.
+          </Text>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Araç Markası *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Örn: Renault"
+              placeholderTextColor={COLORS.textLight}
+              value={vehicleBrand}
+              onChangeText={setVehicleBrand}
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Araç Modeli *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Örn: Clio"
+              placeholderTextColor={COLORS.textLight}
+              value={vehicleModel}
+              onChangeText={setVehicleModel}
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Araç Rengi *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Örn: Beyaz"
+              placeholderTextColor={COLORS.textLight}
+              value={vehicleColor}
+              onChangeText={setVehicleColor}
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Araç Plakası *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Örn: 61 ABC 123"
+              placeholderTextColor={COLORS.textLight}
+              value={vehiclePlate}
+              autoCapitalize="characters"
+              onChangeText={(text) => setVehiclePlate(text.toUpperCase())}
+            />
+            <Text style={styles.helperText}>Plaka bilgisi yolcularla paylaşılır.</Text>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Şoför Adı Soyadı *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Örn: Ali Kaya"
+              placeholderTextColor={COLORS.textLight}
+              value={driverFullName}
+              onChangeText={setDriverFullName}
+            />
+            {!profile?.full_name && (
+              <Text style={styles.helperText}>Profilindeki isim otomatik doldurulur. Gerekirse güncelle.</Text>
+            )}
           </View>
         </View>
 
@@ -342,6 +462,49 @@ export default function RideCreateScreen() {
           )}
         </TouchableOpacity>
       </ScrollView>
+
+      <Modal visible={showPricePicker} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Kişi Başı Ücret Seç</Text>
+            <FlatList
+              data={PRICE_OPTIONS}
+              keyExtractor={(item) => item.toString()}
+              initialNumToRender={30}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.priceOption,
+                    selectedPrice === item && styles.priceOptionSelected,
+                  ]}
+                  onPress={() => {
+                    setSelectedPrice(item);
+                    setShowPricePicker(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.priceOptionText,
+                      selectedPrice === item && styles.priceOptionTextSelected,
+                    ]}
+                  >
+                    {item.toLocaleString('tr-TR')} TL
+                  </Text>
+                  {selectedPrice === item && (
+                    <Check size={18} color={COLORS.white} />
+                  )}
+                </TouchableOpacity>
+              )}
+            />
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowPricePicker(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>Kapat</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -375,6 +538,11 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
     marginBottom: SPACING.md,
     lineHeight: 20,
+  },
+  helperText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+    marginTop: SPACING.xs,
   },
   inputGroup: {
     marginBottom: SPACING.md,
@@ -511,6 +679,74 @@ const styles = StyleSheet.create({
   submitButtonText: {
     color: COLORS.white,
     fontSize: FONT_SIZES.md,
+    fontWeight: '700',
+  },
+  priceSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.md,
+  },
+  priceSelectorText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: SPACING.lg,
+  },
+  modalContent: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    maxHeight: '80%',
+    padding: SPACING.lg,
+  },
+  modalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: SPACING.md,
+  },
+  priceOption: {
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: SPACING.sm,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  priceOptionSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  priceOptionText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+  },
+  priceOptionTextSelected: {
+    color: COLORS.white,
+    fontWeight: '700',
+  },
+  modalCloseButton: {
+    marginTop: SPACING.md,
+    alignSelf: 'center',
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.sm,
+    borderRadius: 999,
+    backgroundColor: COLORS.text,
+  },
+  modalCloseButtonText: {
+    color: COLORS.white,
     fontWeight: '700',
   },
 });

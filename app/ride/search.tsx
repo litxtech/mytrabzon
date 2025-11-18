@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,12 @@ import {
   FlatList,
   Image,
   RefreshControl,
+  Alert,
   Platform,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Search, Calendar, MapPin, Users, DollarSign, Clock } from 'lucide-react-native';
+import { ArrowLeft, Search, Calendar, MapPin, Users, TurkishLira, Clock } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -26,6 +27,7 @@ export default function RideSearchScreen() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [bookingRideId, setBookingRideId] = useState<string | null>(null);
 
   const { data, isLoading, refetch } = trpc.ride.searchRides.useQuery(
     {
@@ -34,15 +36,37 @@ export default function RideSearchScreen() {
       date: selectedDate ? selectedDate.toISOString() : null,
     },
     {
-      enabled: false, // Manual trigger
+      enabled: true, // Otomatik arama - tüm yolculukları listele
     }
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
+
+  const bookRideMutation = trpc.ride.bookRide.useMutation({
+    onSuccess: () => {
+      Alert.alert('Başarılı', 'Rezervasyon talebiniz sürücüye iletildi!');
+      refetch();
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Rezervasyon oluşturulamadı');
+    },
+    onSettled: () => {
+      setBookingRideId(null);
+    },
+  });
+
   const handleSearch = async () => {
-    if (!fromText.trim() || !toText.trim()) {
-      return;
+    // Tarih seçilmişse veya from/to doluysa arama yap
+    if (selectedDate || (fromText.trim() && toText.trim())) {
+      await refetch();
+    } else {
+      // Hiçbir filtre yoksa tüm yolculukları göster
+      await refetch();
     }
-    await refetch();
   };
 
   const onRefresh = async () => {
@@ -62,31 +86,80 @@ export default function RideSearchScreen() {
     });
   };
 
+  const handleQuickBook = (ride: any) => {
+    if (!ride?.id) return;
+    if (ride.available_seats <= 0) {
+      Alert.alert('Uyarı', 'Bu yolculukta boş koltuk kalmamış.');
+      return;
+    }
+
+    Alert.alert(
+      'Rezervasyon Yap',
+      `${ride.departure_title} → ${ride.destination_title} yolculuğu için rezervasyon yapmak istediğinize emin misiniz?`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Rezervasyon Yap',
+          onPress: () => {
+            setBookingRideId(ride.id);
+            bookRideMutation.mutate({
+              ride_offer_id: ride.id,
+              seats_requested: 1,
+            });
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDriverPress = (driverId?: string) => {
+    if (!driverId) return;
+    router.push(`/profile/${driverId}` as any);
+  };
+
   const renderRide = ({ item }: { item: any }) => {
     const driver = item.driver as any;
+    const isBookingRide = bookingRideId === item.id && bookRideMutation.isPending;
+    const canBook = item.available_seats > 0;
     
     return (
-      <TouchableOpacity
-        style={styles.rideCard}
-        onPress={() => router.push(`/ride/${item.id}` as any)}
-      >
+      <View style={styles.rideCard}>
         <View style={styles.rideHeader}>
-          <Image
-            source={{ uri: driver?.avatar_url || 'https://via.placeholder.com/40' }}
-            style={styles.driverAvatar}
-          />
-          <View style={styles.driverInfo}>
-            <Text style={styles.driverName}>{driver?.full_name || 'İsimsiz'}</Text>
-            {driver?.verified && (
-              <View style={styles.verifiedBadge}>
-                <Text style={styles.verifiedText}>✓</Text>
+          <TouchableOpacity
+            style={styles.driverHeader}
+            activeOpacity={0.8}
+            onPress={() => handleDriverPress(driver?.id)}
+          >
+            <Image
+              source={{ uri: driver?.avatar_url || 'https://via.placeholder.com/40' }}
+              style={styles.driverAvatar}
+            />
+            <View style={styles.driverInfo}>
+              <View style={styles.driverNameRow}>
+                <Text style={styles.driverName}>{driver?.full_name || 'İsimsiz'}</Text>
+                {driver?.verified && (
+                  <View style={styles.verifiedBadge}>
+                    <Text style={styles.verifiedText}>✓</Text>
+                  </View>
+                )}
               </View>
-            )}
-          </View>
+              {(item.vehicle_brand || item.vehicle_model || item.vehicle_color) && (
+                <Text style={styles.vehicleInfoText}>
+                  Araç: {[item.vehicle_brand, item.vehicle_model].filter(Boolean).join(' ')}
+                  {item.vehicle_color ? ` • ${item.vehicle_color}` : ''}
+                </Text>
+              )}
+              {item.vehicle_plate && (
+                <Text style={styles.vehiclePlateText}>Plaka: {item.vehicle_plate}</Text>
+              )}
+            </View>
+          </TouchableOpacity>
           {item.price_per_seat && (
             <View style={styles.priceBadge}>
-              <DollarSign size={16} color={COLORS.primary} />
-              <Text style={styles.priceText}>{item.price_per_seat} TL</Text>
+              <TurkishLira size={16} color={COLORS.primary} />
+              <Text style={styles.priceText}>
+                {item.price_per_seat.toLocaleString('tr-TR')} TL
+              </Text>
             </View>
           )}
         </View>
@@ -136,7 +209,27 @@ export default function RideSearchScreen() {
             </Text>
           </View>
         </View>
-      </TouchableOpacity>
+
+        <View style={styles.cardActions}>
+          <TouchableOpacity
+            style={[
+              styles.quickBookButton,
+              (!canBook || (bookRideMutation.isPending && bookingRideId !== item.id)) && styles.quickBookButtonDisabled,
+            ]}
+            disabled={!canBook || (bookRideMutation.isPending && bookingRideId !== item.id)}
+            onPress={() => handleQuickBook(item)}
+          >
+            {isBookingRide ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <Text style={styles.quickBookText}>Rezervasyon Yap</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.detailButton} onPress={() => router.push(`/ride/${item.id}` as any)}>
+            <Text style={styles.detailButtonText}>Detay</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     );
   };
 
@@ -322,6 +415,12 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
     gap: SPACING.sm,
   },
+  driverHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: SPACING.sm,
+  },
   driverAvatar: {
     width: 40,
     height: 40,
@@ -329,6 +428,11 @@ const styles = StyleSheet.create({
   },
   driverInfo: {
     flex: 1,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 2,
+  },
+  driverNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
@@ -337,6 +441,15 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '700',
     color: COLORS.text,
+  },
+  vehicleInfoText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+  },
+  vehiclePlateText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+    fontWeight: '600',
   },
   verifiedBadge: {
     width: 18,
@@ -427,6 +540,41 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.sm,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
+  },
+  cardActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  quickBookButton: {
+    flex: 1,
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.sm,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickBookButtonDisabled: {
+    opacity: 0.5,
+  },
+  quickBookText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
+  },
+  detailButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: 10,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailButtonText: {
+    color: COLORS.primary,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
   },
   rideInfo: {
     flexDirection: 'row',

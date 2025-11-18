@@ -40,6 +40,15 @@ export default function LoginScreen() {
     }
   };
 
+  const getRedirectUrl = useCallback(
+    (path: string) =>
+      makeRedirectUri({
+        scheme: 'mytrabzon',
+        path,
+      }),
+    []
+  );
+
   const checkProfileAndNavigate = useCallback(async (userId: string) => {
     // Duplicate call'ları önle
     if (isNavigatingRef.current) {
@@ -250,10 +259,10 @@ export default function LoginScreen() {
         result = await supabase.auth.signInWithPassword({ email: trimmedEmail, password });
       } else {
         // Email confirmation için web callback sayfası kullan (oradan deep link'e yönlendirecek)
-        const deepLinkUrl = 'mytrabzon://auth/callback';
+        const deepLinkUrl = getRedirectUrl('auth/callback');
         const emailRedirectTo = Platform.select({
-          web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
-          default: `https://www.litxtech.com/auth/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`,
+          web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : deepLinkUrl,
+          default: deepLinkUrl,
         });
 
         result = await supabase.auth.signUp({ 
@@ -290,10 +299,10 @@ export default function LoginScreen() {
                 onPress: async () => {
                   try {
                     // Email resend için web callback sayfası kullan (oradan deep link'e yönlendirecek)
-                    const deepLinkUrl = 'mytrabzon://auth/callback';
+                    const deepLinkUrl = getRedirectUrl('auth/callback');
                     const emailRedirectTo = Platform.select({
-                      web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
-                      default: `https://www.litxtech.com/auth/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`,
+                      web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : deepLinkUrl,
+                      default: deepLinkUrl,
                     });
 
                     const { error: resendError } = await supabase.auth.resend({
@@ -355,10 +364,10 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       // Magic link için web callback sayfası kullan (oradan deep link'e yönlendirecek)
-      const deepLinkUrl = 'mytrabzon://auth/callback';
+      const deepLinkUrl = getRedirectUrl('auth/callback');
       const emailRedirectTo = Platform.select({
-        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://www.litxtech.com/auth/callback',
-        default: `https://www.litxtech.com/auth/callback?redirect_to=${encodeURIComponent(deepLinkUrl)}`,
+        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : deepLinkUrl,
+        default: deepLinkUrl,
       });
 
       const { error } = await supabase.auth.signInWithOtp({ 
@@ -396,8 +405,8 @@ export default function LoginScreen() {
     try {
       // Platform'a göre redirect URL belirle
       const redirectUrl = Platform.select({
-        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/reset-password` : 'https://www.litxtech.com/auth/reset-password',
-        default: 'mytrabzon://auth/reset-password',
+        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/reset-password` : getRedirectUrl('auth/reset-password'),
+        default: getRedirectUrl('auth/reset-password'),
       });
       
       const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
@@ -423,11 +432,7 @@ export default function LoginScreen() {
 
       // Platforma göre redirect URL belirle
       const isNative = Platform.OS === 'ios' || Platform.OS === 'android';
-      const redirectUrl = isNative
-        ? 'mytrabzon://auth/callback'
-        : (typeof window !== 'undefined'
-          ? `${window.location.origin}/auth/callback`
-          : 'https://www.litxtech.com/auth/callback');
+      const redirectUrl = isNative ? getRedirectUrl('auth/callback') : getRedirectUrl('auth/callback');
 
       console.log('🔐 [GoogleLogin] Platform:', Platform.OS, 'Redirect URL:', redirectUrl);
 
@@ -454,7 +459,7 @@ export default function LoginScreen() {
         provider: 'google',
         options: {
           redirectTo: redirectUrl,
-          skipBrowserRedirect: false, // Supabase'in normal redirect akışını kullan
+          skipBrowserRedirect: true,
         },
       });
 
@@ -467,10 +472,12 @@ export default function LoginScreen() {
         throw new Error('OAuth URL alınamadı');
       }
 
-      console.log('🔐 [GoogleLogin] Opening OAuth URL in browser:', data.url);
-      
-      // Native'de tarayıcıyı aç - Supabase redirectTo ile mytrabzon://auth/callback'e dönecek
-      await Linking.openURL(data.url);
+      console.log('🔐 [GoogleLogin] Opening OAuth session:', data.url);
+      const authResult = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+      if (authResult.type === 'cancel' || authResult.type === 'dismiss') {
+        setLoading(false);
+        setOauthLoading(false);
+      }
       
       // OAuth başarılı olduğunda onAuthStateChange callback'i tetiklenecek
       // ve checkProfileAndNavigate çağrılacak

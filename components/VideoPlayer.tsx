@@ -6,7 +6,7 @@
  * - Gesture kontrolleri (çift tıklama beğeni, kaydırma)
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,7 +19,7 @@ import {
   Animated,
   PanResponder,
 } from 'react-native';
-import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
+import { Video, ResizeMode, AVPlaybackStatus, Audio } from 'expo-av';
 import {
   Heart,
   MessageCircle,
@@ -85,6 +85,31 @@ export function VideoPlayer({
   const [showControlsOverlay, setShowControlsOverlay] = useState(true);
   const lastTap = useRef<number>(0);
   const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Audio session'ı aktif et (sadece bir kez)
+  useEffect(() => {
+    let mounted = true;
+    Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      staysActiveInBackground: false,
+      playsInSilentModeIOS: true,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    })
+      .then(() => {
+        if (mounted) {
+          console.log('✅ Audio session activated');
+        }
+      })
+      .catch((err) => {
+        if (mounted) {
+          console.error('❌ Audio session error:', err);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // autoPlay değiştiğinde video'yu başlat
   useEffect(() => {
@@ -366,15 +391,42 @@ function FullScreenVideoPlayer({
   const { width, height } = Dimensions.get('window');
   const SCREEN_HEIGHT = height;
   const COMMENT_SHEET_HEIGHT = SCREEN_HEIGHT * 0.5; // Ekranın yarısı
-  const commentSheetY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+  const commentSheetY = useRef(new Animated.Value(COMMENT_SHEET_HEIGHT)).current;
+  const hasStartedRef = useRef(false);
+
+  // Audio session'ı aktif et (sadece bir kez)
+  useEffect(() => {
+    let mounted = true;
+    Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      staysActiveInBackground: false,
+      playsInSilentModeIOS: true,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    })
+      .then(() => {
+        if (mounted) {
+          console.log('✅ Audio session activated (FullScreen)');
+        }
+      })
+      .catch((err) => {
+        if (mounted) {
+          console.error('❌ Audio session error (FullScreen):', err);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     // Tam ekran açıldığında video'yu otomatik başlat
-    if (videoRef.current) {
+    if (videoRef.current && !hasStartedRef.current) {
+      hasStartedRef.current = true;
       const timer = setTimeout(() => {
         videoRef.current?.playAsync().catch(console.error);
         setIsPlaying(true);
-      }, 300);
+      }, 500); // Audio session'ın aktif olması için biraz bekle
       return () => clearTimeout(timer);
     }
   }, []);
@@ -382,29 +434,18 @@ function FullScreenVideoPlayer({
   // Yorum paneli açıldığında animasyonu başlat
   useEffect(() => {
     if (showComments) {
-      // Önce başlangıç pozisyonuna ayarla
-      commentSheetY.setValue(SCREEN_HEIGHT);
-      // Sonra animasyonu başlat
+      commentSheetY.setValue(COMMENT_SHEET_HEIGHT);
       const timer = setTimeout(() => {
         Animated.spring(commentSheetY, {
-          toValue: SCREEN_HEIGHT - COMMENT_SHEET_HEIGHT,
+          toValue: 0,
           useNativeDriver: true,
           tension: 50,
           friction: 7,
         }).start();
       }, 50);
       return () => clearTimeout(timer);
-    } else {
-      // Kapanırken animasyonu başlat
-      Animated.spring(commentSheetY, {
-        toValue: SCREEN_HEIGHT,
-        useNativeDriver: true,
-        tension: 50,
-        friction: 7,
-      }).start();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showComments]);
+  }, [showComments, commentSheetY, COMMENT_SHEET_HEIGHT]);
 
   useEffect(() => {
     return () => {
@@ -414,18 +455,27 @@ function FullScreenVideoPlayer({
     };
   }, []);
 
-  const hasStartedRef = useRef(false);
-  
   const handlePlaybackStatusUpdate = (status: AVPlaybackStatus) => {
     if (status.isLoaded) {
-      setIsLoading(false);
-      setIsPlaying(status.isPlaying);
-      setIsMuted(status.isMuted);
-      setDuration(status.durationMillis || 0);
-      setPosition(status.positionMillis || 0);
+      // Sadece değiştiğinde state'i güncelle (infinite loop'u önle)
+      if (status.isPlaying !== isPlaying) {
+        setIsPlaying(status.isPlaying);
+      }
+      if (status.isMuted !== isMuted) {
+        setIsMuted(status.isMuted);
+      }
+      if (status.durationMillis !== duration) {
+        setDuration(status.durationMillis || 0);
+      }
+      if (status.positionMillis !== position) {
+        setPosition(status.positionMillis || 0);
+      }
+      if (isLoading) {
+        setIsLoading(false);
+      }
       
       // Sadece ilk yüklemede ve henüz başlamadıysa otomatik başlat
-      if (!hasStartedRef.current && !status.isPlaying && !status.didJustFinish && !isLoading) {
+      if (!hasStartedRef.current && !status.isPlaying && !status.didJustFinish) {
         hasStartedRef.current = true;
         setTimeout(() => {
           videoRef.current?.playAsync().catch(console.error);
@@ -433,7 +483,9 @@ function FullScreenVideoPlayer({
       }
     } else if (status.error) {
       console.error('Full screen video playback error:', status.error);
-      setIsLoading(false);
+      if (isLoading) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -494,8 +546,19 @@ function FullScreenVideoPlayer({
     return count.toString();
   };
 
+  const closeCommentsSheet = useCallback(() => {
+    Animated.spring(commentSheetY, {
+      toValue: COMMENT_SHEET_HEIGHT,
+      useNativeDriver: true,
+      tension: 50,
+      friction: 7,
+    }).start(() => {
+      setShowComments(false);
+    });
+  }, [COMMENT_SHEET_HEIGHT, commentSheetY]);
+
   const handleCloseComments = () => {
-    setShowComments(false);
+    closeCommentsSheet();
   };
 
   // Yorum paneli için pan responder (sadece drag handle için - aşağı çekme)
@@ -507,16 +570,16 @@ function FullScreenVideoPlayer({
       },
       onPanResponderMove: (_, gestureState) => {
         if (gestureState.dy > 0) {
-          const newY = SCREEN_HEIGHT - COMMENT_SHEET_HEIGHT + gestureState.dy;
-          commentSheetY.setValue(Math.min(newY, SCREEN_HEIGHT));
+          const newOffset = Math.min(gestureState.dy, COMMENT_SHEET_HEIGHT);
+          commentSheetY.setValue(newOffset);
         }
       },
       onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 100) {
-          setShowComments(false);
+        if (gestureState.dy > COMMENT_SHEET_HEIGHT * 0.3) {
+          closeCommentsSheet();
         } else {
           Animated.spring(commentSheetY, {
-            toValue: SCREEN_HEIGHT - COMMENT_SHEET_HEIGHT,
+            toValue: 0,
             useNativeDriver: true,
             tension: 50,
             friction: 7,
@@ -667,40 +730,41 @@ function FullScreenVideoPlayer({
       </Pressable>
 
       {/* Yorum Paneli (Bottom Sheet) - Instagram tarzı, şeffaf, video izlenirken */}
-      <Animated.View
-        style={[
-          styles.commentSheet,
-          {
-            transform: [{ translateY: commentSheetY }],
-            height: COMMENT_SHEET_HEIGHT,
-            backgroundColor: 'rgba(0, 0, 0, 0.75)', // Şeffaf - video görünür
-            zIndex: 1000,
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            display: showComments ? 'flex' : 'none',
-          },
-        ]}
-        pointerEvents={showComments ? 'auto' : 'none'}
-      >
-        {/* Drag Handle - Sadece burada pan responder çalışır */}
-        <View style={styles.dragHandleContainer} {...dragHandlePanResponder.panHandlers} pointerEvents="auto">
-          <View style={[styles.dragHandle, { backgroundColor: COLORS.white }]} />
-        </View>
-        
-        <View style={[styles.commentSheetHeader, { borderBottomColor: 'rgba(255, 255, 255, 0.1)' }]} pointerEvents="auto">
-          <Text style={[styles.commentSheetTitle, { color: COLORS.white }]}>
-            Yorumlar ({commentCount || 0})
-          </Text>
-          <TouchableOpacity onPress={handleCloseComments}>
-            <X size={24} color={COLORS.white} />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.commentSheetContent} pointerEvents="auto">
-          <CommentSheet postId={postId} />
-        </View>
-      </Animated.View>
+      {showComments && (
+        <Animated.View
+          style={[
+            styles.commentSheet,
+            {
+              transform: [{ translateY: commentSheetY }],
+              height: COMMENT_SHEET_HEIGHT,
+              backgroundColor: 'rgba(0, 0, 0, 0.75)', // Şeffaf - video görünür
+              zIndex: 1000,
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+            },
+          ]}
+          pointerEvents="auto"
+        >
+          {/* Drag Handle - Sadece burada pan responder çalışır */}
+          <View style={styles.dragHandleContainer} {...dragHandlePanResponder.panHandlers} pointerEvents="auto">
+            <View style={[styles.dragHandle, { backgroundColor: COLORS.white }]} />
+          </View>
+          
+          <View style={[styles.commentSheetHeader, { borderBottomColor: 'rgba(255, 255, 255, 0.1)' }]} pointerEvents="auto">
+            <Text style={[styles.commentSheetTitle, { color: COLORS.white }]}>
+              Yorumlar ({commentCount || 0})
+            </Text>
+            <TouchableOpacity onPress={handleCloseComments}>
+              <X size={24} color={COLORS.white} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.commentSheetContent} pointerEvents="auto">
+            <CommentSheet postId={postId} />
+          </View>
+        </Animated.View>
+      )}
     </View>
   );
 }

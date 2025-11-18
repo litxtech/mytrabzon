@@ -88,7 +88,10 @@ import { getEventsProcedure } from "./routes/event/get-events/route";
 import { createRideProcedure } from "./routes/ride/create-ride/route";
 import { searchRidesProcedure } from "./routes/ride/search-rides/route";
 import { getRideDetailProcedure } from "./routes/ride/get-ride-detail/route";
+import { getDriverRidesProcedure } from "./routes/ride/get-driver-rides/route";
 import { bookRideProcedure } from "./routes/ride/book-ride/route";
+import { approveBookingProcedure } from "./routes/ride/approve-booking/route";
+import { rejectBookingProcedure } from "./routes/ride/reject-booking/route";
 import { getNotificationsProcedure, getUnreadCountProcedure } from "./routes/notification/get-notifications/route";
 import {
   markAsReadProcedure as markNotificationAsReadProcedure,
@@ -203,7 +206,10 @@ export const appRouter = createTRPCRouter({
     createRide: createRideProcedure,
     searchRides: searchRidesProcedure,
     getRideDetail: getRideDetailProcedure,
+    getDriverRides: getDriverRidesProcedure,
     bookRide: bookRideProcedure,
+    approveBooking: approveBookingProcedure,
+    rejectBooking: rejectBookingProcedure,
   }),
 });
 

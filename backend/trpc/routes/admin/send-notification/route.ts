@@ -81,11 +81,14 @@ export const sendNotificationProcedure = protectedProcedure
     }
 
     // Bildirim kayıtlarını oluştur
+    // message alanı NOT NULL olduğu için boş olamaz
+    const messageText = input.body?.trim() || input.title?.trim() || 'Bildirim';
+    
     const notifications = targetUserIds.map((userId) => ({
       user_id: userId,
       type: input.type,
       title: input.title,
-      message: input.body, // body yerine message kullan (notifications tablosunda message var)
+      message: messageText, // body yerine message kullan (notifications tablosunda message var)
       data: input.data || {},
       push_sent: false,
       is_deleted: false,

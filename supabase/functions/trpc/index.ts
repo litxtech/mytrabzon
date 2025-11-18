@@ -503,6 +503,75 @@ const appRouter = createTRPCRouter({
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Takip işlemi başarısız oldu' });
         }
 
+        try {
+          const { data: followerProfile } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', user.id)
+            .maybeSingle();
+
+          const followerName = followerProfile?.full_name || 'Bir kullanıcı';
+          const message = `${followerName} sizi takip etmeye başladı`;
+
+          const { data: notification } = await supabase
+            .from('notifications')
+            .insert({
+              user_id: input.following_id,
+              type: 'FOLLOW',
+              title: 'Yeni Takipçi',
+              message,
+              data: {
+                follower_id: user.id,
+                follower_name: followerName,
+              },
+              push_sent: false,
+            })
+            .select()
+            .single();
+
+          if (notification) {
+            const { data: targetProfile } = await supabase
+              .from('profiles')
+              .select('push_token')
+              .eq('id', input.following_id)
+              .maybeSingle();
+
+            if (targetProfile?.push_token) {
+              try {
+                const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+                await fetch(expoPushUrl, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'Accept-Encoding': 'gzip, deflate',
+                  },
+                  body: JSON.stringify({
+                    to: targetProfile.push_token,
+                    sound: 'default',
+                    title: 'Yeni Takipçi',
+                    body: message,
+                    data: {
+                      type: 'FOLLOW',
+                      follower_id: user.id,
+                    },
+                    badge: 1,
+                  }),
+                });
+
+                await supabase
+                  .from('notifications')
+                  .update({ push_sent: true })
+                  .eq('id', notification.id);
+              } catch (pushError) {
+                console.error('Follow push notification error:', pushError);
+              }
+            }
+          }
+        } catch (notificationError) {
+          console.error('Follow notification error:', notificationError);
+        }
+
         return { success: true, follow };
       }),
 
@@ -7160,6 +7229,631 @@ const appRouter = createTRPCRouter({
         return data;
       }),
   }),
+
+  // ===================================================================
+  // YOLCULUK PAYLAŞIMI ROUTER
+  // ===================================================================
+  ride: createTRPCRouter({
+    createRide: protectedProcedure
+      .input(
+        z.object({
+          departure_title: z.string().min(1).max(200),
+          departure_description: z.string().optional().nullable(),
+          destination_title: z.string().min(1).max(200),
+          destination_description: z.string().optional().nullable(),
+          stops: z.array(z.string()).default([]),
+          departure_time: z.string().datetime(),
+          total_seats: z.number().int().min(1).max(10),
+          price_per_seat: z.number().int().min(10).max(5000),
+          notes: z.string().optional().nullable(),
+          allow_pets: z.boolean().default(false),
+          allow_smoking: z.boolean().default(false),
+          vehicle_brand: z.string().min(2).max(120),
+          vehicle_model: z.string().min(1).max(120),
+          vehicle_color: z.string().min(2).max(60),
+          vehicle_plate: z.string().min(4).max(20),
+          driver_full_name: z.string().min(3).max(160),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Build raw fields
+        const departure_raw = `${input.departure_title}${input.departure_description ? ' - ' + input.departure_description : ''}`.trim();
+        const destination_raw = `${input.destination_title}${input.destination_description ? ' - ' + input.destination_description : ''}`.trim();
+        const stops_raw = input.stops.length > 0 ? input.stops.join(' | ') : null;
+
+        // Calculate expires_at (departure_time + 1 hour)
+        const departureTime = new Date(input.departure_time);
+        const expiresAt = new Date(departureTime.getTime() + 60 * 60 * 1000); // +1 hour
+
+        // Insert ride offer
+        const { data, error } = await supabase
+          .from('ride_offers')
+          .insert({
+            driver_id: user.id,
+            departure_title: input.departure_title,
+            departure_description: input.departure_description || null,
+            departure_raw,
+            destination_title: input.destination_title,
+            destination_description: input.destination_description || null,
+            destination_raw,
+            stops_text: input.stops,
+            stops_raw,
+            departure_time: departureTime.toISOString(),
+            total_seats: input.total_seats,
+            available_seats: input.total_seats,
+            price_per_seat: input.price_per_seat,
+            currency: 'TL',
+            notes: input.notes || null,
+            allow_pets: input.allow_pets,
+            allow_smoking: input.allow_smoking,
+          vehicle_brand: input.vehicle_brand,
+          vehicle_model: input.vehicle_model,
+          vehicle_color: input.vehicle_color,
+          vehicle_plate: input.vehicle_plate,
+          driver_full_name: input.driver_full_name,
+            status: 'active',
+            expires_at: expiresAt.toISOString(),
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Create ride error:', error);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message || 'Yolculuk oluşturulamadı' });
+        }
+
+        return data;
+      }),
+
+    searchRides: publicProcedure
+      .input(
+        z.object({
+          from_text: z.string().optional().nullable(),
+          to_text: z.string().optional().nullable(),
+          date: z.string().datetime().optional().nullable(),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+        await cleanupExpiredRides(supabase);
+
+        const upcomingThreshold = new Date(Date.now() - UPCOMING_BUFFER_MINUTES * 60 * 1000).toISOString();
+
+        let query = supabase
+          .from('ride_offers')
+          .select(`
+            *,
+            driver:profiles(id, full_name, avatar_url, verified)
+          `)
+          .eq('status', 'active')
+          .gt('expires_at', upcomingThreshold)
+          .gte('departure_time', upcomingThreshold)
+          .gt('available_seats', 0);
+
+        // Date filter
+        if (input.date) {
+          const selectedDate = new Date(input.date);
+          const startOfDay = new Date(selectedDate);
+          startOfDay.setHours(0, 0, 0, 0);
+          const endOfDay = new Date(selectedDate);
+          endOfDay.setHours(23, 59, 59, 999);
+
+          query = query
+            .gte('departure_time', startOfDay.toISOString())
+            .lte('departure_time', endOfDay.toISOString());
+        }
+
+        // From filter (departure or stops)
+        if (input.from_text && input.from_text.trim()) {
+          const fromText = `%${input.from_text.trim()}%`;
+          query = query.or(`departure_raw.ilike.${fromText},stops_raw.ilike.${fromText}`);
+        }
+
+        // To filter (destination or stops)
+        if (input.to_text && input.to_text.trim()) {
+          const toText = `%${input.to_text.trim()}%`;
+          query = query.or(`destination_raw.ilike.${toText},stops_raw.ilike.${toText}`);
+        }
+
+        // Order by departure_time ascending
+        query = query.order('departure_time', { ascending: true });
+
+        const { data, error } = await query;
+
+        if (error) {
+          console.error('Search rides error:', error);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message || 'Yolculuklar aranırken bir hata oluştu' });
+        }
+
+        return { rides: data || [] };
+      }),
+
+    getDriverRides: publicProcedure
+      .input(
+        z.object({
+          driver_id: z.string().uuid(),
+          includePast: z.boolean().optional().default(true),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase } = ctx;
+        await cleanupExpiredRides(supabase);
+
+        const { data, error } = await supabase
+          .from('ride_offers')
+          .select(`
+            *
+          `)
+          .eq('driver_id', input.driver_id)
+          .order('departure_time', { ascending: false });
+
+        if (error) {
+          console.error('Get driver rides error:', error);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message || 'Yolculuklar getirilemedi' });
+        }
+
+        const upcomingThreshold = new Date(Date.now() - UPCOMING_BUFFER_MINUTES * 60 * 1000);
+        const rides = (data || []).map((ride) => ({
+          ...ride,
+          is_past: new Date(ride.departure_time) < upcomingThreshold,
+        }));
+
+        const upcoming = rides.filter((ride) => !ride.is_past && ride.status === 'active');
+        const past = input.includePast ? rides.filter((ride) => ride.is_past || ride.status !== 'active') : [];
+
+        return { upcoming, past };
+      }),
+
+    getRideDetail: publicProcedure
+      .input(z.object({ ride_id: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        const userId = user?.id ?? null;
+
+        const { data, error } = await supabase
+          .from('ride_offers')
+          .select(`
+            *,
+            driver:profiles(id, full_name, avatar_url, verified)
+          `)
+          .eq('id', input.ride_id)
+          .single();
+
+        if (error) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Yolculuk bulunamadı' });
+        }
+
+        let userBooking: any = null;
+        if (userId) {
+          const { data: userBookingRow } = await supabase
+            .from('ride_bookings')
+            .select('*')
+            .eq('ride_offer_id', input.ride_id)
+            .eq('passenger_id', userId)
+            .order('created_at', { ascending: false })
+            .maybeSingle();
+
+          userBooking = userBookingRow || null;
+        }
+
+        let driverBookings: any[] = [];
+        if (userId && data.driver_id === userId) {
+          const { data: bookingRows } = await supabase
+            .from('ride_bookings')
+            .select(`
+              *,
+              passenger:profiles(id, full_name, avatar_url, verified, phone)
+            `)
+            .eq('ride_offer_id', input.ride_id)
+            .order('created_at', { ascending: true });
+
+          driverBookings = bookingRows ?? [];
+        }
+
+        return {
+          ride: data,
+          userBooking,
+          bookings: driverBookings,
+          isDriver: userId ? data.driver_id === userId : false,
+        };
+      }),
+
+    bookRide: protectedProcedure
+      .input(
+        z.object({
+          ride_offer_id: z.string().uuid(),
+          seats_requested: z.number().int().min(1).max(5).default(1),
+          notes: z.string().optional().nullable(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Check if ride exists and has available seats
+        const { data: ride, error: rideError } = await supabase
+          .from('ride_offers')
+          .select('*, driver:profiles(id, full_name, avatar_url)')
+          .eq('id', input.ride_offer_id)
+          .eq('status', 'active')
+          .single();
+
+        if (rideError || !ride) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Yolculuk bulunamadı veya aktif değil' });
+        }
+
+        // Check if user is the driver
+        if (ride.driver_id === user.id) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Kendi yolculuğunuza rezervasyon yapamazsınız' });
+        }
+
+        // Check available seats
+        if (ride.available_seats < input.seats_requested) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: `Sadece ${ride.available_seats} boş koltuk var` });
+        }
+
+        // Check if user already has a booking
+        const { data: existingBooking } = await supabase
+          .from('ride_bookings')
+          .select('*')
+          .eq('ride_offer_id', input.ride_offer_id)
+          .eq('passenger_id', user.id)
+          .maybeSingle();
+
+        if (existingBooking) {
+          if (existingBooking.status === 'pending') {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Bu yolculuk için zaten bekleyen bir rezervasyonunuz var' });
+          }
+          if (existingBooking.status === 'approved') {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Bu yolculuk için zaten onaylanmış bir rezervasyonunuz var' });
+          }
+        }
+
+        // Create booking
+        const { data: booking, error } = await supabase
+          .from('ride_bookings')
+          .insert({
+            ride_offer_id: input.ride_offer_id,
+            passenger_id: user.id,
+            seats_requested: input.seats_requested,
+            notes: input.notes || null,
+            status: 'pending',
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Book ride error:', error);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message || 'Rezervasyon oluşturulamadı' });
+        }
+
+        // Get passenger profile
+        const { data: passengerProfile } = await supabase
+          .from('profiles')
+          .select('full_name, avatar_url')
+          .eq('id', user.id)
+          .single();
+
+        // Create notification for driver
+        const { data: notification } = await supabase
+          .from('notifications')
+          .insert({
+            user_id: ride.driver_id,
+            type: 'RIDE_BOOKING',
+            title: 'Yeni Yolculuk Rezervasyonu',
+            message: `${passengerProfile?.full_name || 'Bir kullanıcı'} yolculuğunuza ${input.seats_requested} koltuk için rezervasyon yaptı`,
+            data: {
+              ride_offer_id: input.ride_offer_id,
+              booking_id: booking.id,
+              passenger_id: user.id,
+              seats_requested: input.seats_requested,
+            },
+            push_sent: false,
+          })
+          .select()
+          .single();
+
+        // Send push notification to driver
+        if (notification) {
+          try {
+            const { data: driverProfile } = await supabase
+              .from('profiles')
+              .select('push_token')
+              .eq('id', ride.driver_id)
+              .single();
+
+            if (driverProfile?.push_token) {
+              const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+              await fetch(expoPushUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Accept: 'application/json',
+                  'Accept-Encoding': 'gzip, deflate',
+                },
+                body: JSON.stringify({
+                  to: driverProfile.push_token,
+                  sound: 'default',
+                  title: 'Yeni Yolculuk Rezervasyonu',
+                  body: `${passengerProfile?.full_name || 'Bir kullanıcı'} yolculuğunuza ${input.seats_requested} koltuk için rezervasyon yaptı`,
+                  data: {
+                    type: 'RIDE_BOOKING',
+                    ride_offer_id: input.ride_offer_id,
+                    booking_id: booking.id,
+                  },
+                  badge: 1,
+                }),
+              });
+
+              await supabase
+                .from('notifications')
+                .update({ push_sent: true })
+                .eq('id', notification.id);
+            }
+          } catch (pushError) {
+            console.error('Push notification error:', pushError);
+          }
+        }
+
+        // Create or get chat room between driver and passenger
+        try {
+          const roomId = await ensureDirectChatRoom(supabase, ride.driver_id, user.id);
+          await supabase
+            .from('messages')
+            .insert({
+              room_id: roomId,
+              user_id: user.id,
+              content: `Merhaba! Yolculuğunuza ${input.seats_requested} koltuk için rezervasyon talebi bıraktım. ${input.notes ? `Notum: ${input.notes}` : 'Detayları konuşabilir miyiz?'}`,
+            });
+        } catch (chatError) {
+          console.error('Chat room creation error:', chatError);
+          // Chat hatası olsa bile rezervasyon oluşturuldu, devam et
+        }
+
+        return booking;
+      }),
+
+    approveBooking: protectedProcedure
+      .input(
+        z.object({
+          booking_id: z.string().uuid(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Get booking with ride info
+        const { data: booking, error: bookingError } = await supabase
+          .from('ride_bookings')
+          .select('*, ride:ride_offers(driver_id, departure_title, destination_title, available_seats, departure_time)')
+          .eq('id', input.booking_id)
+          .single();
+
+        if (bookingError || !booking) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Rezervasyon bulunamadı' });
+        }
+
+        // Check if user is the driver
+        if (booking.ride.driver_id !== user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Bu rezervasyonu onaylama yetkiniz yok' });
+        }
+
+        // Update booking status
+        const { data: updatedBooking, error: updateError } = await supabase
+          .from('ride_bookings')
+          .update({ status: 'approved', updated_at: new Date().toISOString() })
+          .eq('id', input.booking_id)
+          .select()
+          .single();
+
+        if (updateError) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: updateError.message });
+        }
+
+        // Reduce available seats
+        const remainingSeats = Math.max(
+          0,
+          (booking.ride.available_seats ?? 0) - updatedBooking.seats_requested
+        );
+        await supabase
+          .from('ride_offers')
+          .update({ available_seats: remainingSeats })
+          .eq('id', booking.ride_offer_id);
+
+        // Create notification for passenger
+        const { data: approvalNotification } = await supabase
+          .from('notifications')
+          .insert({
+            user_id: booking.passenger_id,
+            type: 'RIDE_BOOKING_APPROVED',
+            title: 'Rezervasyon Onaylandı',
+            message: `Yolculuk rezervasyonunuz onaylandı! ${booking.ride.departure_title} → ${booking.ride.destination_title}`,
+            data: {
+              ride_offer_id: booking.ride_offer_id,
+              booking_id: booking.id,
+            },
+            push_sent: false,
+          })
+          .select()
+          .single();
+
+        // Send push notification
+        if (approvalNotification) {
+          try {
+            const { data: passengerProfileWithToken } = await supabase
+              .from('profiles')
+              .select('push_token')
+              .eq('id', booking.passenger_id)
+              .single();
+
+            if (passengerProfileWithToken?.push_token) {
+              const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+              await fetch(expoPushUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Accept: 'application/json',
+                  'Accept-Encoding': 'gzip, deflate',
+                },
+                body: JSON.stringify({
+                  to: passengerProfileWithToken.push_token,
+                  sound: 'default',
+                  title: 'Rezervasyon Onaylandı',
+                  body: `Yolculuk rezervasyonunuz onaylandı! ${booking.ride.departure_title} → ${booking.ride.destination_title}`,
+                  data: {
+                    type: 'RIDE_BOOKING_APPROVED',
+                    ride_offer_id: booking.ride_offer_id,
+                    booking_id: booking.id,
+                  },
+                  badge: 1,
+                }),
+              });
+
+              await supabase
+                .from('notifications')
+                .update({ push_sent: true })
+                .eq('id', approvalNotification.id);
+            }
+          } catch (pushError) {
+            console.error('Push notification error:', pushError);
+          }
+        }
+
+        // Get or create chat room and send message
+        try {
+          const roomId = await ensureDirectChatRoom(supabase, user.id, booking.passenger_id);
+          await supabase
+            .from('messages')
+            .insert({
+              room_id: roomId,
+              user_id: user.id,
+              content: `Rezervasyonunuzu onayladım! Yolculuk için hazırız. Detayları konuşalım.`,
+            });
+        } catch (chatError) {
+          console.error('Chat room creation error:', chatError);
+        }
+
+        return updatedBooking;
+      }),
+
+    rejectBooking: protectedProcedure
+      .input(
+        z.object({
+          booking_id: z.string().uuid(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Get booking with ride info
+        const { data: booking, error: bookingError } = await supabase
+          .from('ride_bookings')
+          .select('*, ride:ride_offers(driver_id, departure_title, destination_title)')
+          .eq('id', input.booking_id)
+          .single();
+
+        if (bookingError || !booking) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Rezervasyon bulunamadı' });
+        }
+
+        // Check if user is the driver
+        if (booking.ride.driver_id !== user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Bu rezervasyonu reddetme yetkiniz yok' });
+        }
+
+        // Update booking status
+        const { data: updatedBooking, error: updateError } = await supabase
+          .from('ride_bookings')
+          .update({ status: 'rejected', updated_at: new Date().toISOString() })
+          .eq('id', input.booking_id)
+          .select()
+          .single();
+
+        if (updateError) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: updateError.message });
+        }
+
+        // Create notification for passenger
+        const { data: rejectionNotification } = await supabase
+          .from('notifications')
+          .insert({
+            user_id: booking.passenger_id,
+            type: 'RIDE_BOOKING_REJECTED',
+            title: 'Rezervasyon Reddedildi',
+            message: `Yolculuk rezervasyonunuz reddedildi. ${booking.ride.departure_title} → ${booking.ride.destination_title}`,
+            data: {
+              ride_offer_id: booking.ride_offer_id,
+              booking_id: booking.id,
+            },
+            push_sent: false,
+          })
+          .select()
+          .single();
+
+        // Send push notification
+        if (rejectionNotification) {
+          try {
+            const { data: passengerProfile } = await supabase
+              .from('profiles')
+              .select('push_token')
+              .eq('id', booking.passenger_id)
+              .single();
+
+            if (passengerProfile?.push_token) {
+              const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+              await fetch(expoPushUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Accept: 'application/json',
+                  'Accept-Encoding': 'gzip, deflate',
+                },
+                body: JSON.stringify({
+                  to: passengerProfile.push_token,
+                  sound: 'default',
+                  title: 'Rezervasyon Reddedildi',
+                  body: `Yolculuk rezervasyonunuz reddedildi.`,
+                  data: {
+                    type: 'RIDE_BOOKING_REJECTED',
+                    ride_offer_id: booking.ride_offer_id,
+                    booking_id: booking.id,
+                  },
+                  badge: 1,
+                }),
+              });
+
+              await supabase
+                .from('notifications')
+                .update({ push_sent: true })
+                .eq('id', rejectionNotification.id);
+            }
+          } catch (pushError) {
+            console.error('Push notification error:', pushError);
+          }
+        }
+
+        // Send chat message
+        try {
+          const roomId = await ensureDirectChatRoom(supabase, user.id, booking.passenger_id);
+          await supabase
+            .from('messages')
+            .insert({
+              room_id: roomId,
+              user_id: user.id,
+              content: `Merhaba, ${booking.ride.departure_title} → ${booking.ride.destination_title} yolculuğu için rezervasyon talebini bu sefer kabul edemiyorum.`,
+            });
+        } catch (chatError) {
+          console.error('Chat message error:', chatError);
+        }
+
+        return updatedBooking;
+      }),
+  }),
 });
 
 // Algoritma: Severity bazlı kullanıcı filtreleme
@@ -7422,4 +8116,71 @@ serve(async (req) => {
   
   return response;
 });
+
+const UPCOMING_BUFFER_MINUTES = 5;
+const CLEANUP_OFFSET_MINUTES = 10;
+
+async function ensureDirectChatRoom(supabase: any, userA: string, userB: string) {
+  const { data: roomsOfA } = await supabase
+    .from('chat_members')
+    .select('room_id')
+    .eq('user_id', userA);
+
+  const roomIds = (roomsOfA ?? []).map((row: any) => row.room_id).filter(Boolean);
+
+  if (roomIds.length > 0) {
+    const { data: sharedRooms } = await supabase
+      .from('chat_members')
+      .select('room_id')
+      .in('room_id', roomIds)
+      .eq('user_id', userB)
+      .limit(1);
+
+    if (sharedRooms && sharedRooms.length > 0) {
+      return sharedRooms[0].room_id as string;
+    }
+  }
+
+  const { data: room, error: roomError } = await supabase
+    .from('chat_rooms')
+    .insert({
+      type: 'direct',
+      name: null,
+      district: null,
+      created_by: userA,
+    })
+    .select('id')
+    .single();
+
+  if (roomError || !room) {
+    console.error('Chat room creation failed:', roomError);
+    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Sohbet odası oluşturulamadı' });
+  }
+
+  const memberInserts = [
+    { room_id: room.id, user_id: userA, role: 'admin' },
+    { room_id: room.id, user_id: userB, role: 'member' },
+  ];
+
+  const { error: membersError } = await supabase.from('chat_members').insert(memberInserts);
+  if (membersError) {
+    console.error('Chat members insertion failed:', membersError);
+    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Sohbet katılımcıları eklenemedi' });
+  }
+
+  return room.id as string;
+}
+
+async function cleanupExpiredRides(supabase: any) {
+  try {
+    const threshold = new Date(Date.now() - CLEANUP_OFFSET_MINUTES * 60 * 1000).toISOString();
+    await supabase
+      .from('ride_offers')
+      .update({ status: 'expired' })
+      .lt('departure_time', threshold)
+      .eq('status', 'active');
+  } catch (error) {
+    console.error('cleanupExpiredRides error:', error);
+  }
+}
 

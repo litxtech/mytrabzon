@@ -29,20 +29,21 @@ export default function MatchDetailScreen() {
     { enabled: !!id }
   );
 
+  const utils = trpc.useUtils();
+  
   const createReservationMutation = trpc.football.createReservation.useMutation({
     onSuccess: async (data: any) => {
       // Rezervasyon yapıldı, otomatik chat oluştur ve mesaj gönder
       try {
-        const createRoomMutation = trpc.chat.createRoom.useMutation();
-        const room = await createRoomMutation.mutateAsync({
+        // Hook kullanmak yerine utils ile mutation çağır
+        const createRoomResult = await utils.client.chat.createRoom.mutate({
           type: 'direct',
           memberIds: [match!.organizer_id],
         });
         
         // İlk mesajı gönder
-        const sendMessageMutation = trpc.chat.sendMessage.useMutation();
-        await sendMessageMutation.mutateAsync({
-          roomId: room.id,
+        await utils.client.chat.sendMessage.mutate({
+          roomId: createRoomResult.id,
           content: `Merhaba! ${match!.field?.name || 'Halı saha'} için ${match!.match_date} tarihinde ${match!.start_time?.substring(0, 5)} saatinde rezervasyon yaptım. Detayları konuşalım mı?`,
         });
         
@@ -53,7 +54,7 @@ export default function MatchDetailScreen() {
             {
               text: 'Mesajlara Git',
               onPress: () => {
-                router.push(`/chat/${room.id}` as any);
+                router.push(`/chat/${createRoomResult.id}` as any);
               },
             },
             {

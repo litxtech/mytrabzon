@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { protectedProcedure } from '../../../create-context';
 
+const UPCOMING_BUFFER_MINUTES = 5;
+
 export const searchRidesProcedure = protectedProcedure
   .input(
     z.object({
@@ -12,6 +14,8 @@ export const searchRidesProcedure = protectedProcedure
   .query(async ({ ctx, input }) => {
     const { supabase } = ctx;
 
+    const upcomingThreshold = new Date(Date.now() - UPCOMING_BUFFER_MINUTES * 60 * 1000).toISOString();
+
     let query = supabase
       .from('ride_offers')
       .select(`
@@ -19,7 +23,8 @@ export const searchRidesProcedure = protectedProcedure
         driver:profiles(id, full_name, avatar_url, verified)
       `)
       .eq('status', 'active')
-      .gt('expires_at', new Date().toISOString())
+      .gt('expires_at', upcomingThreshold)
+      .gte('departure_time', upcomingThreshold) // Yolculuk tarihi geçmemiş olanlar
       .gt('available_seats', 0);
 
     // Date filter

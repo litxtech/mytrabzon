@@ -234,6 +234,7 @@ export default function NotificationsScreen() {
                     {item.title}
                   </Text>
                   {!item.read_at && <View style={[styles.unreadDot, { backgroundColor: theme.colors.primary }]} />}
+                  {item.read_at && <Check size={16} color={theme.colors.primary} style={styles.readCheck} />}
                 </View>
                 <Text style={[styles.notificationMessage, { color: theme.colors.textLight }]} numberOfLines={3}>
                   {item.body || item.message}
@@ -462,6 +463,9 @@ const styles = StyleSheet.create({
   },
   notificationTitleUnread: {
     fontWeight: '700',
+  },
+  readCheck: {
+    marginLeft: SPACING.xs,
   },
   unreadDot: {
     width: 8,

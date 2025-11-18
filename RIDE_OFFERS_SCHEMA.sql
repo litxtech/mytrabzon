@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS ride_offers (
   total_seats INTEGER NOT NULL CHECK (total_seats > 0),
   available_seats INTEGER NOT NULL CHECK (available_seats >= 0),
   price_per_seat NUMERIC(10,2),
+  vehicle_brand TEXT,
+  vehicle_model TEXT,
+  vehicle_color TEXT,
+  vehicle_plate TEXT,
+  driver_full_name TEXT,
   
   -- Kurallar & not
   notes TEXT,
