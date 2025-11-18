@@ -49,6 +49,8 @@ export default function RideCreateScreen() {
   const [vehiclePlate, setVehiclePlate] = useState('');
   const [driverFullName, setDriverFullName] = useState('');
   const [driverPhone, setDriverPhone] = useState('');
+  const [policyAccepted, setPolicyAccepted] = useState(false);
+  const [showPolicyModal, setShowPolicyModal] = useState(false);
 
   const createRideMutation = trpc.ride.createRide.useMutation({
     onSuccess: async () => {
@@ -115,6 +117,14 @@ export default function RideCreateScreen() {
 
     if (driverPhone.replace(/\D/g, '').length < 10) {
       Alert.alert('Hata', 'Lütfen geçerli bir telefon numarası girin');
+      return;
+    }
+
+    if (!policyAccepted) {
+      Alert.alert(
+        'Politika Onayı Gerekli',
+        'Yolculuk ilanı vermeden önce yolculuk paylaşım politikamızı okuyup onaylamanız gerekir.'
+      );
       return;
     }
 
@@ -502,6 +512,25 @@ export default function RideCreateScreen() {
           </View>
         </View>
 
+        <View style={[styles.section, styles.policySection]}>
+          <TouchableOpacity
+            style={styles.checkboxRow}
+            onPress={() => setPolicyAccepted(!policyAccepted)}
+          >
+            <View style={[styles.checkbox, policyAccepted && styles.checkboxChecked]}>
+              {policyAccepted && <Text style={styles.checkmark}>✓</Text>}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.policyText}>
+                Yolculuk paylaşım politikası şartlarını okudum, anladım ve kabul ediyorum.
+              </Text>
+              <TouchableOpacity onPress={() => setShowPolicyModal(true)}>
+                <Text style={styles.policyLink}>Politikayı oku</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </View>
+
         {/* Submit Button */}
         <TouchableOpacity
           style={[styles.submitButton, loading && styles.submitButtonDisabled]}
@@ -555,6 +584,104 @@ export default function RideCreateScreen() {
             >
               <Text style={styles.modalCloseButtonText}>Kapat</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showPolicyModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '85%' }]}>
+            <View style={styles.policyHeader}>
+              <Text style={styles.modalTitle}>Yolculuk Paylaşımı ve İlan Kullanım Politikası</Text>
+              <TouchableOpacity onPress={() => setShowPolicyModal(false)}>
+                <Text style={styles.policyClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.policyScroll} showsVerticalScrollIndicator={false}>
+              <Text style={styles.policyParagraph}>
+                (Ticari olmayan, gönüllü yolcu bırakma – yolculuk paylaşımı modeli)
+              </Text>
+              <Text style={styles.policyParagraph}>
+                Bu politika, mobil uygulamada sunulan yolculuk ilanı verme, yolculuğa başvurma ve kullanıcıların
+                karşılıklı anlaşarak birlikte seyahat etmesi sürecinde uygulanacak tüm kuralları ve sorumlulukları içerir.
+                Platform, yalnızca kullanıcıları birbirine bağlayan dijital bir aracılık sistemidir. Uygulama hiçbir şekilde
+                ticari taşımacılık, taksi, servis veya ücretli yolcu taşıma hizmeti vermez.
+              </Text>
+              <Text style={styles.policyParagraph}>
+                Aşağıdaki hükümleri kabul etmeyen kullanıcıların uygulamayı kullanmaması gerekir.
+              </Text>
+              <Text style={styles.policySubtitle}>1. SİSTEMİN AMACI VE GENEL TANIMI</Text>
+              <Text style={styles.policyParagraph}>
+                Uygulamanın amacı, aynı yöne seyahat eden kullanıcıların birbirine yardımcı olabilmesini kolaylaştırmak,
+                yakıt ve zaman maliyetini azaltmak ve karşılıklı rıza ile yapılan gönüllü yolculuk paylaşımı sürecini güvenli
+                ve düzenli bir çerçeveye oturtmaktır.
+              </Text>
+              <Text style={styles.policyParagraph}>
+                Sistem şu şekilde işler: Bir kullanıcı ilan açarak gideceği yönü, saatini, güzergâhını ve müsait kişileri belirtir.
+                Başka bir kullanıcı ilanı görüp başvurabilir. Taraflar uygulama üzerinden iletişim kurar, anlaşırsa beraber yolculuk yapılır.
+                Platform taraflar arasındaki yolculuk anlaşmasına karışmaz, fiyat, rota veya güvenlik onayı vermez.
+              </Text>
+              <Text style={styles.policySubtitle}>2. UYGULAMANIN HUKUKİ STATÜSÜ</Text>
+              <Text style={styles.policyParagraph}>
+                Uygulama: Bir taşıma şirketi değildir. Yolcu taşımacılığı hizmeti sunmaz. Ücretli taşımayı organize etmez.
+                Taşımacılık faaliyeti yürütmez veya yönlendirme yapmaz. Kullanıcıların gerçekleştirdiği yolculuklar; ticari taşıma,
+                taksi hizmeti, servis taşımacılığı veya ücretli yolcu taşımacılığı sayılmaz. Platform, yalnızca kullanıcılar arasında ilan,
+                başvuru, eşleşme, mesajlaşma ve konum paylaşımı özelliklerini sağlar. Her yolculuk, kullanıcıların kendi sorumluluğunda gerçekleşir.
+              </Text>
+              <Text style={styles.policySubtitle}>3. KULLANICI PROFİLİ VE DOĞRULAMA</Text>
+              <Text style={styles.policyParagraph}>
+                Kullanıcılar hesap oluştururken gerçek isim, doğru iletişim bilgisi ve kullanılabilir telefon numarası girmek zorundadır.
+                Sahte hesap veya yanıltıcı bilgi tespit edildiğinde hesap askıya alınır. Platform, güvenliği sağlamak için kimlik ve telefon doğrulaması uygulayabilir.
+              </Text>
+              <Text style={styles.policySubtitle}>4. YOLCULUĞUN NİTELİĞİ</Text>
+              <Text style={styles.policyParagraph}>
+                Bu uygulamada yapılan yolculuklar gönüllü birliktelik ve masraf paylaşımı esasına dayanır. Taraflar eşit sorumluluğa sahiptir; sürücü ticari hizmet vermez.
+              </Text>
+              <Text style={styles.policySubtitle}>5. ÜCRET, KATKI PAYI VE MASRAF PAYLAŞIMI</Text>
+              <Text style={styles.policyParagraph}>
+                Sistem ticari taşımacılık değildir; zorunlu ücret yoktur. Taraflar isterse yakıt katkısı yapabilir. Platform hiçbir ödemeyi belirlemez ve takip etmez.
+              </Text>
+              <Text style={styles.policySubtitle}>6. İLAN VEREN KULLANICININ SORUMLULUKLARI</Text>
+              <Text style={styles.policyParagraph}>
+                İlan açan kullanıcı rota ve zamanı doğru girmek, trafik kurallarına uymak, doğru bilgi vermek ve güvenliği sağlamak zorundadır.
+              </Text>
+              <Text style={styles.policySubtitle}>7. İLANA BAŞVURAN KULLANICININ SORUMLULUKLARI</Text>
+              <Text style={styles.policyParagraph}>
+                Başvuran kullanıcı yolculuğun gönüllü olduğunu kabul eder, güvenli davranmakla yükümlüdür ve yanlış bilgi veremez.
+              </Text>
+              <Text style={styles.policySubtitle}>8. PLATFORMUN SORUMLULUK REDDİ</Text>
+              <Text style={styles.policyParagraph}>
+                Platform araç durumu, kaza, eşya kaybı, rota sorunları veya anlaşmazlıklardan sorumlu değildir. Görevi yalnızca teknik aracılıktır.
+              </Text>
+              <Text style={styles.policySubtitle}>9. GÜVENLİK VE KULLANICI DAVRANIŞ POLİTİKASI</Text>
+              <Text style={styles.policyParagraph}>
+                Kullanıcılar saygılı davranmalı, taciz veya güvenliği tehlikeye atan davranışlardan kaçınmalıdır. Kurallara uymayanların hesapları kapatılabilir.
+              </Text>
+              <Text style={styles.policySubtitle}>10. YASAKLI FAALİYETLER</Text>
+              <Text style={styles.policyParagraph}>
+                Ticari taşımacılık yapmak, korsan taksi gibi davranmak, sahte ilan açmak, dolandırıcılık, uyuşturucu/alkol etkisinde araç kullanmak gibi faaliyetler yasaktır.
+              </Text>
+              <Text style={styles.policySubtitle}>11. KVKK VE GİZLİLİK</Text>
+              <Text style={styles.policyParagraph}>
+                Platform kimlik, telefon, konum ve ilan verilerini sadece hizmet sunmak için işler; üçüncü kişilere satmaz, yasal zorunluluk halinde paylaşır.
+              </Text>
+              <Text style={styles.policySubtitle}>12. HUKUKİ DAYANAK</Text>
+              <Text style={styles.policyParagraph}>
+                Yolculuk, Türk Borçlar Kanunu kapsamında gönüllü yol arkadaşlığı – masraf paylaşımı anlaşmasıdır. Platform bu anlaşmanın tarafı değildir.
+              </Text>
+              <Text style={styles.policySubtitle}>13. ANLAŞMAZLIKLAR</Text>
+              <Text style={styles.policyParagraph}>
+                Kullanıcılar arasındaki anlaşmazlıklar tarafların sorumluluğundadır; platform gerekli görürse hesabı askıya alabilir.
+              </Text>
+              <Text style={styles.policySubtitle}>14. POLİTİKA DEĞİŞİKLİKLERİ</Text>
+              <Text style={styles.policyParagraph}>
+                Platform politikayı güncelleyebilir. Güncel metin uygulamada yayınlandığı anda yürürlüğe girer.
+              </Text>
+              <Text style={styles.policySubtitle}>15. İLETİŞİM</Text>
+              <Text style={styles.policyParagraph}>
+                LITXTECH LLC – support@litxtech.com – +1 307 271 5151
+              </Text>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -806,6 +933,46 @@ const styles = StyleSheet.create({
   modalCloseButtonText: {
     color: COLORS.white,
     fontWeight: '700',
+  },
+  policySection: {
+    marginBottom: SPACING.md,
+  },
+  policyText: {
+    color: COLORS.text,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+  },
+  policyLink: {
+    color: COLORS.primary,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  policyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.md,
+  },
+  policyClose: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  policyScroll: {
+    maxHeight: '80%',
+  },
+  policyParagraph: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
+    lineHeight: 20,
+  },
+  policySubtitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xs,
   },
 });
 
