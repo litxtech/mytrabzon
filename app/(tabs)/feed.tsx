@@ -22,7 +22,7 @@ import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
 import { DISTRICTS, DISTRICT_BADGES } from '@/constants/districts';
 import { Post, District } from '@/types/database';
-import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, MoreVertical, AlertCircle } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, MoreVertical, AlertCircle, Car, Search } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLogo } from '@/components/AppLogo';
@@ -414,7 +414,7 @@ export default function FeedScreen() {
         </View>
       </View>
     );
-  }, [router, theme, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible, refetchEvents, formatCount]);
+  }, [router, theme, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible, refetchEvents, formatCount, likeEventMutation]);
 
   const renderPost = useCallback(({ item }: { item: Post }) => {
     const firstMedia = item.media && item.media.length > 0 ? item.media[0] : null;
@@ -628,6 +628,25 @@ export default function FeedScreen() {
     });
   }, [eventsData?.events, feedData?.posts]);
 
+  const renderRideActions = useMemo(() => (
+    <View style={[styles.rideActionsContainer, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+      <TouchableOpacity
+        style={[styles.rideActionButton, { backgroundColor: theme.colors.primary }]}
+        onPress={() => router.push('/ride/search')}
+      >
+        <Search size={20} color={COLORS.white} />
+        <Text style={styles.rideActionText}>Yolculuk Ara</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.rideActionButton, { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.primary }]}
+        onPress={() => router.push('/ride/create')}
+      >
+        <Car size={20} color={theme.colors.primary} />
+        <Text style={[styles.rideActionText, { color: theme.colors.primary }]}>Yolculuk Oluştur</Text>
+      </TouchableOpacity>
+    </View>
+  ), [theme, router]);
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background, paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.md) : 0 }]}>
       <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border, paddingTop: Math.max(insets.top, Platform.OS === 'android' ? SPACING.lg : SPACING.md) }]}>
@@ -641,6 +660,7 @@ export default function FeedScreen() {
         </TouchableOpacity>
       </View>
 
+      {renderRideActions}
       {renderSortTabs}
       {renderDistrictFilter}
 
@@ -741,6 +761,7 @@ export default function FeedScreen() {
                 cachePolicy="memory-disk"
                 priority="high"
                 allowDownscaling={false}
+                contentPosition="center"
               />
             )}
           </ScrollView>
@@ -993,11 +1014,15 @@ const styles = StyleSheet.create({
     width: Dimensions.get('window').width,
     height: Dimensions.get('window').height,
     paddingTop: 0,
+    paddingBottom: 0,
+    paddingLeft: 0,
+    paddingRight: 0,
   },
   fullScreenImage: {
     width: Dimensions.get('window').width,
     height: Dimensions.get('window').height,
     marginTop: 0,
+    resizeMode: 'contain',
   },
   mediaCountBadge: {
     position: 'absolute' as const,
@@ -1102,5 +1127,26 @@ const styles = StyleSheet.create({
   eventBadgeText: {
     fontSize: FONT_SIZES.xs,
     fontWeight: '700' as const,
+  },
+  rideActionsContainer: {
+    flexDirection: 'row',
+    padding: SPACING.md,
+    gap: SPACING.sm,
+    borderBottomWidth: 1,
+  },
+  rideActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 12,
+    gap: SPACING.xs,
+  },
+  rideActionText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700' as const,
+    color: COLORS.white,
   },
 });

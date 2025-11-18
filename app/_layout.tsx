@@ -69,6 +69,10 @@ function RootLayoutNav() {
       <Stack.Screen name="football/team/[id]" options={{ title: "Takım Detayı" }} />
       <Stack.Screen name="university/giresun" options={{ title: "Giresun Üniversitesi" }} />
       <Stack.Screen name="match/video/[sessionId]" options={{ headerShown: false }} />
+      <Stack.Screen name="ride/create" options={{ title: "Yeni Yolculuk" }} />
+      <Stack.Screen name="ride/search" options={{ title: "Yolculuk Ara" }} />
+      <Stack.Screen name="ride/[id]" options={{ title: "Yolculuk Detayı" }} />
+      <Stack.Screen name="profile/my-matches" options={{ title: "Paylaşılan Maçlar" }} />
     </Stack>
   );
 }

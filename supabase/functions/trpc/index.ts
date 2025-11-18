@@ -3058,6 +3058,7 @@ const appRouter = createTRPCRouter({
           `, { count: 'exact' })
           .eq('is_filled', false)
           .gt('expires_at', new Date().toISOString())
+          .gt('match_time', new Date().toISOString()) // Maç saati geçmemiş olanlar
           .order('match_time', { ascending: true })
           .range(input.offset, input.offset + input.limit - 1);
 

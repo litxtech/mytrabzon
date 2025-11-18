@@ -669,6 +669,12 @@ export default function LoginScreen() {
 
     return (
       <View style={styles.formContainer}>
+        {/* Beta Sürümü Mesajı */}
+        <View style={styles.betaBadge}>
+          <Text style={styles.betaText}>🚀 Beta Sürümü</Text>
+          <Text style={styles.betaSubtext}>Yakında tam sürüm kullanıma sunulacak</Text>
+        </View>
+
         <Text style={styles.formTitle}>
           {mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
         </Text>
@@ -1027,5 +1033,26 @@ const styles = StyleSheet.create({
   },
   termsLink: {
     textDecorationLine: 'underline' as const,
+  },
+  betaBadge: {
+    backgroundColor: 'rgba(255, 193, 7, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 193, 7, 0.5)',
+    borderRadius: 12,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
+    alignItems: 'center' as const,
+  },
+  betaText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700' as const,
+    color: '#FFC107',
+    marginBottom: SPACING.xs,
+  },
+  betaSubtext: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.white,
+    opacity: 0.9,
+    textAlign: 'center' as const,
   },
 });

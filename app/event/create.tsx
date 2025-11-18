@@ -17,12 +17,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { ArrowLeft, AlertCircle, ChevronDown, Camera, Image as ImageIcon, X, Video } from 'lucide-react-native';
-import { TRABZON_DISTRICTS, GIRESUN_DISTRICTS, getDistrictsByCity } from '@/constants/districts';
+import { getDistrictsByCity } from '@/constants/districts';
 import { Footer } from '@/components/Footer';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
 
 const EVENT_CATEGORIES = [
   { value: 'trafik', label: '🚗 Trafik Var' },
@@ -246,7 +245,7 @@ export default function CreateEventScreen() {
           <AlertCircle size={32} color={COLORS.primary} />
           <Text style={styles.headerTitle}>Olay Var!</Text>
           <Text style={styles.headerSubtitle}>
-            Trabzon'da ne olup bittiğini paylaş
+            Trabzon&apos;da ne olup bittiğini paylaş
           </Text>
         </View>
 

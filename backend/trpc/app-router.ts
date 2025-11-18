@@ -85,6 +85,10 @@ import {
 } from "./routes/admin/kyc-requests/route";
 import { createEventProcedure } from "./routes/event/create-event/route";
 import { getEventsProcedure } from "./routes/event/get-events/route";
+import { createRideProcedure } from "./routes/ride/create-ride/route";
+import { searchRidesProcedure } from "./routes/ride/search-rides/route";
+import { getRideDetailProcedure } from "./routes/ride/get-ride-detail/route";
+import { bookRideProcedure } from "./routes/ride/book-ride/route";
 import { getNotificationsProcedure, getUnreadCountProcedure } from "./routes/notification/get-notifications/route";
 import {
   markAsReadProcedure as markNotificationAsReadProcedure,
@@ -194,6 +198,12 @@ export const appRouter = createTRPCRouter({
     deleteNotification: deleteNotificationProcedure,
     markAllAsRead: markAllAsReadProcedure,
     deleteAllNotifications: deleteAllNotificationsProcedure,
+  }),
+  ride: createTRPCRouter({
+    createRide: createRideProcedure,
+    searchRides: searchRidesProcedure,
+    getRideDetail: getRideDetailProcedure,
+    bookRide: bookRideProcedure,
   }),
 });
 

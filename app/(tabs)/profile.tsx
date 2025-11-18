@@ -5,7 +5,7 @@ import { Video, ResizeMode } from 'expo-av';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, MoreVertical, Share2, Users, MessageCircle } from 'lucide-react-native';
+import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, MoreVertical, Share2, Users, MessageCircle, Trophy } from 'lucide-react-native';
 import { DISTRICT_BADGES } from '../../constants/districts';
 import { useRouter } from 'expo-router';
 import { Footer } from '../../components/Footer';
@@ -446,6 +446,10 @@ export default function ProfileScreen() {
   const quickActions: QuickAction[] = [
     { id: 'edit', label: 'Profili Düzenle', icon: Edit3, onPress: () => handleNavigate('/profile/edit') },
     { id: 'donate', label: 'Destekle', icon: Heart, onPress: () => handleNavigate('/support/donate') },
+    { id: 'matches', label: 'Paylaşılan Maçlar', icon: Trophy, onPress: () => {
+      setMenuVisible(false);
+      router.push('/profile/my-matches' as any);
+    }, disabled: pastMatches.length === 0 },
   ];
 
   // Menüye eklenecek butonlar
