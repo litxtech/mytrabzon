@@ -74,6 +74,8 @@ import {
   updateSupportTicketProcedure,
 } from "./routes/admin/support-tickets/route";
 import { sendNotificationProcedure } from "./routes/admin/send-notification/route";
+import { getRideListProcedure } from "./routes/admin/get-ride-list/route";
+import { getRideDetailProcedure as adminGetRideDetailProcedure } from "./routes/admin/get-ride-detail/route";
 import { getAllPostsProcedure } from "./routes/admin/get-all-posts/route";
 import { getAllCommentsProcedure } from "./routes/admin/get-all-comments/route";
 import { createKycProcedure } from "./routes/kyc/create-kyc/route";
@@ -182,6 +184,8 @@ export const appRouter = createTRPCRouter({
     approveKyc: approveKycProcedure,
     rejectKyc: rejectKycProcedure,
     sendNotification: sendNotificationProcedure,
+    getRideList: getRideListProcedure,
+    getRideDetail: adminGetRideDetailProcedure,
     deleteUser: deleteUsersProcedure,
     deletePost: adminDeletePostProcedure,
     deleteComment: adminDeleteCommentProcedure,

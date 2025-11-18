@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS ride_offers (
   vehicle_color TEXT,
   vehicle_plate TEXT,
   driver_full_name TEXT,
+  driver_phone TEXT,
   
   -- Kurallar & not
   notes TEXT,
@@ -63,6 +64,7 @@ CREATE TABLE IF NOT EXISTS ride_bookings (
   status TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending','approved','rejected','cancelled')),
   notes TEXT,
+  passenger_phone TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(ride_offer_id, passenger_id)

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -13,13 +13,12 @@ import {
   Modal,
   FlatList,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Plus, X, Calendar, Users, TurkishLira, Check } from 'lucide-react-native';
+import { ArrowLeft, Plus, X, Calendar, Users, Check } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
-import { useAuth } from '@/contexts/AuthContext';
 
 const PRICE_OPTIONS = Array.from({ length: 500 }, (_, index) => (index + 1) * 10);
 
@@ -27,7 +26,6 @@ export default function RideCreateScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const utils = trpc.useUtils();
-  const { profile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -50,12 +48,7 @@ export default function RideCreateScreen() {
   const [vehicleColor, setVehicleColor] = useState('');
   const [vehiclePlate, setVehiclePlate] = useState('');
   const [driverFullName, setDriverFullName] = useState('');
-
-  useEffect(() => {
-    if (profile?.full_name && !driverFullName) {
-      setDriverFullName(profile.full_name);
-    }
-  }, [profile?.full_name, driverFullName]);
+  const [driverPhone, setDriverPhone] = useState('');
 
   const createRideMutation = trpc.ride.createRide.useMutation({
     onSuccess: async () => {
@@ -115,6 +108,16 @@ export default function RideCreateScreen() {
       return;
     }
 
+    if (!driverPhone.trim()) {
+      Alert.alert('Hata', 'Şoför telefon numarasını girin');
+      return;
+    }
+
+    if (driverPhone.replace(/\D/g, '').length < 10) {
+      Alert.alert('Hata', 'Lütfen geçerli bir telefon numarası girin');
+      return;
+    }
+
     setLoading(true);
     try {
       await createRideMutation.mutateAsync({
@@ -134,6 +137,7 @@ export default function RideCreateScreen() {
         vehicle_color: vehicleColor.trim(),
         vehicle_plate: vehiclePlate.trim().toUpperCase(),
         driver_full_name: driverFullName.trim(),
+        driver_phone: driverPhone.trim(),
       });
     } catch (error) {
       console.error('Create ride error:', error);
@@ -269,10 +273,43 @@ export default function RideCreateScreen() {
         {/* Tarih & Saat */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Tarih & Saat</Text>
-          <TouchableOpacity
-            style={styles.dateButton}
-            onPress={() => setShowDatePicker(true)}
-          >
+        <TouchableOpacity
+          style={styles.dateButton}
+          onPress={() => {
+            if (Platform.OS === 'android') {
+              DateTimePickerAndroid.open({
+                value: departureTime,
+                mode: 'date',
+                onChange: (event, selectedDate) => {
+                  if (event?.type === 'dismissed') {
+                    return;
+                  }
+                  const baseDate = selectedDate || departureTime;
+                  DateTimePickerAndroid.open({
+                    value: baseDate,
+                    mode: 'time',
+                    is24Hour: true,
+                    onChange: (timeEvent, selectedTime) => {
+                      if (timeEvent?.type === 'dismissed') {
+                        return;
+                      }
+                      if (selectedTime) {
+                        const merged = new Date(baseDate);
+                        merged.setHours(selectedTime.getHours());
+                        merged.setMinutes(selectedTime.getMinutes());
+                        merged.setSeconds(0);
+                        merged.setMilliseconds(0);
+                        setDepartureTime(merged);
+                      }
+                    },
+                  });
+                },
+              });
+              return;
+            }
+            setShowDatePicker(true);
+          }}
+        >
             <Calendar size={20} color={COLORS.primary} />
             <Text style={styles.dateButtonText}>
               {departureTime.toLocaleString('tr-TR', {
@@ -285,17 +322,21 @@ export default function RideCreateScreen() {
             </Text>
           </TouchableOpacity>
 
-          {showDatePicker && Platform.OS !== 'web' && (
+          {showDatePicker && Platform.OS === 'ios' && (
             <DateTimePicker
               value={departureTime}
               mode="datetime"
               is24Hour={true}
               display="default"
               onChange={(event: any, selectedDate?: Date) => {
-                setShowDatePicker(Platform.OS === 'ios');
+                if (event?.type === 'dismissed') {
+                  setShowDatePicker(false);
+                  return;
+                }
                 if (selectedDate) {
                   setDepartureTime(selectedDate);
                 }
+                setShowDatePicker(false);
               }}
             />
           )}
@@ -326,7 +367,7 @@ export default function RideCreateScreen() {
               style={styles.priceSelector}
               onPress={() => setShowPricePicker(true)}
             >
-              <TurkishLira size={20} color={COLORS.primary} />
+              <Text style={styles.currencyIcon}>₺</Text>
               <Text style={styles.priceSelectorText}>
                 {selectedPrice
                   ? `${selectedPrice.toLocaleString('tr-TR')} TL`
@@ -401,9 +442,21 @@ export default function RideCreateScreen() {
               value={driverFullName}
               onChangeText={setDriverFullName}
             />
-            {!profile?.full_name && (
-              <Text style={styles.helperText}>Profilindeki isim otomatik doldurulur. Gerekirse güncelle.</Text>
-            )}
+            <Text style={styles.helperText}>Lütfen gerçek adınızı ve soyadınızı yazın.</Text>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Şoför Telefonu *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Örn: 05xx xxx xx xx"
+              placeholderTextColor={COLORS.textLight}
+              value={driverPhone}
+              onChangeText={setDriverPhone}
+              keyboardType="phone-pad"
+              maxLength={20}
+            />
+            <Text style={styles.helperText}>Admin bilgileri için telefon numarası gereklidir.</Text>
           </View>
         </View>
 
@@ -690,6 +743,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     padding: SPACING.md,
+  },
+  currencyIcon: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   priceSelectorText: {
     fontSize: FONT_SIZES.md,

@@ -5786,6 +5786,138 @@ const appRouter = createTRPCRouter({
         };
       }),
 
+    getRideList: protectedProcedure
+      .input(
+        z
+          .object({
+            limit: z.number().int().min(1).max(200).optional().default(50),
+            status: z.enum(['active', 'full', 'cancelled', 'finished', 'expired']).optional(),
+          })
+          .optional()
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        await ensureAdminAccess(supabase, user.id);
+
+        let query = supabase
+          .from('ride_offers')
+          .select(`
+            *,
+            driver:profiles(id, full_name, phone, avatar_url),
+            bookings:ride_bookings(id, status)
+          `)
+          .order('created_at', { ascending: false })
+          .limit(input?.limit ?? 50);
+
+        if (input?.status) {
+          query = query.eq('status', input.status);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+          console.error('Admin get ride list error:', error);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message || 'Yolculuklar alınamadı' });
+        }
+
+        return (data || []).map((ride: any) => ({
+          id: ride.id,
+          departure_title: ride.departure_title,
+          destination_title: ride.destination_title,
+          departure_time: ride.departure_time,
+          status: ride.status,
+          price_per_seat: ride.price_per_seat,
+          total_seats: ride.total_seats,
+          available_seats: ride.available_seats,
+          driver_full_name: ride.driver_full_name,
+          driver_phone: ride.driver_phone,
+          vehicle_brand: ride.vehicle_brand,
+          vehicle_model: ride.vehicle_model,
+          vehicle_plate: ride.vehicle_plate,
+          driver: ride.driver
+            ? {
+                id: ride.driver.id,
+                full_name: ride.driver.full_name,
+                phone: ride.driver.phone,
+                avatar_url: ride.driver.avatar_url,
+              }
+            : null,
+          bookings_count: ride.bookings?.length || 0,
+          created_at: ride.created_at,
+        }));
+      }),
+
+    getRideDetail: protectedProcedure
+      .input(z.object({ ride_id: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        await ensureAdminAccess(supabase, user.id);
+
+        const { data, error } = await supabase
+          .from('ride_offers')
+          .select(`
+            *,
+            driver:profiles(id, full_name, phone, avatar_url),
+            bookings:ride_bookings(
+              *,
+              passenger:profiles(id, full_name, phone, avatar_url)
+            )
+          `)
+          .eq('id', input.ride_id)
+          .single();
+
+        if (error || !data) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Yolculuk bulunamadı' });
+        }
+
+        const bookings = (data.bookings || []).map((booking: any) => ({
+          id: booking.id,
+          passenger_id: booking.passenger_id,
+          passenger_name: booking.passenger?.full_name || 'Bilinmiyor',
+          passenger_phone: booking.passenger_phone,
+          seats_requested: booking.seats_requested,
+          status: booking.status,
+          notes: booking.notes,
+          created_at: booking.created_at,
+        }));
+
+        return {
+          ride: {
+            id: data.id,
+            departure_title: data.departure_title,
+            departure_description: data.departure_description,
+            destination_title: data.destination_title,
+            destination_description: data.destination_description,
+            departure_time: data.departure_time,
+            total_seats: data.total_seats,
+            available_seats: data.available_seats,
+            price_per_seat: data.price_per_seat,
+            status: data.status,
+            vehicle_brand: data.vehicle_brand,
+            vehicle_model: data.vehicle_model,
+            vehicle_color: data.vehicle_color,
+            vehicle_plate: data.vehicle_plate,
+            driver_full_name: data.driver_full_name,
+            driver_phone: data.driver_phone,
+            notes: data.notes,
+            created_at: data.created_at,
+          },
+          driver: data.driver
+            ? {
+                id: data.driver.id,
+                full_name: data.driver.full_name,
+                phone: data.driver.phone,
+                avatar_url: data.driver.avatar_url,
+              }
+            : null,
+          bookings,
+        };
+      }),
+
     // Politika yönetimi
     getPolicies: publicProcedure
       .query(async ({ ctx }) => {
@@ -7253,6 +7385,7 @@ const appRouter = createTRPCRouter({
           vehicle_color: z.string().min(2).max(60),
           vehicle_plate: z.string().min(4).max(20),
           driver_full_name: z.string().min(3).max(160),
+          driver_phone: z.string().min(10).max(20),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -7294,6 +7427,7 @@ const appRouter = createTRPCRouter({
           vehicle_color: input.vehicle_color,
           vehicle_plate: input.vehicle_plate,
           driver_full_name: input.driver_full_name,
+          driver_phone: input.driver_phone.trim(),
             status: 'active',
             expires_at: expiresAt.toISOString(),
           })
@@ -7368,7 +7502,9 @@ const appRouter = createTRPCRouter({
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message || 'Yolculuklar aranırken bir hata oluştu' });
         }
 
-        return { rides: data || [] };
+        const rides = (data || []).map((ride) => sanitizeRideForClient(ride));
+
+        return { rides };
       }),
 
     getDriverRides: publicProcedure
@@ -7397,7 +7533,7 @@ const appRouter = createTRPCRouter({
 
         const upcomingThreshold = new Date(Date.now() - UPCOMING_BUFFER_MINUTES * 60 * 1000);
         const rides = (data || []).map((ride) => ({
-          ...ride,
+          ...sanitizeRideForClient(ride),
           is_past: new Date(ride.departure_time) < upcomingThreshold,
         }));
 
@@ -7453,10 +7589,14 @@ const appRouter = createTRPCRouter({
           driverBookings = bookingRows ?? [];
         }
 
+        const sanitizedRide = sanitizeRideForClient(data);
+        const sanitizedUserBooking = sanitizeBookingForClient(userBooking);
+        const sanitizedDriverBookings = (driverBookings || []).map((booking) => sanitizeBookingForClient(booking));
+
         return {
-          ride: data,
-          userBooking,
-          bookings: driverBookings,
+          ride: sanitizedRide,
+          userBooking: sanitizedUserBooking,
+          bookings: sanitizedDriverBookings,
           isDriver: userId ? data.driver_id === userId : false,
         };
       }),
@@ -7467,6 +7607,7 @@ const appRouter = createTRPCRouter({
           ride_offer_id: z.string().uuid(),
           seats_requested: z.number().int().min(1).max(5).default(1),
           notes: z.string().optional().nullable(),
+          passenger_phone: z.string().min(10).max(20),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -7513,6 +7654,8 @@ const appRouter = createTRPCRouter({
         }
 
         // Create booking
+        const passengerPhone = input.passenger_phone.trim();
+
         const { data: booking, error } = await supabase
           .from('ride_bookings')
           .insert({
@@ -7520,6 +7663,7 @@ const appRouter = createTRPCRouter({
             passenger_id: user.id,
             seats_requested: input.seats_requested,
             notes: input.notes || null,
+            passenger_phone: passengerPhone,
             status: 'pending',
           })
           .select()
@@ -7613,7 +7757,7 @@ const appRouter = createTRPCRouter({
           // Chat hatası olsa bile rezervasyon oluşturuldu, devam et
         }
 
-        return booking;
+        return sanitizeBookingForClient(booking);
       }),
 
     approveBooking: protectedProcedure
@@ -8119,6 +8263,7 @@ serve(async (req) => {
 
 const UPCOMING_BUFFER_MINUTES = 5;
 const CLEANUP_OFFSET_MINUTES = 10;
+const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
 
 async function ensureDirectChatRoom(supabase: any, userA: string, userB: string) {
   const { data: roomsOfA } = await supabase
@@ -8183,4 +8328,35 @@ async function cleanupExpiredRides(supabase: any) {
     console.error('cleanupExpiredRides error:', error);
   }
 }
+
+const sanitizeRideForClient = (ride: any) => {
+  if (!ride) return ride;
+  const { driver_phone, ...rest } = ride;
+  return rest;
+};
+
+const sanitizeBookingForClient = (booking: any) => {
+  if (!booking) return booking;
+  const { passenger_phone, ...rest } = booking;
+  return rest;
+};
+
+const ensureAdminAccess = async (supabase: any, userId: string) => {
+  if (userId === SPECIAL_ADMIN_ID) {
+    return { id: SPECIAL_ADMIN_ID, role: 'super_admin' };
+  }
+
+  const { data, error } = await supabase
+    .from('admin_users')
+    .select('id, role')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .single();
+
+  if (error || !data) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+  }
+
+  return data;
+};
 

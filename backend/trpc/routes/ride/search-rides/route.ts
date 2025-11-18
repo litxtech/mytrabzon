@@ -62,6 +62,11 @@ export const searchRidesProcedure = protectedProcedure
       throw new Error(error.message || 'Yolculuklar aranırken bir hata oluştu');
     }
 
-    return { rides: data || [] };
+    const rides = (data || []).map((ride: any) => {
+      const { driver_phone, ...rest } = ride;
+      return rest;
+    });
+
+    return { rides };
   });
 

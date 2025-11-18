@@ -14,14 +14,16 @@ import {
 } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Search, Calendar, MapPin, Users, TurkishLira, Clock } from 'lucide-react-native';
+import { ArrowLeft, Search, Calendar, MapPin, Users, Clock } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function RideSearchScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { profile } = useAuth();
   const [fromText, setFromText] = useState('');
   const [toText, setToText] = useState('');
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -93,6 +95,19 @@ export default function RideSearchScreen() {
       return;
     }
 
+     const passengerPhone = profile?.phone?.trim();
+     if (!passengerPhone) {
+       Alert.alert(
+         'Telefon Gerekli',
+         'Rezervasyon yapabilmek için profil ayarlarından telefon numaranızı ekleyin.',
+         [
+           { text: 'İptal', style: 'cancel' },
+           { text: 'Profilim', onPress: () => router.push('/profile/edit' as any) },
+         ]
+       );
+       return;
+     }
+
     Alert.alert(
       'Rezervasyon Yap',
       `${ride.departure_title} → ${ride.destination_title} yolculuğu için rezervasyon yapmak istediğinize emin misiniz?`,
@@ -105,6 +120,7 @@ export default function RideSearchScreen() {
             bookRideMutation.mutate({
               ride_offer_id: ride.id,
               seats_requested: 1,
+              passenger_phone: passengerPhone,
             });
           },
         },
@@ -156,7 +172,7 @@ export default function RideSearchScreen() {
           </TouchableOpacity>
           {item.price_per_seat && (
             <View style={styles.priceBadge}>
-              <TurkishLira size={16} color={COLORS.primary} />
+              <Text style={styles.currencySymbol}>₺</Text>
               <Text style={styles.priceText}>
                 {item.price_per_seat.toLocaleString('tr-TR')} TL
               </Text>
@@ -472,6 +488,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
     gap: SPACING.xs,
+  },
+  currencySymbol: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   priceText: {
     fontSize: FONT_SIZES.md,

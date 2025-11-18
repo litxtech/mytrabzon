@@ -57,10 +57,19 @@ export const getRideDetailProcedure = protectedProcedure
       driverBookings = bookingRows ?? [];
     }
 
+    const { driver_phone, ...rideData } = data as any;
+    const sanitizedUserBooking = userBooking
+      ? (({ passenger_phone, ...rest }) => rest)(userBooking)
+      : null;
+    const sanitizedDriverBookings = driverBookings.map((booking) => {
+      const { passenger_phone, ...rest } = booking;
+      return rest;
+    });
+
     return {
-      ride: data,
-      userBooking,
-      bookings: driverBookings,
+      ride: rideData,
+      userBooking: sanitizedUserBooking,
+      bookings: sanitizedDriverBookings,
       isDriver: user ? data.driver_id === user.id : false,
     };
   });

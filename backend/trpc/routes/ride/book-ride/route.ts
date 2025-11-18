@@ -7,6 +7,7 @@ export const bookRideProcedure = protectedProcedure
       ride_offer_id: z.string().uuid(),
       seats_requested: z.number().int().min(1).max(5).default(1),
       notes: z.string().optional().nullable(),
+      passenger_phone: z.string().min(10).max(20),
     })
   )
   .mutation(async ({ ctx, input }) => {
@@ -60,6 +61,7 @@ export const bookRideProcedure = protectedProcedure
         passenger_id: user.id,
         seats_requested: input.seats_requested,
         notes: input.notes || null,
+        passenger_phone: input.passenger_phone.trim(),
         status: 'pending',
       })
       .select()

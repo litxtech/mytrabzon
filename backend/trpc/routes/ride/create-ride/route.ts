@@ -20,6 +20,7 @@ export const createRideProcedure = protectedProcedure
       vehicle_color: z.string().min(2).max(60),
       vehicle_plate: z.string().min(4).max(20),
       driver_full_name: z.string().min(3).max(160),
+      driver_phone: z.string().min(10).max(20),
     })
   )
   .mutation(async ({ ctx, input }) => {
@@ -61,6 +62,7 @@ export const createRideProcedure = protectedProcedure
         vehicle_color: input.vehicle_color,
         vehicle_plate: input.vehicle_plate,
         driver_full_name: input.driver_full_name,
+        driver_phone: input.driver_phone.trim(),
         status: 'active',
         expires_at: expiresAt.toISOString(),
       })

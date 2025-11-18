@@ -35,10 +35,13 @@ export const getDriverRidesProcedure = protectedProcedure
 
     const upcomingThreshold = new Date(Date.now() - UPCOMING_BUFFER_MINUTES * 60 * 1000);
 
-    const rides = (data || []).map((ride) => ({
-      ...ride,
-      is_past: new Date(ride.departure_time) < upcomingThreshold,
-    }));
+    const rides = (data || []).map((ride) => {
+      const { driver_phone, ...rest } = ride;
+      return {
+        ...rest,
+        is_past: new Date(ride.departure_time) < upcomingThreshold,
+      };
+    });
 
     const upcoming = rides.filter((ride) => !ride.is_past && ride.status === 'active');
     const past = input.includePast ? rides.filter((ride) => ride.is_past || ride.status !== 'active') : [];

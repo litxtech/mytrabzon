@@ -23,6 +23,7 @@ import {
   ArrowRight,
   Shield,
   Bell,
+  Car,
 } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { trpc } from '../../lib/trpc';
@@ -226,6 +227,14 @@ export default function AdminDashboardScreen() {
       icon: Ticket,
       route: '/admin/support',
       color: COLORS.warning,
+    },
+    {
+      id: 'rides',
+      title: 'Yolculuk Yönetimi',
+      description: 'Yolculukları izle, PDF indir',
+      icon: Car,
+      route: '/admin/rides',
+      color: COLORS.secondary,
     },
     {
       id: 'kyc',

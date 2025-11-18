@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Clock, Users, TurkishLira, FileText, CheckCircle, XCircle, Car } from 'lucide-react-native';
+import { ArrowLeft, Clock, Users, FileText, CheckCircle, XCircle, Car } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,7 +20,7 @@ export default function RideDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [actionBookingId, setActionBookingId] = useState<string | null>(null);
 
   const { data: rideData, isLoading, refetch } = trpc.ride.getRideDetail.useQuery(
@@ -72,6 +72,19 @@ export default function RideDetailScreen() {
   };
 
   const handleBookRide = () => {
+    const passengerPhone = profile?.phone?.trim();
+    if (!passengerPhone) {
+      Alert.alert(
+        'Telefon Gerekli',
+        'Rezervasyon yapabilmek için profil ayarlarından telefon numaranızı ekleyin.',
+        [
+          { text: 'İptal', style: 'cancel' },
+          { text: 'Profilim', onPress: () => router.push('/profile/edit' as any) },
+        ]
+      );
+      return;
+    }
+
     if (!id) return;
     
     Alert.alert(
@@ -85,6 +98,7 @@ export default function RideDetailScreen() {
             bookRideMutation.mutate({
               ride_offer_id: id,
               seats_requested: 1,
+              passenger_phone: passengerPhone,
             });
           },
         },
@@ -294,7 +308,7 @@ export default function RideDetailScreen() {
 
           {ride.price_per_seat && (
             <View style={styles.detailRow}>
-              <TurkishLira size={20} color={COLORS.primary} />
+              <Text style={styles.currencyIcon}>₺</Text>
               <View style={styles.detailContent}>
                 <Text style={styles.detailLabel}>Kişi Başı Fiyat</Text>
                 <Text style={styles.detailValue}>
@@ -629,6 +643,11 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: COLORS.text,
+  },
+  currencyIcon: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   plateValue: {
     fontSize: FONT_SIZES.lg,
