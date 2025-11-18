@@ -4,7 +4,7 @@ import { useRouter, usePathname } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Mail, Lock } from 'lucide-react-native';
+import { Mail, Lock, PhoneCall } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { makeRedirectUri } from 'expo-auth-session';
@@ -12,12 +12,16 @@ import * as WebBrowser from 'expo-web-browser';
 
 WebBrowser.maybeCompleteAuthSession();
 
-type AuthMode = 'login' | 'register' | 'magic' | 'forgot';
+type AuthMode = 'login' | 'register' | 'magic' | 'forgot' | 'phone';
 
 export default function LoginScreen() {
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [smsCode, setSmsCode] = useState('');
+  const [smsSent, setSmsSent] = useState(false);
+  const [smsLoading, setSmsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
   const isNavigatingRef = useRef(false); // Navigation flag - duplicate call'ları önlemek için
@@ -238,6 +242,14 @@ export default function LoginScreen() {
     };
   }, [checkProfileAndNavigate, oauthLoading]);
 
+  useEffect(() => {
+    if (mode !== 'phone') {
+      setSmsSent(false);
+      setSmsCode('');
+      setSmsLoading(false);
+    }
+  }, [mode]);
+
   const handleEmailAuth = async () => {
     const trimmedEmail = email.trim().toLowerCase();
     
@@ -424,6 +436,81 @@ export default function LoginScreen() {
     }
   };
 
+  const normalizePhone = (raw: string) => {
+    let value = raw.trim();
+    if (!value) return '';
+    if (value.startsWith('+')) return value;
+    let digits = value.replace(/\D/g, '');
+    if (digits.startsWith('0')) digits = digits.slice(1);
+    if (!digits.startsWith('90')) digits = `90${digits}`;
+    return `+${digits}`;
+  };
+
+  const handleSendSmsCode = async () => {
+    const formatted = normalizePhone(phoneNumber);
+    if (!formatted) {
+      Alert.alert('Hata', 'Lütfen geçerli bir telefon numarası girin');
+      return;
+    }
+    setSmsLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: formatted,
+        options: {
+          shouldCreateUser: mode !== 'login',
+          channel: 'sms',
+        },
+      });
+      if (error) throw error;
+      setSmsSent(true);
+      Alert.alert('Başarılı', 'SMS doğrulama kodu gönderildi. Telefonunuza gelen kodu girin.');
+    } catch (error: any) {
+      console.error('Error sending SMS code:', error);
+      Alert.alert('Hata', error?.message || 'SMS kodu gönderilemedi');
+    } finally {
+      setSmsLoading(false);
+    }
+  };
+
+  const handleVerifySmsCode = async () => {
+    const formatted = normalizePhone(phoneNumber);
+    if (!formatted) {
+      Alert.alert('Hata', 'Telefon numarası gerekli');
+      return;
+    }
+    if (!smsSent) {
+      Alert.alert('Hata', 'Önce telefonunuza kod gönderin');
+      return;
+    }
+    if (!smsCode.trim()) {
+      Alert.alert('Hata', 'SMS kodunu girin');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        phone: formatted,
+        token: smsCode.trim(),
+        type: 'sms',
+      });
+      if (error) throw error;
+
+      let resolvedId = data?.session?.user?.id || data?.user?.id;
+      if (!resolvedId) {
+        const { data: current } = await supabase.auth.getUser();
+        resolvedId = current?.user?.id;
+      }
+      if (!resolvedId) throw new Error('Kullanıcı doğrulanamadı');
+      await checkProfileAndNavigate(resolvedId);
+    } catch (error: any) {
+      console.error('Error verifying SMS code:', error);
+      Alert.alert('Hata', error?.message || 'Telefon doğrulaması başarısız');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleGoogleLogin = async () => {
     setLoading(true);
     setOauthLoading(true);
@@ -605,7 +692,7 @@ export default function LoginScreen() {
           <Text style={styles.formSubtitle}>Email adresinize giriş linki göndereceğiz</Text>
           
           <View style={styles.inputContainer}>
-            <Mail size={20} color={COLORS.white} style={styles.inputIcon} />
+            <PhoneCall size={20} color={COLORS.white} style={styles.inputIcon} />
             <TextInput
               style={styles.input}
               placeholder="Email"
@@ -669,6 +756,77 @@ export default function LoginScreen() {
 
           <TouchableOpacity onPress={() => setMode('login')}>
             <Text style={styles.linkText}>Geri Dön</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (mode === 'phone') {
+      return (
+        <View style={styles.formContainer}>
+          <View style={styles.betaBadge}>
+            <Text style={styles.betaText}>📱 Telefon ile giriş</Text>
+            <Text style={styles.betaSubtext}>Numaranı doğrulayarak giriş yap</Text>
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Mail size={20} color={COLORS.white} style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="+90 5xx xxx xx xx"
+              placeholderTextColor="rgba(255,255,255,0.6)"
+              keyboardType="phone-pad"
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
+            />
+          </View>
+
+          <Text style={styles.phoneInfoText}>
+            Telefon numaranı girip SMS doğrulama kodu iste. Kod geldikten sonra aşağıya girerek giriş yapabilirsin.
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.secondaryButton, (smsLoading || !phoneNumber.trim()) && styles.buttonDisabled]}
+            onPress={handleSendSmsCode}
+            disabled={smsLoading || !phoneNumber.trim()}
+          >
+            {smsLoading ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <Text style={styles.secondaryButtonText}>
+                {smsSent ? 'Kodu Yeniden Gönder' : 'SMS Kodu Gönder'}
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          {smsSent && (
+            <View style={styles.inputContainer}>
+              <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="SMS Kodu"
+                placeholderTextColor="rgba(255,255,255,0.6)"
+                keyboardType="number-pad"
+                value={smsCode}
+                onChangeText={setSmsCode}
+              />
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={[styles.primaryButton, (!smsSent || !smsCode.trim() || loading) && styles.buttonDisabled]}
+            onPress={handleVerifySmsCode}
+            disabled={!smsSent || !smsCode.trim() || loading}
+          >
+            {loading ? (
+              <ActivityIndicator color={COLORS.primary} />
+            ) : (
+              <Text style={styles.primaryButtonText}>Telefonla Giriş Yap</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => setMode('login')}>
+            <Text style={styles.linkText}>Geri dön</Text>
           </TouchableOpacity>
         </View>
       );
@@ -767,6 +925,18 @@ export default function LoginScreen() {
           disabled={loading}
         >
           <Text style={styles.magicLinkButtonText}>✉️ Link ile Giriş</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.magicLinkButton, loading && styles.buttonDisabled]}
+          onPress={() => {
+            setMode('phone');
+            setSmsSent(false);
+            setSmsCode('');
+          }}
+          disabled={loading}
+        >
+          <Text style={styles.magicLinkButtonText}>📱 Telefon ile Giriş</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => setMode(mode === 'login' ? 'register' : 'login')}>
@@ -1061,5 +1231,12 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     opacity: 0.9,
     textAlign: 'center' as const,
+  },
+  phoneInfoText: {
+    color: COLORS.white,
+    opacity: 0.8,
+    fontSize: FONT_SIZES.sm,
+    marginBottom: SPACING.sm,
+    textAlign: 'left' as const,
   },
 });
