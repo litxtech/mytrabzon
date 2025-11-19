@@ -15,9 +15,12 @@ import {
   Animated,
   PanResponder,
   Pressable,
+  Modal,
+  Share,
+  ActivityIndicator,
 } from 'react-native';
 import { Video, ResizeMode, Audio } from 'expo-av';
-import { Heart, MessageCircle, Share2, Bookmark, X } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, Bookmark, X, VolumeX } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
@@ -47,6 +50,7 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
   const [likeCount, setLikeCount] = useState(post.like_count || 0);
   const [isLoading, setIsLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const commentSheetY = useRef(new Animated.Value(SHEET_HIDDEN_POSITION)).current;
   const lastTap = useRef(0);
 
@@ -311,14 +315,16 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
     lastTap.current = now;
   };
 
-  // Yorum paneli için pan responder (aşağı çekme)
-  const panResponder = useRef(
+  // Yorum paneli için pan responder (sadece drag handle için - aşağı çekme)
+  const commentPanResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => showComments,
+      onStartShouldSetPanResponder: () => true, // Drag handle'a tıklandığında
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        return showComments && Math.abs(gestureState.dy) > 10;
+        // Sadece dikey hareket varsa (aşağı çekme)
+        return Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 5;
       },
       onPanResponderMove: (_, gestureState) => {
+        // Aşağı doğru çekildiğinde
         if (gestureState.dy > 0) {
           const nextPosition = Math.min(
             SHEET_VISIBLE_POSITION + gestureState.dy,
@@ -328,9 +334,11 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
         }
       },
       onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 100) {
+        // Yeterince aşağı çekildiyse kapat
+        if (gestureState.dy > 80) {
           handleCloseComments();
         } else {
+          // Geri yukarı animasyonu
           Animated.spring(commentSheetY, {
             toValue: SHEET_VISIBLE_POSITION,
             useNativeDriver: true,
@@ -338,6 +346,37 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
             friction: 7,
           }).start();
         }
+      },
+    })
+  ).current;
+
+  // Video container için pan responder (sola swipe ile çıkış)
+  const videoPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: (evt, gestureState) => {
+        // Yorum paneli kapalıysa ve sola doğru başlangıç varsa
+        return !showComments;
+      },
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        // Sola swipe (dx < 0) ve yorum paneli kapalıysa
+        if (showComments) return false;
+        // Sola doğru hareket varsa ve yatay hareket dikey hareketten fazlaysa
+        return gestureState.dx < -30 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
+      },
+      onPanResponderGrant: () => {
+        // Gesture başladığında
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        // Hareket sırasında görsel geri bildirim (opsiyonel)
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        // Sola yeterince çekildiyse çık (eşik: -80px)
+        if (!showComments && gestureState.dx < -80 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5) {
+          router.back();
+        }
+      },
+      onPanResponderTerminate: () => {
+        // Gesture iptal edildiğinde
       },
     })
   ).current;
@@ -350,13 +389,13 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
   const authorAvatar = post.author?.avatar_url || 'https://via.placeholder.com/40';
 
   return (
-    <View style={[styles.container, { height: SCREEN_HEIGHT }]}>
-      {videoUrl && (
-        <Pressable 
-          style={styles.videoContainer}
-          onPress={handleVideoPress}
-          disabled={showComments}
-        >
+    <View style={[styles.container, { height: SCREEN_HEIGHT }]} {...videoPanResponder.panHandlers}>
+      <Pressable 
+        style={styles.videoContainer}
+        onPress={handleVideoPress}
+        disabled={showComments}
+      >
+        {videoUrl ? (
           <Video
             ref={videoRef}
             source={{ uri: videoUrl, overrideFileExtensionAndroid: 'mp4' }}
@@ -364,11 +403,12 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
             resizeMode={ResizeMode.COVER}
             isLooping
             isMuted={isMuted}
-            shouldPlay={isActive}
+            shouldPlay={isActive && videoReady}
             useNativeControls={false}
             onError={(error) => {
               console.error('Video error:', error);
               setIsLoading(false);
+              setVideoReady(false);
             }}
             onLoadStart={() => {
               setIsLoading(true);
@@ -384,13 +424,17 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
               setVideoReady(true);
             }}
           />
-          {isLoading && (
-            <View style={styles.loadingOverlay}>
-              <View style={styles.loadingIndicator} />
-            </View>
-          )}
-        </Pressable>
-      )}
+        ) : (
+          <View style={[styles.video, { justifyContent: 'center', alignItems: 'center' }]}>
+            <Text style={{ color: COLORS.white }}>Video yükleniyor...</Text>
+          </View>
+        )}
+        {isLoading && (
+          <View style={styles.loadingOverlay}>
+            <View style={styles.loadingIndicator} />
+          </View>
+        )}
+      </Pressable>
 
       {/* Overlay - Kullanıcı bilgisi ve içerik */}
       <View style={styles.overlay} pointerEvents="box-none">
@@ -474,14 +518,18 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
               backgroundColor: 'rgba(0, 0, 0, 0.9)',
             },
           ]}
-          {...panResponder.panHandlers}
+          pointerEvents="box-none"
         >
-          {/* Drag Handle */}
-          <View style={styles.dragHandleContainer}>
+          {/* Drag Handle - Sadece drag handle'a pan responder */}
+          <View 
+            style={styles.dragHandleContainer}
+            {...commentPanResponder.panHandlers}
+            pointerEvents="auto"
+          >
             <View style={[styles.dragHandle, { backgroundColor: theme.colors.textLight }]} />
           </View>
           
-          <View style={[styles.commentSheetHeader, { borderBottomColor: theme.colors.border }]}>
+          <View style={[styles.commentSheetHeader, { borderBottomColor: theme.colors.border }]} pointerEvents="auto">
             <Text style={[styles.commentSheetTitle, { color: theme.colors.text }]}>
               Yorumlar ({post.comment_count || 0})
             </Text>
@@ -489,9 +537,79 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
               <X size={24} color={theme.colors.text} />
             </TouchableOpacity>
           </View>
-          <CommentSheet postId={post.id} />
+          <View style={styles.commentSheetContent} pointerEvents="auto">
+            <CommentSheet postId={post.id} />
+          </View>
         </Animated.View>
       )}
+
+      {/* Paylaş Modal */}
+      <Modal
+        visible={showShareModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowShareModal(false)}
+      >
+        <Pressable
+          style={styles.shareModalOverlay}
+          onPress={() => setShowShareModal(false)}
+        >
+          <View style={[styles.shareModalContent, { backgroundColor: theme.colors.card }]}>
+            <Text style={[styles.shareModalTitle, { color: theme.colors.text }]}>
+              Paylaş
+            </Text>
+            
+            <TouchableOpacity
+              style={[styles.shareOption, { borderBottomColor: theme.colors.border }]}
+              onPress={async () => {
+                setShowShareModal(false);
+                try {
+                  await Share.share({
+                    message: 'Bu videoyu izle!',
+                    url: videoUrl || '',
+                  });
+                } catch (error) {
+                  console.error('Share error:', error);
+                }
+              }}
+            >
+              <Share2 size={24} color={theme.colors.text} />
+              <Text style={[styles.shareOptionText, { color: theme.colors.text }]}>
+                Normal Paylaş
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.shareOption}
+              onPress={async () => {
+                setShowShareModal(false);
+                try {
+                  await Share.share({
+                    message: '🔇 Sessiz video - Bu videoyu izle!',
+                    url: videoUrl || '',
+                  });
+                } catch (error) {
+                  console.error('Share error:', error);
+                }
+              }}
+            >
+              <VolumeX size={24} color={theme.colors.text} />
+              <Text style={[styles.shareOptionText, { color: theme.colors.text }]}>
+                Sessiz Paylaş
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.shareCancelButton, { backgroundColor: theme.colors.background }]}
+              onPress={() => setShowShareModal(false)}
+            >
+              <Text style={[styles.shareCancelText, { color: theme.colors.text }]}>
+                İptal
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -587,7 +705,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 10,
     elevation: 15,
+    zIndex: 1000, // Yorum paneli üstte olmalı
     // Blur efekti için overlay
+  },
+  commentSheetContent: {
+    flex: 1,
+    overflow: 'hidden', // İçerik taşmasını önle
   },
   dragHandleContainer: {
     alignItems: 'center',
@@ -625,6 +748,49 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: COLORS.white,
     borderTopColor: 'transparent',
+  },
+
+  // Paylaş Modal
+  shareModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  shareModalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: SPACING.xl,
+    paddingTop: SPACING.md,
+  },
+  shareModalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.md,
+  },
+  shareOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderBottomWidth: 1,
+    gap: SPACING.md,
+  },
+  shareOptionText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '500',
+  },
+  shareCancelButton: {
+    marginTop: SPACING.md,
+    marginHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  shareCancelText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
   },
 });
 

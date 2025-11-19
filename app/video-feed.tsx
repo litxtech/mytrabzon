@@ -287,6 +287,10 @@ export default function VideoFeedScreen() {
             flatListRef.current?.scrollToIndex({ index: info.index, animated: false });
           });
         }}
+        scrollEnabled={true}
+        nestedScrollEnabled={true}
+        keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={16}
         ListFooterComponent={
           isLoadingMore ? (
             <View style={styles.footerLoader}>

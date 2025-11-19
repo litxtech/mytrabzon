@@ -540,6 +540,8 @@ export default function FeedScreen() {
                   onLike={() => handleLike(item.id)}
                   onComment={() => router.push(`/post/${item.id}` as any)}
                   onShare={async () => {
+                    // VideoPlayer component'i içinde paylaş modal'ı açılacak
+                    // Burada sadece normal paylaş işlemi yapılır
                     try {
                       await Share.share({
                         message: `${item.author?.full_name} - ${item.content || 'Gönderi'}`,

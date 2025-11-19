@@ -332,10 +332,11 @@ const appRouter = createTRPCRouter({
 
         console.log('getAllUsers called with:', { search, gender });
 
-        // TÜM KULLANICILARI GÖSTER - HİÇBİR FİLTRE YOK
+        // Sadece show_in_directory = true olan kullanıcıları göster
         let query = supabase
           .from('profiles')
           .select('id, full_name, avatar_url, bio, city, district, created_at, gender, public_id, username', { count: 'exact' })
+          .eq('show_in_directory', true)
           .order('created_at', { ascending: false });
 
         // Cinsiyet filtresi: sadece 'all' değilse filtrele
@@ -7775,7 +7776,7 @@ const appRouter = createTRPCRouter({
           if (userIds.length > 0) {
             const { data: profileData, error: profileError } = await supabase
               .from('profiles')
-              .select('id, full_name, avatar_url, username')
+              .select('id, full_name, avatar_url, username, verified')
               .in('id', userIds);
             
             if (profileError) {
@@ -7975,7 +7976,7 @@ const appRouter = createTRPCRouter({
           .from('event_comments')
           .select(`
             *,
-            user:profiles!event_comments_user_id_fkey(id, full_name, avatar_url, username)
+            user:profiles!event_comments_user_id_fkey(id, full_name, avatar_url, username, verified)
           `)
           .eq('event_id', input.event_id)
           .order('created_at', { ascending: false })
@@ -8904,23 +8905,53 @@ const appRouter = createTRPCRouter({
       .query(async ({ ctx, input }) => {
         const { supabase } = ctx;
 
-        const { data, error } = await supabase
+        // Önce reviews'ları çek
+        const { data: reviews, error: reviewsError } = await supabase
           .from('ride_reviews')
-          .select(`
-            *,
-            passenger:profiles(id, full_name, avatar_url),
-            ride:ride_offers(id, departure_title, destination_title, departure_time)
-          `)
+          .select('*')
           .eq('driver_id', input.driver_id)
           .order('created_at', { ascending: false })
           .limit(input.limit);
 
-        if (error) {
-          console.error('Get driver reviews error:', error);
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message || 'Yorumlar getirilemedi' });
+        if (reviewsError) {
+          console.error('Get driver reviews error:', reviewsError);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: reviewsError.message || 'Yorumlar getirilemedi' });
         }
 
-        return (data || []).map(sanitizeReview);
+        if (!reviews || reviews.length === 0) {
+          return [];
+        }
+
+        // Passenger ve ride bilgilerini ayrı ayrı çek
+        const passengerIds = [...new Set(reviews.map((r: any) => r.passenger_id).filter(Boolean))];
+        const rideOfferIds = [...new Set(reviews.map((r: any) => r.ride_offer_id).filter(Boolean))];
+
+        const [passengersResult, ridesResult] = await Promise.all([
+          passengerIds.length > 0
+            ? supabase
+                .from('profiles')
+                .select('id, full_name, avatar_url')
+                .in('id', passengerIds)
+            : Promise.resolve({ data: [], error: null }),
+          rideOfferIds.length > 0
+            ? supabase
+                .from('ride_offers')
+                .select('id, departure_title, destination_title, departure_time')
+                .in('id', rideOfferIds)
+            : Promise.resolve({ data: [], error: null }),
+        ]);
+
+        const passengerMap = new Map((passengersResult.data || []).map((p: any) => [p.id, p]));
+        const rideMap = new Map((ridesResult.data || []).map((r: any) => [r.id, r]));
+
+        // Reviews'ları passenger ve ride bilgileriyle birleştir
+        const enrichedReviews = reviews.map((review: any) => ({
+          ...review,
+          passenger: review.passenger_id ? passengerMap.get(review.passenger_id) || null : null,
+          ride: review.ride_offer_id ? rideMap.get(review.ride_offer_id) || null : null,
+        }));
+
+        return enrichedReviews.map(sanitizeReview);
       }),
 
     approveBooking: protectedProcedure

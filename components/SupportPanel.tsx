@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, ScrollView, Pressable } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { X, Phone, Mail, Globe, MessageCircle } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
@@ -57,18 +57,24 @@ export function SupportPanel({ visible, onClose }: SupportPanelProps) {
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <TouchableOpacity 
+      <Pressable 
         style={styles.overlay}
-        activeOpacity={1}
         onPress={onClose}
       >
-        <View style={styles.modalContentWrapper}>
+        <View 
+          style={styles.modalContentWrapper}
+          pointerEvents="box-none"
+        >
           <KeyboardAvoidingView
             style={styles.keyboardView}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+            pointerEvents="box-none"
           >
-            <View style={styles.container}>
+            <View 
+              style={styles.container}
+              onStartShouldSetResponder={() => true}
+            >
               <View style={styles.header}>
                 <Text style={styles.title}>Destek</Text>
                 <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -142,7 +148,7 @@ export function SupportPanel({ visible, onClose }: SupportPanelProps) {
             </View>
           </KeyboardAvoidingView>
         </View>
-      </TouchableOpacity>
+      </Pressable>
     </Modal>
   );
 }

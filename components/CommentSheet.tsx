@@ -5,7 +5,7 @@
  * - Videodan çıkmadan yorum okuma/yazma
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Keyboard,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Send, MoreVertical, Trash2, Edit3 } from 'lucide-react-native';
@@ -26,6 +27,7 @@ import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatTimeAgo } from '@/lib/time-utils';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 
 interface CommentSheetProps {
   postId: string;
@@ -39,6 +41,7 @@ export function CommentSheet({ postId }: CommentSheetProps) {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentText, setEditingCommentText] = useState('');
   const [menuVisibleCommentId, setMenuVisibleCommentId] = useState<string | null>(null);
+  const commentInputRef = useRef<TextInput>(null);
 
   const { data: commentsData, isLoading, refetch } = trpc.post.getComments.useQuery(
     { post_id: postId, limit: 50, offset: 0 },
@@ -48,6 +51,8 @@ export function CommentSheet({ postId }: CommentSheetProps) {
   const createCommentMutation = trpc.post.addComment.useMutation({
     onSuccess: () => {
       setCommentText('');
+      Keyboard.dismiss(); // Klavyeyi kapat
+      commentInputRef.current?.blur(); // Input'u blur et
       refetch();
     },
     onError: (error) => {
@@ -57,6 +62,7 @@ export function CommentSheet({ postId }: CommentSheetProps) {
 
   const deleteCommentMutation = trpc.post.deleteComment.useMutation({
     onSuccess: () => {
+      Keyboard.dismiss(); // Klavyeyi kapat
       setMenuVisibleCommentId(null);
       refetch();
     },
@@ -134,7 +140,7 @@ export function CommentSheet({ postId }: CommentSheetProps) {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
       enabled={true}
     >
-      <View style={styles.container}>
+      <View style={styles.container} pointerEvents="box-none">
       <FlatList
         data={comments}
         keyExtractor={(item) => item.id}
@@ -143,7 +149,15 @@ export function CommentSheet({ postId }: CommentSheetProps) {
           const isOwner = item.user_id === user?.id;
           
           return (
-            <View style={[styles.commentItem, { borderBottomColor: 'rgba(255, 255, 255, 0.1)' }]}>
+            <TouchableOpacity 
+              style={[styles.commentItem, { borderBottomColor: 'rgba(255, 255, 255, 0.1)' }]}
+              activeOpacity={0.9}
+              onPress={() => {
+                // Yorum kartına tıklanınca klavye kapansın
+                Keyboard.dismiss();
+                setMenuVisibleCommentId(null);
+              }}
+            >
               <Image
                 source={{ uri: item.author?.avatar_url || 'https://via.placeholder.com/32' }}
                 style={styles.commentAvatar}
@@ -151,9 +165,12 @@ export function CommentSheet({ postId }: CommentSheetProps) {
               />
               <View style={styles.commentContent}>
                 <View style={styles.commentHeader}>
-                  <Text style={[styles.commentAuthor, { color: COLORS.white }]}>
-                    {item.author?.full_name}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={[styles.commentAuthor, { color: COLORS.white }]}>
+                      {item.author?.full_name}
+                    </Text>
+                    {item.author?.verified && <VerifiedBadgeIcon size={14} />}
+                  </View>
                   <Text style={[styles.commentTime, { color: 'rgba(255, 255, 255, 0.6)' }]}>
                     {formatTimeAgo(item.created_at)}
                   </Text>
@@ -206,7 +223,7 @@ export function CommentSheet({ postId }: CommentSheetProps) {
                   </>
                 )}
               </View>
-            </View>
+            </TouchableOpacity>
           );
         }}
         ListEmptyComponent={
@@ -244,6 +261,7 @@ export function CommentSheet({ postId }: CommentSheetProps) {
             contentFit="cover"
           />
           <TextInput
+            ref={commentInputRef}
             style={[
               styles.input,
               { backgroundColor: 'rgba(255, 255, 255, 0.15)', color: COLORS.white },
@@ -255,6 +273,9 @@ export function CommentSheet({ postId }: CommentSheetProps) {
             multiline
             maxLength={500}
             textAlignVertical="top"
+            blurOnSubmit={true}
+            returnKeyType="send"
+            onSubmitEditing={handleSendComment}
           />
           <TouchableOpacity
             style={[

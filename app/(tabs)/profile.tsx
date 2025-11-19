@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Share, Platform, FlatList, ActivityIndicator, TouchableWithoutFeedback, Animated, PanResponder, Dimensions, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Share, Platform, FlatList, ActivityIndicator, TouchableWithoutFeedback, Animated, PanResponder, Dimensions, TextInput, Linking, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, MoreVertical, Share2, Users, MessageCircle, Trophy, Search, UserPlus, X } from 'lucide-react-native';
+import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, MoreVertical, Share2, Users, MessageCircle, Trophy, Search, UserPlus, X, Instagram, Twitter, Facebook, Linkedin, Youtube, Music } from 'lucide-react-native';
 import { DISTRICT_BADGES } from '../../constants/districts';
-import { useRouter } from 'expo-router';
+import { SOCIAL_MEDIA_PLATFORMS } from '../../constants/cities';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Footer } from '../../components/Footer';
 import { SupportPanel } from '../../components/SupportPanel';
 import { SupporterBadge } from '../../components/SupporterBadge';
 import VerifiedBadgeIcon from '../../components/VerifiedBadge';
-import { GenderIcon } from '../../components/GenderIcon';
 import { trpc } from '../../lib/trpc';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -463,36 +463,46 @@ function BottomSheetModal({
       transparent
       animationType="none"
       onRequestClose={onClose}
+      statusBarTranslucent
     >
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.bottomSheetOverlay} />
-      </TouchableWithoutFeedback>
-      <Animated.View
-        style={[
-          styles.bottomSheetContainer,
-          {
-            maxHeight: BOTTOM_SHEET_MAX_HEIGHT,
-            paddingBottom: insets.bottom,
-            transform: [{ translateY }],
-          },
-        ]}
-        {...panResponder.panHandlers}
+      <Pressable 
+        style={styles.bottomSheetOverlay}
+        onPress={onClose}
+      />
+      <Pressable
+        onPress={(e) => e.stopPropagation()}
+        style={{ flex: 1 }}
       >
-        <View style={styles.bottomSheetHandle} />
-        <View style={styles.bottomSheetHeader}>
-          <Text style={styles.bottomSheetTitle}>{title}</Text>
-          <TouchableOpacity onPress={onClose} style={styles.bottomSheetCloseButton}>
-            <X size={24} color={COLORS.text} />
-          </TouchableOpacity>
-        </View>
-        {children}
-      </Animated.View>
+        <Animated.View
+          style={[
+            styles.bottomSheetContainer,
+            {
+              maxHeight: BOTTOM_SHEET_MAX_HEIGHT,
+              paddingBottom: insets.bottom,
+              transform: [{ translateY }],
+            },
+          ]}
+          {...panResponder.panHandlers}
+          onStartShouldSetResponder={() => true}
+        >
+          <View style={styles.bottomSheetHandle} />
+          <View style={styles.bottomSheetHeader}>
+            <Text style={styles.bottomSheetTitle}>{title}</Text>
+            <TouchableOpacity onPress={onClose} style={styles.bottomSheetCloseButton}>
+              <X size={24} color={COLORS.text} />
+            </TouchableOpacity>
+          </View>
+          <View style={{ flex: 1 }} pointerEvents="auto">
+            {children}
+          </View>
+        </Animated.View>
+      </Pressable>
     </Modal>
   );
 }
 
 export default function ProfileScreen() {
-  const { profile, user, signOut } = useAuth();
+  const { profile, user, signOut, refreshProfile } = useAuth();
   const { theme } = useTheme();
   const router = useRouter();
   const [supportVisible, setSupportVisible] = useState(false);
@@ -500,6 +510,15 @@ export default function ProfileScreen() {
   const [followersModalVisible, setFollowersModalVisible] = useState(false);
   const [followingModalVisible, setFollowingModalVisible] = useState(false);
   const insets = useSafeAreaInsets();
+  
+  // Profil sayfasına focus olduğunda profili yenile
+  useFocusEffect(
+    React.useCallback(() => {
+      if (user?.id) {
+        refreshProfile();
+      }
+    }, [user?.id, refreshProfile])
+  );
 
   const deleteAccountMutation = trpc.user.requestAccountDeletion.useMutation();
   const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
@@ -812,8 +831,8 @@ export default function ProfileScreen() {
               <Text style={[styles.name, { color: theme.colors.text }]}>{profile.full_name}</Text>
               {(() => {
                 const privacySettings = profile.privacy_settings as any;
-                const showGenderIcon = privacySettings?.privacy?.showGenderIcon !== false; // Default true
-                return showGenderIcon && <GenderIcon gender={profile.gender} size={18} />;
+                // GenderIcon component removed
+                return null;
               })()}
               {profile.verified && <VerifiedBadgeIcon size={20} />}
               {profile.supporter_badge && profile.supporter_badge_visible && (
@@ -839,6 +858,122 @@ export default function ProfileScreen() {
                 </Text>
               </View>
             )}
+            
+            {/* Sosyal Medya Linkleri */}
+            {(() => {
+              const privacySettings = profile.privacy_settings as any;
+              const showSocialMedia = privacySettings?.show_social_media !== false;
+              const socialMedia = profile.social_media as any;
+              
+              // Debug log
+              console.log('🔍 Social Media Debug:', {
+                showSocialMedia,
+                socialMedia,
+                privacySettings,
+                hasSocialMedia: !!socialMedia,
+              });
+              
+              if (!showSocialMedia || !socialMedia) return null;
+              
+              const socialMediaLinks = [
+                { key: 'instagram', label: 'Instagram', icon: Instagram, url: socialMedia.instagram },
+                { key: 'twitter', label: 'Twitter/X', icon: Twitter, url: socialMedia.twitter },
+                { key: 'facebook', label: 'Facebook', icon: Facebook, url: socialMedia.facebook },
+                { key: 'linkedin', label: 'LinkedIn', icon: Linkedin, url: socialMedia.linkedin },
+                { key: 'tiktok', label: 'TikTok', icon: Music, url: socialMedia.tiktok },
+                { key: 'youtube', label: 'YouTube', icon: Youtube, url: socialMedia.youtube },
+              ].filter(item => item.url && item.url.trim() !== '');
+              
+              if (socialMediaLinks.length === 0) return null;
+              
+              const handleSocialMediaPress = (platform: string, username: string) => {
+                let url = '';
+                const cleanUsername = username.trim().replace(/^@/, '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+                
+                switch (platform) {
+                  case 'instagram':
+                    url = `instagram://user?username=${cleanUsername}`;
+                    Linking.canOpenURL(url).then(supported => {
+                      if (supported) {
+                        Linking.openURL(url);
+                      } else {
+                        Linking.openURL(`https://www.instagram.com/${cleanUsername}`);
+                      }
+                    });
+                    break;
+                  case 'twitter':
+                    url = `twitter://user?screen_name=${cleanUsername}`;
+                    Linking.canOpenURL(url).then(supported => {
+                      if (supported) {
+                        Linking.openURL(url);
+                      } else {
+                        Linking.openURL(`https://twitter.com/${cleanUsername}`);
+                      }
+                    });
+                    break;
+                  case 'facebook':
+                    url = `fb://profile/${cleanUsername}`;
+                    Linking.canOpenURL(url).then(supported => {
+                      if (supported) {
+                        Linking.openURL(url);
+                      } else {
+                        Linking.openURL(`https://www.facebook.com/${cleanUsername}`);
+                      }
+                    });
+                    break;
+                  case 'linkedin':
+                    url = `linkedin://profile/${cleanUsername}`;
+                    Linking.canOpenURL(url).then(supported => {
+                      if (supported) {
+                        Linking.openURL(url);
+                      } else {
+                        Linking.openURL(`https://www.linkedin.com/in/${cleanUsername}`);
+                      }
+                    });
+                    break;
+                  case 'tiktok':
+                    url = `snssdk1233://user/profile/${cleanUsername}`;
+                    Linking.canOpenURL(url).then(supported => {
+                      if (supported) {
+                        Linking.openURL(url);
+                      } else {
+                        Linking.openURL(`https://www.tiktok.com/@${cleanUsername}`);
+                      }
+                    });
+                    break;
+                  case 'youtube':
+                    url = `vnd.youtube://channel/${cleanUsername}`;
+                    Linking.canOpenURL(url).then(supported => {
+                      if (supported) {
+                        Linking.openURL(url);
+                      } else {
+                        Linking.openURL(`https://www.youtube.com/@${cleanUsername}`);
+                      }
+                    });
+                    break;
+                }
+              };
+              
+              return (
+                <View style={styles.socialMediaContainer}>
+                  {socialMediaLinks.map((item) => {
+                    const IconComponent = item.icon;
+                    return (
+                      <TouchableOpacity
+                        key={item.key}
+                        style={[styles.socialMediaButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                        onPress={() => handleSocialMediaPress(item.key, item.url)}
+                      >
+                        <IconComponent size={18} color={theme.colors.primary} />
+                        <Text style={[styles.socialMediaButtonText, { color: theme.colors.text }]}>
+                          {item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              );
+            })()}
             {/* Mesaj Butonu - Kendi profiline mesaj göndermek mantıklı değil, bu yüzden kaldırıldı */}
           </View>
 
@@ -1205,6 +1340,25 @@ const styles = StyleSheet.create({
   locationText: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
+  },
+  socialMediaContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  socialMediaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: SPACING.xs,
+  },
+  socialMediaButtonText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '500',
   },
   menuButton: {
     position: 'absolute',

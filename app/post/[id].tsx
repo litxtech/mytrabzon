@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Keyboard,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -44,6 +45,7 @@ export default function PostDetailScreen() {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentText, setEditingCommentText] = useState('');
   const [menuVisibleCommentId, setMenuVisibleCommentId] = useState<string | null>(null);
+  const commentInputRef = useRef<TextInput>(null);
 
   const formatCount = (count: number | null | undefined): string => {
     if (!count) return '0';
@@ -165,6 +167,7 @@ export default function PostDetailScreen() {
 
   const deleteCommentMutation = trpc.post.deleteComment.useMutation({
     onSuccess: () => {
+      Keyboard.dismiss(); // Klavyeyi kapat
       setMenuVisibleCommentId(null);
       refetchComments();
       refetch();
@@ -224,6 +227,9 @@ export default function PostDetailScreen() {
     if (!commentText.trim()) {
       return;
     }
+    // Klavyeyi kapat ve input'u blur et
+    Keyboard.dismiss();
+    commentInputRef.current?.blur();
     try {
       await addCommentMutation.mutateAsync({
         post_id: id!,
@@ -413,7 +419,16 @@ export default function PostDetailScreen() {
             const isOwner = comment.user_id === user?.id;
             
             return (
-              <View key={comment.id} style={styles.commentCard}>
+              <TouchableOpacity 
+                key={comment.id} 
+                style={styles.commentCard}
+                activeOpacity={0.9}
+                onPress={() => {
+                  // Yorum kartına tıklanınca klavye kapansın
+                  Keyboard.dismiss();
+                  setMenuVisibleCommentId(null);
+                }}
+              >
                 <Image
                   source={{
                     uri: comment.user?.avatar_url || 'https://via.placeholder.com/32',
@@ -492,7 +507,7 @@ export default function PostDetailScreen() {
                     </>
                   )}
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -512,6 +527,7 @@ export default function PostDetailScreen() {
             style={styles.commentInputAvatar}
           />
           <TextInput
+            ref={commentInputRef}
             style={styles.commentInput}
             placeholder="Yorum yaz..."
             placeholderTextColor={COLORS.textLight}
@@ -520,6 +536,9 @@ export default function PostDetailScreen() {
             multiline
             maxLength={1000}
             textAlignVertical="top"
+            blurOnSubmit={true}
+            returnKeyType="send"
+            onSubmitEditing={handleAddComment}
           />
         <TouchableOpacity
           style={[

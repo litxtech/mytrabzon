@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Alert,
   Modal,
   Dimensions,
+  Keyboard,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { OptimizedImage } from '@/components/OptimizedImage';
@@ -50,6 +51,7 @@ export default function EventDetailScreen() {
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [showFullScreenVideo, setShowFullScreenVideo] = useState(false);
   const utils = trpc.useUtils();
+  const commentInputRef = useRef<TextInput>(null);
 
   const { data: eventsData, isLoading, refetch } = trpc.event.getEvents.useQuery({
     limit: 100,
@@ -75,6 +77,8 @@ export default function EventDetailScreen() {
   const addCommentMutation = (trpc as any).event.addEventComment.useMutation({
     onSuccess: () => {
       setCommentText('');
+      Keyboard.dismiss(); // Klavyeyi kapat
+      commentInputRef.current?.blur(); // Input'u blur et
       refetch();
       // Comments query'yi de invalidate et
       (utils as any).event.getEventComments.invalidate({ event_id: id! });
@@ -149,6 +153,10 @@ export default function EventDetailScreen() {
       return; // Zaten gönderiliyor
     }
 
+    // Klavyeyi kapat ve input'u blur et
+    Keyboard.dismiss();
+    commentInputRef.current?.blur();
+
     try {
       await addCommentMutation.mutateAsync({
         event_id: event.id,
@@ -162,6 +170,7 @@ export default function EventDetailScreen() {
 
   const deleteCommentMutation = (trpc as any).event.deleteEventComment?.useMutation({
     onSuccess: () => {
+      Keyboard.dismiss(); // Klavyeyi kapat
       setMenuVisibleCommentId(null);
       refetch();
     },
@@ -343,19 +352,21 @@ export default function EventDetailScreen() {
               <VideoPlayer
                 videoUrl={firstMedia}
                 postId={event.id}
-                isLiked={false}
-                likeCount={0}
-                commentCount={0}
+                isLiked={event.is_liked || false}
+                likeCount={event.like_count || 0}
+                commentCount={event.comment_count || 0}
                 shareCount={0}
                 onLike={handleLike}
-                onComment={() => {}}
+                onComment={() => {
+                  // Yorum paneli VideoPlayer içinde açılacak
+                }}
                 onShare={handleShare}
                 onTag={() => {}}
                 autoPlay={false}
                 previewMode={true}
                 onFullScreen={() => {
-                  // Video feed sayfasına yönlendir - tüm videoları göster
-                  router.push(`/video-feed?postId=${event.id}` as any);
+                  // Tam ekran modal aç
+                  setShowFullScreenVideo(true);
                 }}
               />
             ) : (
@@ -421,7 +432,16 @@ export default function EventDetailScreen() {
               const isOwner = comment.user_id === user?.id;
               
               return (
-                <View key={comment.id} style={styles.commentCard}>
+                <TouchableOpacity 
+                  key={comment.id} 
+                  style={styles.commentCard}
+                  activeOpacity={0.9}
+                  onPress={() => {
+                    // Yorum kartına tıklanınca klavye kapansın
+                    Keyboard.dismiss();
+                    setMenuVisibleCommentId(null);
+                  }}
+                >
                   <Image
                     source={{
                       uri: comment.user?.avatar_url || 'https://via.placeholder.com/32',
@@ -500,7 +520,7 @@ export default function EventDetailScreen() {
                       </>
                     )}
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })
           ) : (
@@ -531,6 +551,7 @@ export default function EventDetailScreen() {
             style={styles.commentInputAvatar}
           />
           <TextInput
+            ref={commentInputRef}
             style={[styles.commentInput, {
               backgroundColor: theme.colors.background,
               color: theme.colors.text,
@@ -542,6 +563,9 @@ export default function EventDetailScreen() {
             multiline
             maxLength={1000}
             textAlignVertical="top"
+            blurOnSubmit={true}
+            returnKeyType="send"
+            onSubmitEditing={handleAddComment}
           />
           <TouchableOpacity
             style={[
@@ -600,44 +624,40 @@ export default function EventDetailScreen() {
       </Modal>
 
       {/* Tam Ekran Video Modal */}
-      <Modal
-        visible={showFullScreenVideo}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowFullScreenVideo(false)}
-        statusBarTranslucent={true}
-      >
-        <KeyboardAvoidingView
-          style={styles.fullScreenModal}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      {showFullScreenVideo && firstMedia && isVideo && (
+        <Modal
+          visible={showFullScreenVideo}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => {
+            Keyboard.dismiss();
+            setShowFullScreenVideo(false);
+          }}
+          statusBarTranslucent={true}
         >
-          <View style={styles.fullScreenVideoContainer}>
-            {firstMedia && isVideo && (
-              <VideoPlayer
-                videoUrl={firstMedia}
-                postId={event.id}
-                isLiked={false}
-                likeCount={0}
-                commentCount={0}
-                shareCount={0}
-                onLike={handleLike}
-                onComment={() => {}}
-                onShare={handleShare}
-                onTag={() => {}}
-                autoPlay={true}
-                previewMode={false}
-              />
-            )}
-          </View>
-          <TouchableOpacity
-            style={styles.fullScreenCloseButton}
-            onPress={() => setShowFullScreenVideo(false)}
-          >
-            <Text style={styles.fullScreenCloseText}>✕</Text>
-          </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </Modal>
+          <VideoPlayer
+            videoUrl={firstMedia}
+            postId={event.id}
+            isLiked={event.is_liked || false}
+            likeCount={event.like_count || 0}
+            commentCount={event.comment_count || 0}
+            shareCount={0}
+            onLike={handleLike}
+            onComment={() => {
+              // Yorum paneli VideoPlayer içinde açılacak
+            }}
+            onShare={handleShare}
+            onTag={() => {}}
+            onClose={() => {
+              // Tam ekrandan çıkış için
+              Keyboard.dismiss();
+              setShowFullScreenVideo(false);
+            }}
+            autoPlay={true}
+            previewMode={false}
+          />
+        </Modal>
+      )}
 
       {/* Yorum Menü Modal */}
       {menuVisibleCommentId && deleteCommentMutation && (

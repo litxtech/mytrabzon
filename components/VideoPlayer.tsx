@@ -18,6 +18,8 @@ import {
   ActivityIndicator,
   Animated,
   PanResponder,
+  Share,
+  Alert,
 } from 'react-native';
 import { Video, ResizeMode, AVPlaybackStatus, Audio } from 'expo-av';
 import {
@@ -56,6 +58,7 @@ interface VideoPlayerProps {
   showControls?: boolean;
   previewMode?: boolean; // Önizleme modu (feed'de)
   onFullScreen?: () => void; // Fullscreen'e geçiş callback'i
+  onClose?: () => void; // Tam ekrandan çıkış callback'i (previewMode=false olduğunda)
 }
 
 export function VideoPlayer({
@@ -75,6 +78,7 @@ export function VideoPlayer({
   showControls = true,
   previewMode = true,
   onFullScreen,
+  onClose,
 }: VideoPlayerProps) {
   const { theme } = useTheme();
   const videoRef = useRef<Video>(null);
@@ -85,6 +89,7 @@ export function VideoPlayer({
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
   const [showControlsOverlay, setShowControlsOverlay] = useState(true);
+  const [showShareModal, setShowShareModal] = useState(false);
   const lastTap = useRef<number>(0);
   const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -247,8 +252,48 @@ export function VideoPlayer({
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  const handleShare = () => {
+    setShowShareModal(true);
+  };
+
+  const handleShareNormal = async () => {
+    setShowShareModal(false);
+    if (onShare) {
+      onShare();
+    } else {
+      try {
+        await Share.share({
+          message: 'Bu videoyu izle!',
+          url: videoUrl,
+        });
+      } catch (error) {
+        console.error('Share error:', error);
+      }
+    }
+  };
+
+  const handleShareSilent = async () => {
+    setShowShareModal(false);
+    try {
+      await Share.share({
+        message: '🔇 Sessiz video - Bu videoyu izle!',
+        url: videoUrl,
+      });
+    } catch (error) {
+      console.error('Share error:', error);
+    }
+  };
+
   // Önizleme modunda video (feed'de)
   if (previewMode) {
+    if (!videoUrl) {
+      return (
+        <View style={[styles.previewContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+          <Text style={{ color: COLORS.white }}>Video yükleniyor...</Text>
+        </View>
+      );
+    }
+
     return (
       <>
         <Pressable
@@ -272,6 +317,19 @@ export function VideoPlayer({
             usePoster={false}
             posterSource={undefined}
             progressUpdateIntervalMillis={100}
+            onError={(error) => {
+              console.error('Preview Video error:', error);
+              setIsLoading(false);
+            }}
+            onLoadStart={() => {
+              setIsLoading(true);
+            }}
+            onLoad={() => {
+              setIsLoading(false);
+            }}
+            onReadyForDisplay={() => {
+              setIsLoading(false);
+            }}
           />
           
           {isLoading && (
@@ -339,17 +397,94 @@ export function VideoPlayer({
             shareCount={shareCount}
             onLike={onLike}
             onComment={onComment}
-            onShare={onShare}
+            onShare={handleShare}
             onTag={onTag}
             onSave={onSave}
-            onClose={() => setShowFullScreen(false)}
+            onClose={onClose || (() => setShowFullScreen(false))}
           />
+        </Modal>
+
+        {/* Paylaş Modal */}
+        <Modal
+          visible={showShareModal}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowShareModal(false)}
+        >
+          <Pressable
+            style={styles.shareModalOverlay}
+            onPress={() => setShowShareModal(false)}
+          >
+            <View style={[styles.shareModalContent, { backgroundColor: theme.colors.card }]}>
+              <Text style={[styles.shareModalTitle, { color: theme.colors.text }]}>
+                Paylaş
+              </Text>
+              
+              <TouchableOpacity
+                style={[styles.shareOption, { borderBottomColor: theme.colors.border }]}
+                onPress={handleShareNormal}
+              >
+                <Share2 size={24} color={theme.colors.text} />
+                <Text style={[styles.shareOptionText, { color: theme.colors.text }]}>
+                  Normal Paylaş
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.shareOption}
+                onPress={handleShareSilent}
+              >
+                <VolumeX size={24} color={theme.colors.text} />
+                <Text style={[styles.shareOptionText, { color: theme.colors.text }]}>
+                  Sessiz Paylaş
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.shareCancelButton, { backgroundColor: theme.colors.background }]}
+                onPress={() => setShowShareModal(false)}
+              >
+                <Text style={[styles.shareCancelText, { color: theme.colors.text }]}>
+                  İptal
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
         </Modal>
       </>
     );
   }
 
+  // previewMode=false ve onClose varsa direkt FullScreenVideoPlayer render et
+  if (!previewMode && onClose) {
+    return (
+      <FullScreenVideoPlayer
+        videoUrl={videoUrl}
+        postId={postId}
+        isLiked={isLiked}
+        isSaved={isSaved}
+        likeCount={likeCount}
+        commentCount={commentCount}
+        shareCount={shareCount}
+        onLike={onLike}
+        onComment={onComment}
+        onShare={onShare}
+        onTag={onTag}
+        onSave={onSave}
+        onClose={onClose}
+      />
+    );
+  }
+
   // Tam ekran olmayan normal video player
+  if (!videoUrl) {
+    return (
+      <View style={[styles.normalContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: COLORS.text }}>Video yükleniyor...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.normalContainer}>
       <Video
@@ -362,6 +497,19 @@ export function VideoPlayer({
         shouldPlay={isPlaying}
         onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
         useNativeControls
+        onError={(error) => {
+          console.error('Normal Video error:', error);
+          setIsLoading(false);
+        }}
+        onLoadStart={() => {
+          setIsLoading(true);
+        }}
+        onLoad={() => {
+          setIsLoading(false);
+        }}
+        onReadyForDisplay={() => {
+          setIsLoading(false);
+        }}
       />
     </View>
   );
@@ -400,6 +548,8 @@ function FullScreenVideoPlayer({
   onClose,
 }: FullScreenVideoPlayerProps) {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [showShareModal, setShowShareModal] = useState(false);
   const videoRef = useRef<Video>(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
@@ -408,14 +558,61 @@ function FullScreenVideoPlayer({
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
   const [showComments, setShowComments] = useState(false);
+  const [showControlsOverlay, setShowControlsOverlay] = useState(true);
   const lastTap = useRef<number>(0);
   const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const insets = useSafeAreaInsets();
   const { width, height } = Dimensions.get('window');
   const SCREEN_HEIGHT = height;
-  const COMMENT_SHEET_HEIGHT = SCREEN_HEIGHT * 0.5; // Ekranın yarısı
+  const COMMENT_SHEET_HEIGHT = SCREEN_HEIGHT * 0.5;
+
+  const handleShareNormal = async () => {
+    setShowShareModal(false);
+    if (onShare) {
+      onShare();
+    } else {
+      try {
+        await Share.share({
+          message: 'Bu videoyu izle!',
+          url: videoUrl,
+        });
+      } catch (error) {
+        console.error('Share error:', error);
+      }
+    }
+  };
+
+  const handleShareSilent = async () => {
+    setShowShareModal(false);
+    try {
+      await Share.share({
+        message: '🔇 Sessiz video - Bu videoyu izle!',
+        url: videoUrl,
+      });
+    } catch (error) {
+      console.error('Share error:', error);
+    }
+  };
   const commentSheetY = useRef(new Animated.Value(COMMENT_SHEET_HEIGHT)).current;
   const hasStartedRef = useRef(false);
+
+  // Sola swipe ile çıkış için pan responder
+  const swipePanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => !showComments, // Yorum paneli açıkken devre dışı
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Sola swipe (dx < 0) ve yorum paneli kapalıysa
+        if (showComments) return false;
+        // Sola doğru hareket varsa ve yatay hareket dikey hareketten fazlaysa
+        return gestureState.dx < -30 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        // Sola yeterince çekildiyse çık (eşik: -80px)
+        if (!showComments && gestureState.dx < -80 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5) {
+          onClose?.();
+        }
+      },
+    })
+  ).current;
 
   // Audio session'ı aktif et (sadece bir kez)
   useEffect(() => {
@@ -623,27 +820,46 @@ function FullScreenVideoPlayer({
   ).current;
 
   return (
-    <View style={styles.fullScreenContainer}>
+    <View style={styles.fullScreenContainer} {...swipePanResponder.panHandlers}>
       <Pressable
         style={styles.videoContainer}
         onPress={handleSingleTap}
         onLongPress={handleDoubleTap}
       >
-        <Video
-          ref={videoRef}
-          source={{ 
-            uri: videoUrl,
-            overrideFileExtensionAndroid: 'mp4',
-          }}
-          style={[styles.fullScreenVideo, { width, height }]}
-          resizeMode={ResizeMode.COVER}
-          isLooping
-          isMuted={isMuted}
-          shouldPlay={isPlaying}
-          onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
-          usePoster={false}
-          progressUpdateIntervalMillis={100}
-        />
+        {videoUrl ? (
+          <Video
+            ref={videoRef}
+            source={{ 
+              uri: videoUrl,
+              overrideFileExtensionAndroid: 'mp4',
+            }}
+            style={[styles.fullScreenVideo, { width, height }]}
+            resizeMode={ResizeMode.COVER}
+            isLooping
+            isMuted={isMuted}
+            shouldPlay={isPlaying}
+            onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+            usePoster={false}
+            progressUpdateIntervalMillis={100}
+            onError={(error) => {
+              console.error('FullScreen Video error:', error);
+              setIsLoading(false);
+            }}
+            onLoadStart={() => {
+              setIsLoading(true);
+            }}
+            onLoad={() => {
+              setIsLoading(false);
+            }}
+            onReadyForDisplay={() => {
+              setIsLoading(false);
+            }}
+          />
+        ) : (
+          <View style={[styles.fullScreenVideo, { width, height, justifyContent: 'center', alignItems: 'center' }]}>
+            <ActivityIndicator size="large" color={COLORS.white} />
+          </View>
+        )}
 
         {isLoading && (
           <View style={styles.loadingOverlay}>
@@ -734,7 +950,9 @@ function FullScreenVideoPlayer({
 
           <TouchableOpacity
             style={styles.actionButtonLarge}
-            onPress={onShare}
+            onPress={() => {
+              setShowShareModal(true);
+            }}
           >
             <Share2 size={32} color={COLORS.white} />
             <Text style={styles.actionCountText}>{formatCount(shareCount)}</Text>
@@ -798,6 +1016,54 @@ function FullScreenVideoPlayer({
           </View>
         </Animated.View>
       )}
+
+      {/* Paylaş Modal */}
+      <Modal
+        visible={showShareModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowShareModal(false)}
+      >
+        <Pressable
+          style={styles.shareModalOverlay}
+          onPress={() => setShowShareModal(false)}
+        >
+          <View style={[styles.shareModalContent, { backgroundColor: theme.colors.card }]}>
+            <Text style={[styles.shareModalTitle, { color: theme.colors.text }]}>
+              Paylaş
+            </Text>
+            
+            <TouchableOpacity
+              style={[styles.shareOption, { borderBottomColor: theme.colors.border }]}
+              onPress={handleShareNormal}
+            >
+              <Share2 size={24} color={theme.colors.text} />
+              <Text style={[styles.shareOptionText, { color: theme.colors.text }]}>
+                Normal Paylaş
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.shareOption}
+              onPress={handleShareSilent}
+            >
+              <VolumeX size={24} color={theme.colors.text} />
+              <Text style={[styles.shareOptionText, { color: theme.colors.text }]}>
+                Sessiz Paylaş
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.shareCancelButton, { backgroundColor: theme.colors.background }]}
+              onPress={() => setShowShareModal(false)}
+            >
+              <Text style={[styles.shareCancelText, { color: theme.colors.text }]}>
+                İptal
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -1030,6 +1296,49 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.8)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+
+  // Paylaş Modal
+  shareModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  shareModalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: SPACING.xl,
+    paddingTop: SPACING.md,
+  },
+  shareModalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.md,
+  },
+  shareOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderBottomWidth: 1,
+    gap: SPACING.md,
+  },
+  shareOptionText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '500',
+  },
+  shareCancelButton: {
+    marginTop: SPACING.md,
+    marginHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  shareCancelText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
   },
 });
 

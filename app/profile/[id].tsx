@@ -10,6 +10,7 @@ import {
   Alert,
   FlatList,
   Modal,
+  Linking,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Video, ResizeMode } from 'expo-av';
@@ -27,13 +28,18 @@ import {
   MapPin,
   Users,
   Star,
+  Instagram,
+  Twitter,
+  Facebook,
+  Linkedin,
+  Youtube,
+  Music,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CallButtons } from '@/components/CallButtons';
 import { SupporterBadge } from '@/components/SupporterBadge';
 import { Footer } from '@/components/Footer';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
-import { GenderIcon } from '@/components/GenderIcon';
 
 // Mesaj butonu component'i
 function MessageButton({ targetUserId }: { targetUserId: string }) {
@@ -365,8 +371,8 @@ export default function UserProfileScreen() {
             <Text style={styles.name}>{profile.full_name || 'İsimsiz'}</Text>
             {(() => {
               const privacySettings = profile.privacy_settings as any;
-              const showGenderIcon = privacySettings?.privacy?.showGenderIcon !== false; // Default true
-              return showGenderIcon && <GenderIcon gender={profile.gender} size={18} />;
+              // GenderIcon component removed
+              return null;
             })()}
             {profile.verified && <VerifiedBadgeIcon size={20} />}
             {profile.supporter_badge && profile.supporter_badge_visible && (
@@ -941,6 +947,27 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: SPACING.lg,
     paddingHorizontal: SPACING.lg,
+  },
+  socialMediaContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+    justifyContent: 'center',
+  },
+  socialMediaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: SPACING.xs,
+  },
+  socialMediaButtonText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '500',
+    color: COLORS.text,
   },
   statsContainer: {
     flexDirection: 'row',
