@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Send } from 'lucide-react-native';
@@ -46,6 +47,9 @@ export function CommentSheet({ postId }: CommentSheetProps) {
       setCommentText('');
       refetch();
     },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Yorum gönderilemedi. Lütfen tekrar deneyin.');
+    },
   });
 
   const handleSendComment = () => {
@@ -59,7 +63,12 @@ export function CommentSheet({ postId }: CommentSheetProps) {
   const comments = commentsData?.comments || [];
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.keyboardAvoider}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? insets.bottom : insets.bottom + 40}
+    >
+      <View style={styles.container}>
       <FlatList
         data={comments}
         keyExtractor={(item) => item.id}
@@ -104,15 +113,11 @@ export function CommentSheet({ postId }: CommentSheetProps) {
       />
 
       {/* Yorum Input - Instagram tarzı, şeffaf arka plan, en altta sabit */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-      >
         <View
           style={[
             styles.inputContainer,
-            { 
-              backgroundColor: 'rgba(0, 0, 0, 0.6)', 
+            {
+              backgroundColor: 'rgba(0, 0, 0, 0.6)',
               borderTopColor: 'rgba(255, 255, 255, 0.1)',
             },
             { paddingBottom: Math.max(insets.bottom, SPACING.md) },
@@ -124,7 +129,10 @@ export function CommentSheet({ postId }: CommentSheetProps) {
             contentFit="cover"
           />
           <TextInput
-            style={[styles.input, { backgroundColor: 'rgba(255, 255, 255, 0.15)', color: COLORS.white }]}
+            style={[
+              styles.input,
+              { backgroundColor: 'rgba(255, 255, 255, 0.15)', color: COLORS.white },
+            ]}
             placeholder="Yorum yaz..."
             placeholderTextColor="rgba(255, 255, 255, 0.6)"
             value={commentText}
@@ -136,7 +144,7 @@ export function CommentSheet({ postId }: CommentSheetProps) {
             style={[
               styles.sendButton,
               { backgroundColor: theme.colors.primary },
-              !commentText.trim() && styles.sendButtonDisabled,
+              (!commentText.trim() || createCommentMutation.isPending) && styles.sendButtonDisabled,
             ]}
             onPress={handleSendComment}
             disabled={!commentText.trim() || createCommentMutation.isPending}
@@ -148,12 +156,16 @@ export function CommentSheet({ postId }: CommentSheetProps) {
             )}
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
-    </View>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoider: {
+    flex: 1,
+    width: '100%',
+  },
   container: {
     flex: 1,
   },

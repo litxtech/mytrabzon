@@ -33,6 +33,8 @@ const formatDateTime = (value?: string | null) => {
 export default function AdminRidesScreen() {
   const insets = useSafeAreaInsets();
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
   const adminCheck = trpc.admin.checkAdmin.useQuery();
   const ridesQuery = trpc.admin.getRideList.useQuery({ limit: 50 }, { enabled: adminCheck.data?.isAdmin === true });
@@ -40,6 +42,21 @@ export default function AdminRidesScreen() {
     { ride_id: selectedRideId! },
     { enabled: !!selectedRideId && adminCheck.data?.isAdmin === true }
   );
+  const rides = useMemo(() => ridesQuery.data || [], [ridesQuery.data]);
+
+  useEffect(() => {
+    if (!rides || rides.length === 0) {
+      if (selectedRideId) {
+        setSelectedRideId(null);
+      }
+      return;
+    }
+
+    const exists = selectedRideId && rides.some((ride) => ride.id === selectedRideId);
+    if (!exists) {
+      setSelectedRideId(rides[0].id);
+    }
+  }, [rides, selectedRideId]);
 
   const selectedRide = useMemo(() => {
     if (!selectedRideId) return null;
@@ -143,22 +160,6 @@ export default function AdminRidesScreen() {
     );
   }
 
-  const rides = useMemo(() => ridesQuery.data || [], [ridesQuery.data]);
-
-  useEffect(() => {
-    if (!rides || rides.length === 0) {
-      if (selectedRideId) {
-        setSelectedRideId(null);
-      }
-      return;
-    }
-
-    const exists = selectedRideId && rides.some((ride) => ride.id === selectedRideId);
-    if (!exists) {
-      setSelectedRideId(rides[0].id);
-    }
-  }, [rides, selectedRideId]);
-
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <Stack.Screen options={{ title: 'Yolculuk Yönetimi' }} />
@@ -218,78 +219,80 @@ export default function AdminRidesScreen() {
       )}
 
       {selectedRide && rideDetailQuery.data && (
-        <ScrollView style={styles.detailCard} showsVerticalScrollIndicator={false}>
-          <Text style={styles.detailTitle}>Seçilen Yolculuk</Text>
-          <Text style={styles.detailPrimary}>
-            {selectedRide.departure_title} → {selectedRide.destination_title}
-          </Text>
-          <Text style={styles.detailMeta}>{formatDateTime(selectedRide.departure_time)}</Text>
-          <Text style={styles.detailMeta}>Durum: {selectedRide.status}</Text>
-          <Text style={styles.detailMeta}>Sürücü: {selectedRide.driver_full_name}</Text>
-          <Text style={styles.detailMeta}>Telefon: {selectedRide.driver_phone || '-'}</Text>
-          <Text style={styles.detailMeta}>Araç: {selectedRide.vehicle_brand || '-'} {selectedRide.vehicle_model || ''}</Text>
-          {selectedRide.vehicle_plate && <Text style={styles.detailMeta}>Plaka: {selectedRide.vehicle_plate}</Text>}
+        <View style={styles.detailWrapper}>
+          <ScrollView style={styles.detailCard} showsVerticalScrollIndicator={false}>
+            <Text style={styles.detailTitle}>Seçilen Yolculuk</Text>
+            <Text style={styles.detailPrimary}>
+              {selectedRide.departure_title} → {selectedRide.destination_title}
+            </Text>
+            <Text style={styles.detailMeta}>{formatDateTime(selectedRide.departure_time)}</Text>
+            <Text style={styles.detailMeta}>Durum: {selectedRide.status}</Text>
+            <Text style={styles.detailMeta}>Sürücü: {selectedRide.driver_full_name}</Text>
+            <Text style={styles.detailMeta}>Telefon: {selectedRide.driver_phone || '-'}</Text>
+            <Text style={styles.detailMeta}>Araç: {selectedRide.vehicle_brand || '-'} {selectedRide.vehicle_model || ''}</Text>
+            {selectedRide.vehicle_plate && <Text style={styles.detailMeta}>Plaka: {selectedRide.vehicle_plate}</Text>}
 
-          <Text style={[styles.detailTitle, styles.sectionSpacing]}>Rezervasyonlar</Text>
-          {rideDetailQuery.data.bookings.length === 0 ? (
-            <Text style={styles.detailMeta}>Rezervasyon bulunamadı.</Text>
-          ) : (
-            rideDetailQuery.data.bookings.map((booking: any, index: number) => (
-              <View key={booking.id} style={styles.bookingRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.bookingName}>
-                    {index + 1}. {booking.passenger_name}
-                  </Text>
-                  <Text style={styles.bookingMeta}>
-                    {booking.seats_requested} koltuk • {booking.status}
-                  </Text>
-                  <View style={styles.phoneRow}>
-                    <Phone size={14} color={COLORS.textLight} />
-                    <Text style={styles.bookingMeta}>{booking.passenger_phone || '-'}</Text>
+            <Text style={[styles.detailTitle, styles.sectionSpacing]}>Rezervasyonlar</Text>
+            {rideDetailQuery.data.bookings.length === 0 ? (
+              <Text style={styles.detailMeta}>Rezervasyon bulunamadı.</Text>
+            ) : (
+              rideDetailQuery.data.bookings.map((booking: any, index: number) => (
+                <View key={booking.id} style={styles.bookingRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.bookingName}>
+                      {index + 1}. {booking.passenger_name}
+                    </Text>
+                    <Text style={styles.bookingMeta}>
+                      {booking.seats_requested} koltuk • {booking.status}
+                    </Text>
+                    <View style={styles.phoneRow}>
+                      <Phone size={14} color={COLORS.textLight} />
+                      <Text style={styles.bookingMeta}>{booking.passenger_phone || '-'}</Text>
+                    </View>
+                    {booking.notes ? <Text style={styles.bookingNote}>Not: {booking.notes}</Text> : null}
                   </View>
-                  {booking.notes ? <Text style={styles.bookingNote}>Not: {booking.notes}</Text> : null}
                 </View>
-              </View>
-            ))
-          )}
+              ))
+            )}
 
-          <View style={styles.pdfButtonsContainer}>
-            <TouchableOpacity
-              style={[styles.pdfButton, (generatingPdf || rideDetailQuery.isFetching) && styles.pdfButtonDisabled]}
-              disabled={generatingPdf || rideDetailQuery.isFetching}
-              onPress={handleGeneratePdf}
-            >
-              {generatingPdf ? (
-                <ActivityIndicator size="small" color={COLORS.white} />
-              ) : (
+            <View style={styles.pdfButtonsContainer}>
+              <TouchableOpacity
+                style={[styles.pdfButton, (generatingPdf || rideDetailQuery.isFetching) && styles.pdfButtonDisabled]}
+                disabled={generatingPdf || rideDetailQuery.isFetching}
+                onPress={handleGeneratePdf}
+              >
+                {generatingPdf ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <>
+                    <FileText size={18} color={COLORS.white} />
+                    <Text style={styles.pdfButtonText}>PDF Oluştur</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {pdfUrl && (
                 <>
-                  <FileText size={18} color={COLORS.white} />
-                  <Text style={styles.pdfButtonText}>PDF Oluştur</Text>
+                  <TouchableOpacity
+                    style={[styles.pdfButton, styles.pdfViewButton]}
+                    onPress={handleViewPdf}
+                  >
+                    <Eye size={18} color={COLORS.white} />
+                    <Text style={styles.pdfButtonText}>Görüntüle</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.pdfButton, styles.pdfDownloadButton]}
+                    onPress={handleDownloadPdf}
+                  >
+                    <Download size={18} color={COLORS.white} />
+                    <Text style={styles.pdfButtonText}>İndir</Text>
+                  </TouchableOpacity>
                 </>
               )}
-            </TouchableOpacity>
-
-            {pdfUrl && (
-              <>
-                <TouchableOpacity
-                  style={[styles.pdfButton, styles.pdfViewButton]}
-                  onPress={handleViewPdf}
-                >
-                  <Eye size={18} color={COLORS.white} />
-                  <Text style={styles.pdfButtonText}>Görüntüle</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.pdfButton, styles.pdfDownloadButton]}
-                  onPress={handleDownloadPdf}
-                >
-                  <Download size={18} color={COLORS.white} />
-                  <Text style={styles.pdfButtonText}>İndir</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </ScrollView>
+            </View>
+          </ScrollView>
+        </View>
       )}
     </View>
   );
@@ -354,6 +357,10 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.xl,
     gap: SPACING.md,
   },
+  detailWrapper: {
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.xl,
+  },
   rideCard: {
     backgroundColor: COLORS.white,
     borderRadius: 12,
@@ -412,12 +419,13 @@ const styles = StyleSheet.create({
   },
   detailCard: {
     backgroundColor: COLORS.white,
-    marginHorizontal: SPACING.md,
-    marginBottom: SPACING.xl,
+    marginBottom: SPACING.lg,
     borderRadius: 16,
     padding: SPACING.lg,
     borderWidth: 1,
     borderColor: COLORS.border,
+    zIndex: 2,
+    elevation: 3,
   },
   detailTitle: {
     fontSize: FONT_SIZES.lg,

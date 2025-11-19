@@ -131,6 +131,38 @@ CREATE TABLE IF NOT EXISTS support_tickets (
   resolved_at TIMESTAMP WITH TIME ZONE
 );
 
+-- Login UI Settings (tek kayıt)
+CREATE TABLE IF NOT EXISTS login_ui_settings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  profile_id TEXT UNIQUE DEFAULT 'default',
+  beta_badge_text TEXT DEFAULT '🚀 Beta Sürümü',
+  beta_badge_subtext TEXT DEFAULT 'Yakında tam sürüm kullanıma sunulacak',
+  beta_badge_color TEXT DEFAULT '#FF4D4D',
+  background_color TEXT DEFAULT '#0D0D0D',
+  text_color TEXT DEFAULT '#FFFFFF',
+  primary_button_text TEXT DEFAULT 'Giriş Yap',
+  primary_button_color TEXT DEFAULT '#FF1F66',
+  google_button_text TEXT DEFAULT 'Google ile Giriş Yap',
+  google_button_color TEXT DEFAULT '#FFFFFF',
+  apple_button_text TEXT DEFAULT 'Apple ile Giriş Yap',
+  apple_button_color TEXT DEFAULT '#FFFFFF',
+  magic_link_text TEXT DEFAULT 'Link ile Giriş Yap',
+  magic_link_color TEXT DEFAULT '#FFFFFF',
+  phone_button_text TEXT DEFAULT 'Telefon ile Giriş Yap',
+  phone_button_color TEXT DEFAULT '#FFFFFF',
+  footer_title TEXT DEFAULT 'Developed by LITXTECH LLC',
+  footer_subtitle TEXT DEFAULT 'www.litxtech.com',
+  footer_link TEXT DEFAULT 'https://www.litxtech.com',
+  footer_text_color TEXT DEFAULT '#FFFFFF',
+  footer_background_color TEXT DEFAULT '#000000',
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  metadata JSONB DEFAULT '{}'::jsonb
+);
+
+INSERT INTO login_ui_settings (profile_id)
+VALUES ('default')
+ON CONFLICT (profile_id) DO NOTHING;
+
 -- 6. USER BANS TABLE
 CREATE TABLE IF NOT EXISTS user_bans (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -184,6 +216,7 @@ CREATE INDEX IF NOT EXISTS idx_policies_type ON policies(policy_type);
 CREATE INDEX IF NOT EXISTS idx_policies_display_order ON policies(display_order);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_id);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_login_ui_settings_profile_id ON login_ui_settings(profile_id);
 CREATE INDEX IF NOT EXISTS idx_user_bans_user_id ON user_bans(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_bans_active ON user_bans(is_active);
 CREATE INDEX IF NOT EXISTS idx_admin_logs_admin_id ON admin_logs(admin_id);
@@ -289,6 +322,39 @@ CREATE POLICY "support_tickets_select" ON support_tickets
 DROP POLICY IF EXISTS "support_tickets_insert" ON support_tickets;
 CREATE POLICY "support_tickets_insert" ON support_tickets
   FOR INSERT WITH CHECK (user_id = auth.uid());
+
+-- Login UI Settings (sadece adminler)
+ALTER TABLE login_ui_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "login_settings_select" ON login_ui_settings;
+CREATE POLICY "login_settings_select" ON login_ui_settings
+  FOR SELECT USING (
+    auth.uid() = '98542f02-11f8-4ccd-b38d-4dd42066daa7'
+    OR EXISTS (
+      SELECT 1 FROM admin_users au
+      WHERE au.user_id = auth.uid()
+      AND au.is_active = true
+    )
+  );
+
+DROP POLICY IF EXISTS "login_settings_update" ON login_ui_settings;
+CREATE POLICY "login_settings_update" ON login_ui_settings
+  FOR UPDATE USING (
+    auth.uid() = '98542f02-11f8-4ccd-b38d-4dd42066daa7'
+    OR EXISTS (
+      SELECT 1 FROM admin_users au
+      WHERE au.user_id = auth.uid()
+      AND au.is_active = true
+    )
+  )
+  WITH CHECK (
+    auth.uid() = '98542f02-11f8-4ccd-b38d-4dd42066daa7'
+    OR EXISTS (
+      SELECT 1 FROM admin_users au
+      WHERE au.user_id = auth.uid()
+      AND au.is_active = true
+    )
+  );
 
 -- User Bans (Sadece adminler görebilir)
 ALTER TABLE user_bans ENABLE ROW LEVEL SECURITY;

@@ -176,8 +176,8 @@ export default function CreateEventScreen() {
       return;
     }
 
-    // "Tümü" seçildiyse district'i null yap (backend'de tüm ilçelere gönderilecek)
-    const districtToSend = formData.district === 'Tümü' ? null : formData.district;
+    // "Tümü" seçildiyse backend'e Tümü olarak gönder
+    const districtToSend = formData.district === 'Tümü' ? 'Tümü' : formData.district;
 
     setLoading(true);
     setUploading(true);
@@ -201,7 +201,7 @@ export default function CreateEventScreen() {
         description: formData.description,
         category: formData.category as any,
         severity: formData.severity,
-        district: districtToSend, // null veya string olabilir
+        district: districtToSend,
         city: formData.city,
         latitude: formData.latitude,
         longitude: formData.longitude,

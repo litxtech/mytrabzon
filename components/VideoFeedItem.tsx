@@ -27,6 +27,8 @@ import { CommentSheet } from './CommentSheet';
 import VerifiedBadgeIcon from './VerifiedBadge';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
+const SHEET_VISIBLE_POSITION = 0;
+const SHEET_HIDDEN_POSITION = SCREEN_HEIGHT * 0.6;
 
 interface VideoFeedItemProps {
   post: any;
@@ -45,7 +47,7 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
   const [likeCount, setLikeCount] = useState(post.like_count || 0);
   const [isLoading, setIsLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
-  const commentSheetY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+  const commentSheetY = useRef(new Animated.Value(SHEET_HIDDEN_POSITION)).current;
   const lastTap = useRef(0);
 
   const firstMedia = post.media && post.media.length > 0 ? post.media[0] : null;
@@ -57,7 +59,7 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
       setIsLiked(!isLiked);
       setLikeCount((prev: number) => (isLiked ? prev - 1 : prev + 1));
     },
-    onError: (error) => {
+    onError: (error: unknown) => {
       console.error('Like post error:', error);
     },
   });
@@ -68,7 +70,7 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
       // Event'ler için upvotes - downvotes kullanılıyor
       setLikeCount((prev: number) => (isLiked ? prev - 1 : prev + 1));
     },
-    onError: (error) => {
+    onError: (error: unknown) => {
       console.error('Like event error:', error);
     },
   });
@@ -151,7 +153,7 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
   const handleComment = () => {
     setShowComments(true);
     Animated.spring(commentSheetY, {
-      toValue: SCREEN_HEIGHT * 0.5, // Ekranın %50'si - yarıya kadar açılır, video hala görünür
+      toValue: SHEET_VISIBLE_POSITION,
       useNativeDriver: true,
       tension: 50,
       friction: 7,
@@ -160,7 +162,7 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
 
   const handleCloseComments = () => {
     Animated.spring(commentSheetY, {
-      toValue: SCREEN_HEIGHT,
+      toValue: SHEET_HIDDEN_POSITION,
       useNativeDriver: true,
       tension: 50,
       friction: 7,
@@ -207,7 +209,11 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
       },
       onPanResponderMove: (_, gestureState) => {
         if (gestureState.dy > 0) {
-          commentSheetY.setValue(SCREEN_HEIGHT * 0.5 + gestureState.dy);
+          const nextPosition = Math.min(
+            SHEET_VISIBLE_POSITION + gestureState.dy,
+            SHEET_HIDDEN_POSITION
+          );
+          commentSheetY.setValue(nextPosition);
         }
       },
       onPanResponderRelease: (_, gestureState) => {
@@ -215,7 +221,7 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
           handleCloseComments();
         } else {
           Animated.spring(commentSheetY, {
-            toValue: SCREEN_HEIGHT * 0.5,
+            toValue: SHEET_VISIBLE_POSITION,
             useNativeDriver: true,
             tension: 50,
             friction: 7,

@@ -59,6 +59,7 @@ export default function FeedScreen() {
   const {
     data: feedData,
     isLoading,
+    error: feedError,
     refetch,
   } = trpc.post.getPosts.useQuery(
     {
@@ -72,6 +73,16 @@ export default function FeedScreen() {
       gcTime: 10 * 60 * 1000, // 10 dakika
       refetchOnMount: false, // Cache'den kullan
       refetchOnWindowFocus: false,
+      retry: 2, // Hata durumunda 2 kez tekrar dene
+      retryDelay: 1000, // 1 saniye bekle
+      onError: (error) => {
+        console.error('❌ Feed yükleme hatası:', error);
+        console.error('Hata detayları:', {
+          message: error.message,
+          data: error.data,
+          cause: error.cause,
+        });
+      },
     }
   );
 
@@ -79,6 +90,7 @@ export default function FeedScreen() {
   const {
     data: eventsData,
     isLoading: eventsLoading,
+    error: eventsError,
     refetch: refetchEvents,
   } = trpc.event.getEvents.useQuery(
     {
@@ -91,6 +103,11 @@ export default function FeedScreen() {
       gcTime: 10 * 60 * 1000, // 10 dakika
       refetchOnMount: false, // Cache'den kullan
       refetchOnWindowFocus: false, // Egress optimizasyonu
+      retry: 2, // Hata durumunda 2 kez tekrar dene
+      retryDelay: 1000, // 1 saniye bekle
+      onError: (error) => {
+        console.error('❌ Event yükleme hatası:', error);
+      },
     }
   );
 
@@ -644,6 +661,22 @@ export default function FeedScreen() {
       {renderSortTabs}
       {renderDistrictFilter}
 
+      {(feedError || eventsError) && !isLoading && !eventsLoading && (
+        <View style={styles.errorContainer}>
+          <Text style={[styles.errorText, { color: theme.colors.error }]}>
+            {(feedError || eventsError)?.message || 'Veriler yüklenirken bir hata oluştu'}
+          </Text>
+          <TouchableOpacity
+            style={[styles.retryButton, { backgroundColor: theme.colors.primary }]}
+            onPress={() => {
+              refetch();
+              refetchEvents();
+            }}
+          >
+            <Text style={[styles.retryButtonText, { color: COLORS.white }]}>Tekrar Dene</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       {isLoading || eventsLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -1054,6 +1087,26 @@ const styles = StyleSheet.create({
   emptySubtext: {
     fontSize: FONT_SIZES.md,
     textAlign: 'center' as const,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: SPACING.xl,
+  },
+  errorText: {
+    fontSize: FONT_SIZES.md,
+    textAlign: 'center' as const,
+    marginBottom: SPACING.md,
+  },
+  retryButton: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600' as const,
   },
   fab: {
     position: 'absolute' as const,

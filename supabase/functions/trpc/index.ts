@@ -696,12 +696,12 @@ const appRouter = createTRPCRouter({
       .query(async ({ ctx, input }) => {
         const { supabase } = ctx;
 
-        const { data: followersCount, error: followersError } = await supabase
+        const { count: followersCount, error: followersError } = await supabase
           .from('follows')
           .select('id', { count: 'exact', head: true })
           .eq('following_id', input.user_id);
 
-        const { data: followingCount, error: followingError } = await supabase
+        const { count: followingCount, error: followingError } = await supabase
           .from('follows')
           .select('id', { count: 'exact', head: true })
           .eq('follower_id', input.user_id);
@@ -712,8 +712,8 @@ const appRouter = createTRPCRouter({
         }
 
         return {
-          followers_count: followersCount || 0,
-          following_count: followingCount || 0,
+          followers_count: followersCount ?? 0,
+          following_count: followingCount ?? 0,
         };
       }),
   }),
@@ -6878,6 +6878,9 @@ const appRouter = createTRPCRouter({
           ? new Date(input.expires_at)
           : new Date(Date.now() + 2 * 60 * 60 * 1000);
 
+        const districtValue =
+          input.district && input.district.trim() !== '' ? input.district : 'Tümü';
+
         const { data: event, error } = await supabase
           .from('events')
           .insert({
@@ -6886,7 +6889,7 @@ const appRouter = createTRPCRouter({
             description: input.description,
             category: input.category,
             severity: input.severity,
-            district: input.district || null,
+            district: districtValue,
             city: input.city,
             latitude: input.latitude,
             longitude: input.longitude,
@@ -6910,7 +6913,13 @@ const appRouter = createTRPCRouter({
         // Algoritma: Etkilenecek kullanıcıları bul ve bildirim oluştur
         // Log kaldırıldı - egress optimizasyonu
         try {
-          await createNotificationsForEvent(supabase, event, input.severity, input.district || '', input.city);
+          await createNotificationsForEvent(
+            supabase,
+            event,
+            input.severity,
+            districtValue,
+            input.city
+          );
         } catch (notificationError) {
           console.error('❌ Notification creation failed:', notificationError);
           // Bildirim hatası olsa bile event oluşturuldu, devam et
@@ -6945,7 +6954,7 @@ const appRouter = createTRPCRouter({
           .range(input.offset, input.offset + input.limit - 1);
 
         if (input.district) {
-          query = query.eq('district', input.district);
+          query = query.in('district', [input.district, 'Tümü']);
         }
         if (input.city) {
           query = query.eq('city', input.city);
@@ -7123,6 +7132,49 @@ const appRouter = createTRPCRouter({
         if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
 
         return { comments: data || [] };
+      }),
+
+    deleteEvent: protectedProcedure
+      .input(
+        z.object({
+          event_id: z.string().uuid(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        // Kullanıcının own olup olmadığını kontrol et
+        const { data: existingEvent, error: fetchError } = await supabase
+          .from('events')
+          .select('id, user_id')
+          .eq('id', input.event_id)
+          .eq('is_deleted', false)
+          .single();
+
+        if (fetchError || !existingEvent) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Olay bulunamadı veya silinmiş' });
+        }
+
+        if (existingEvent.user_id !== user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Bu olayı silme yetkiniz yok' });
+        }
+
+        const { error: deleteError } = await supabase
+          .from('events')
+          .update({
+            is_deleted: true,
+            is_active: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', input.event_id)
+          .eq('user_id', user.id);
+
+        if (deleteError) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: deleteError.message });
+        }
+
+        return { success: true };
       }),
   }),
 
@@ -8499,24 +8551,47 @@ serve(async (req) => {
     body: req.body,
   });
   
-  const response = await fetchRequestHandler({
-    endpoint: "/api/trpc",
-    router: appRouter,
-    req: normalizedReq,
-    createContext: async () => await createContext(normalizedReq),
-    onError: ({ error, path, type }) => {
-      // Minimal error logging - sadece kritik hatalar
-      if (error.code === 'INTERNAL_SERVER_ERROR') {
-        console.error(`tRPC error on '${path}':`, error.message);
+  try {
+    const response = await fetchRequestHandler({
+      endpoint: "/api/trpc",
+      router: appRouter,
+      req: normalizedReq,
+      createContext: async () => await createContext(normalizedReq),
+      onError: ({ error, path, type }) => {
+        // Detaylı error logging
+        console.error(`❌ tRPC error on '${path}' (${type}):`, {
+          code: error.code,
+          message: error.message,
+          cause: error.cause,
+        });
+      },
+    });
+    
+    response.headers.set("Access-Control-Allow-Origin", "*");
+    response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    
+    return response;
+  } catch (error) {
+    console.error("❌ Fatal error in Edge Function:", error);
+    return new Response(
+      JSON.stringify({
+        error: {
+          code: "INTERNAL_SERVER_ERROR",
+          message: error instanceof Error ? error.message : "Unknown error occurred",
+        },
+      }),
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
       }
-    },
-  });
-  
-  response.headers.set("Access-Control-Allow-Origin", "*");
-  response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  
-  return response;
+    );
+  }
 });
 
 const UPCOMING_BUFFER_MINUTES = 5;

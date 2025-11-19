@@ -24,6 +24,7 @@ import {
   Send,
   ArrowLeft,
   AlertCircle,
+  Trash2,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -39,6 +40,7 @@ export default function EventDetailScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const [commentText, setCommentText] = useState('');
+  const utils = trpc.useUtils();
 
   const { data: eventsData, isLoading, refetch } = trpc.event.getEvents.useQuery({
     limit: 100,
@@ -65,6 +67,18 @@ export default function EventDetailScreen() {
     onSuccess: () => {
       setCommentText('');
       refetch();
+    },
+  });
+
+  const deleteEventMutation = trpc.event.deleteEvent.useMutation({
+    onSuccess: async () => {
+      Alert.alert('Başarılı', 'Olay silindi');
+      await utils.event.getEvents.invalidate();
+      router.back();
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Olay silinemedi';
+      Alert.alert('Hata', message);
     },
   });
 
@@ -110,6 +124,23 @@ export default function EventDetailScreen() {
       console.error('Comment error:', error);
       Alert.alert('Hata', 'Yorum eklenirken bir hata oluştu');
     }
+  };
+
+  const handleDeleteEvent = () => {
+    if (!event) return;
+
+    Alert.alert(
+      'Olayı Sil',
+      'Bu olayı tüm ilçelerden kaldırmak istediğinize emin misiniz?',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: () => deleteEventMutation.mutate({ event_id: event.id }),
+        },
+      ]
+    );
   };
 
   if (isLoading) {
@@ -261,6 +292,18 @@ export default function EventDetailScreen() {
             <Share2 size={24} color={theme.colors.textLight} />
             <Text style={[styles.actionText, { color: theme.colors.textLight }]}>Paylaş</Text>
           </TouchableOpacity>
+          {event.user_id === user?.id && (
+            <TouchableOpacity
+              style={[styles.actionButton, styles.deleteButton]}
+              onPress={handleDeleteEvent}
+              disabled={deleteEventMutation.isPending}
+            >
+              <Trash2 size={24} color={theme.colors.error} />
+              <Text style={[styles.actionText, { color: theme.colors.error }]}>
+                {deleteEventMutation.isPending ? 'Siliniyor...' : 'Sil'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Comments Section */}
@@ -425,6 +468,14 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     flex: 1,
     justifyContent: 'center',
+  },
+  deleteButton: {
+    borderWidth: 1,
+    borderColor: COLORS.error,
+    borderRadius: 999,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    flex: undefined,
   },
   actionText: {
     fontSize: FONT_SIZES.sm,

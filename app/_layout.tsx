@@ -10,6 +10,7 @@ import * as Notifications from 'expo-notifications';
 import { registerForPushNotifications, addNotificationResponseReceivedListener } from "@/lib/notifications";
 import { supabase } from "@/lib/supabase";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import "@/lib/debug-supabase"; // Supabase bağlantı testi için
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -228,16 +229,16 @@ export default function RootLayout() {
                   }
                   return;
                 }
-                if (data.session) {
+                if (data.session?.user?.id) {
                   console.log('Session created from code exchange');
-                // Lazy loading - sadece full_name kontrolü için minimal select
-                const { data: profile } = await supabase
-                  .from('profiles')
-                  .select('full_name')
-                  .eq('id', data.session.user.id)
-                  .single();
+                  // Lazy loading - sadece full_name kontrolü için minimal select
+                  const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('full_name')
+                    .eq('id', data.session.user.id)
+                    .single();
 
-                  if (profile && profile.full_name) {
+                  if (profile?.full_name) {
                     router.replace('/(tabs)/feed');
                   } else {
                     router.replace('/auth/onboarding');
@@ -277,7 +278,7 @@ export default function RootLayout() {
                 return;
               }
 
-              if (session?.user) {
+              if (session?.user?.id) {
                 console.log('User authenticated:', session.user.id);
                 const { data: profile } = await supabase
                   .from('profiles')
@@ -300,7 +301,7 @@ export default function RootLayout() {
               console.log('Missing tokens in callback URL - checking for session...');
               // Token yoksa mevcut session'ı kontrol et
               const { data: { session } } = await supabase.auth.getSession();
-              if (session?.user) {
+              if (session?.user?.id) {
                 const { data: profile } = await supabase
                   .from('profiles')
                   .select('*')

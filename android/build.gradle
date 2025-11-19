@@ -20,5 +20,19 @@ allprojects {
   }
 }
 
+// Configure Java toolchain for all projects
+subprojects {
+  afterEvaluate { project ->
+    if (project.hasProperty('android')) {
+      android {
+        compileOptions {
+          sourceCompatibility JavaVersion.VERSION_17
+          targetCompatibility JavaVersion.VERSION_17
+        }
+      }
+    }
+  }
+}
+
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Share, Platform, FlatList, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Share, Platform, FlatList, ActivityIndicator, TouchableWithoutFeedback } from 'react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
@@ -744,8 +744,20 @@ export default function ProfileScreen() {
         onRequestClose={() => setMenuVisible(false)}
       >
         <View style={styles.menuOverlay}>
+          <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
+            <View style={styles.menuBackdrop} />
+          </TouchableWithoutFeedback>
           <View style={[styles.menuContent, { backgroundColor: theme.colors.card }]}>
-            <Text style={[styles.menuTitle, { color: theme.colors.text }]}>Profil menüsü</Text>
+            <View style={[styles.menuHeader, { borderBottomColor: theme.colors.border }]}>
+              <Text style={[styles.menuTitle, { color: theme.colors.text }]}>Profil menüsü</Text>
+              <TouchableOpacity
+                onPress={() => setMenuVisible(false)}
+                style={styles.menuCloseButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Text style={[styles.menuCloseText, { color: theme.colors.text }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
             {menuActions.map((action) => {
               const IconComponent = action.icon;
               const isDisabled = action.disabled;
@@ -1271,8 +1283,11 @@ const styles = StyleSheet.create({
   },
   menuOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
+  },
+  menuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
   },
   menuContent: {
     backgroundColor: COLORS.white,
@@ -1280,11 +1295,26 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     gap: SPACING.sm,
+    zIndex: 1,
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: SPACING.sm,
+    borderBottomWidth: 1,
   },
   menuTitle: {
     fontSize: FONT_SIZES.lg,
     fontWeight: '700',
     color: COLORS.text,
+  },
+  menuCloseButton: {
+    padding: SPACING.xs,
+  },
+  menuCloseText: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
   },
   menuOption: {
     flexDirection: 'row',

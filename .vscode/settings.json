@@ -4,6 +4,7 @@
   },
   "markdownlint.ignore": [
     "**/*.md"
-  ]
+  ],
+  "java.configuration.updateBuildConfiguration": "interactive"
 }
 

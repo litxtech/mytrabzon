@@ -56,7 +56,7 @@ export default function Index() {
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <Image
-        source={require('@/assets/images/splash-screen-16-9.png')}
+        source={require('@/assets/images/splash-icon.png')}
         style={styles.logo}
         resizeMode="contain"
       />

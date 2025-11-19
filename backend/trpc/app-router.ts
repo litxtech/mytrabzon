@@ -48,6 +48,7 @@ import { getFollowersProcedure } from "./routes/user/get-followers/route";
 import { getFollowingProcedure } from "./routes/user/get-following/route";
 import { getFollowStatsProcedure } from "./routes/user/get-follow-stats/route";
 import { reportUserProcedure } from "./routes/user/report-user/route";
+import { getRequiredPoliciesProcedure } from "./routes/user/get-required-policies/route";
 import { checkAdminProcedure } from "./routes/admin/check-admin/route";
 import { getUsersProcedure } from "./routes/admin/get-users/route";
 import { deleteUsersProcedure } from "./routes/admin/delete-users/route";
@@ -88,6 +89,7 @@ import {
 } from "./routes/admin/kyc-requests/route";
 import { createEventProcedure } from "./routes/event/create-event/route";
 import { getEventsProcedure } from "./routes/event/get-events/route";
+import { deleteEventProcedure } from "./routes/event/delete-event/route";
 import { createRideProcedure } from "./routes/ride/create-ride/route";
 import { searchRidesProcedure } from "./routes/ride/search-rides/route";
 import { getRideDetailProcedure } from "./routes/ride/get-ride-detail/route";
@@ -123,6 +125,7 @@ export const appRouter = createTRPCRouter({
     getFollowing: getFollowingProcedure,
     getFollowStats: getFollowStatsProcedure,
     reportUser: reportUserProcedure,
+    getRequiredPolicies: getRequiredPoliciesProcedure,
   }),
   chat: createTRPCRouter({
     getRooms: getRoomsProcedure,
@@ -200,6 +203,7 @@ export const appRouter = createTRPCRouter({
   event: createTRPCRouter({
     createEvent: createEventProcedure,
     getEvents: getEventsProcedure,
+    deleteEvent: deleteEventProcedure,
   }),
   notification: createTRPCRouter({
     getNotifications: getNotificationsProcedure,

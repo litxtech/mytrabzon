@@ -266,8 +266,35 @@ export default function CreatePostScreen() {
         ]);
       }
     } catch (error) {
-      console.error('Post oluşturma hatası:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Gönderi oluşturulurken bir hata oluştu';
+      console.error('❌ Post oluşturma hatası:', error);
+      
+      // Daha detaylı hata mesajı
+      let errorMessage = 'Gönderi oluşturulurken bir hata oluştu';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        
+        // Network hatalarını yakala
+        if (error.message.includes('fetch') || error.message.includes('network') || error.message.includes('Network')) {
+          errorMessage = 'İnternet bağlantınızı kontrol edin ve tekrar deneyin';
+        }
+        
+        // Supabase hatalarını yakala
+        if (error.message.includes('Supabase') || error.message.includes('supabase')) {
+          errorMessage = 'Sunucu bağlantı hatası. Lütfen daha sonra tekrar deneyin.';
+        }
+        
+        // Auth hatalarını yakala
+        if (error.message.includes('auth') || error.message.includes('unauthorized') || error.message.includes('token')) {
+          errorMessage = 'Oturum süreniz dolmuş olabilir. Lütfen tekrar giriş yapın.';
+        }
+      }
+      
+      console.error('Hata detayları:', {
+        message: errorMessage,
+        error: error,
+      });
+      
       Alert.alert('Hata', errorMessage);
     } finally {
       setIsUploading(false);

@@ -90,7 +90,52 @@ export const trpcClient = trpc.createClient({
       url: baseUrl,
       transformer: superjson,
       async headers() {
-        return await getAuthHeaders();
+        const headers = await getAuthHeaders();
+        if (__DEV__) {
+          console.log('📤 tRPC Request URL:', baseUrl);
+          console.log('📤 tRPC Headers:', { ...headers, Authorization: headers.Authorization ? 'Bearer ***' : 'YOK' });
+        }
+        return headers;
+      },
+      fetch: async (url: RequestInfo | URL, options?: RequestInit) => {
+        try {
+          if (__DEV__) {
+            console.log('🌐 tRPC Fetch:', url.toString());
+            console.log('🌐 tRPC Method:', options?.method || 'GET');
+          }
+          
+          const response = await fetch(url, options);
+          
+          if (!response.ok) {
+            const errorClone = response.clone();
+            const errorText = await errorClone.text();
+            console.error('❌ tRPC Response Error:', {
+              status: response.status,
+              statusText: response.statusText,
+              url: url.toString(),
+              error: errorText.substring(0, 500),
+            });
+            
+            // Edge Function deploy edilmemişse veya secrets eksikse
+            if (response.status === 500 || response.status === 502 || response.status === 503) {
+              console.error('⚠️ Edge Function hatası! Muhtemelen:');
+              console.error('   1. Edge Function deploy edilmemiş olabilir');
+              console.error('   2. Supabase Secrets ayarlanmamış olabilir');
+              console.error('   3. SUPABASE_URL veya SUPABASE_SERVICE_ROLE_KEY eksik olabilir');
+            }
+          } else if (__DEV__) {
+            console.log('✅ tRPC Response OK:', response.status);
+          }
+          
+          return response;
+        } catch (error) {
+          console.error('❌ tRPC Network Error:', error);
+          console.error('   URL:', url.toString());
+          if (error instanceof Error) {
+            console.error('   Message:', error.message);
+          }
+          throw error;
+        }
       },
     }),
   ],
