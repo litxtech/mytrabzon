@@ -55,85 +55,94 @@ export function SupportPanel({ visible, onClose }: SupportPanelProps) {
       animationType="slide"
       transparent={true}
       onRequestClose={onClose}
+      statusBarTranslucent
     >
-      <KeyboardAvoidingView
+      <TouchableOpacity 
         style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        activeOpacity={1}
+        onPress={onClose}
       >
-        <View style={styles.container}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Destek</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <X size={24} color={COLORS.text} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
+        <View style={styles.modalContentWrapper}>
+          <KeyboardAvoidingView
+            style={styles.keyboardView}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
           >
-            <Text style={styles.subtitle}>İletişim Bilgileri</Text>
-
-            <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('phone')}>
-              <View style={styles.iconContainer}>
-                <Phone size={20} color={COLORS.primary} />
+            <View style={styles.container}>
+              <View style={styles.header}>
+                <Text style={styles.title}>Destek</Text>
+                <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                  <X size={24} color={COLORS.text} />
+                </TouchableOpacity>
               </View>
-              <View style={styles.contactTextContainer}>
-                <Text style={styles.contactLabel}>Telefon</Text>
-                <Text style={styles.contactValue}>+1 307 271 5151</Text>
-              </View>
-            </TouchableOpacity>
 
-            <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('email')}>
-              <View style={styles.iconContainer}>
-                <Mail size={20} color={COLORS.primary} />
-              </View>
-              <View style={styles.contactTextContainer}>
-                <Text style={styles.contactLabel}>E-posta</Text>
-                <Text style={styles.contactValue}>support@litxtech.com</Text>
-              </View>
-            </TouchableOpacity>
+              <ScrollView
+                style={styles.scrollView}
+                contentContainerStyle={styles.scrollContent}
+                keyboardShouldPersistTaps="handled"
+              >
+                <Text style={styles.subtitle}>İletişim Bilgileri</Text>
 
-            <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('web')}>
-              <View style={styles.iconContainer}>
-                <Globe size={20} color={COLORS.primary} />
-              </View>
-              <View style={styles.contactTextContainer}>
-                <Text style={styles.contactLabel}>Web</Text>
-                <Text style={styles.contactValue}>www.litxtech.com</Text>
-              </View>
-            </TouchableOpacity>
+                <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('phone')}>
+                  <View style={styles.iconContainer}>
+                    <Phone size={20} color={COLORS.primary} />
+                  </View>
+                  <View style={styles.contactTextContainer}>
+                    <Text style={styles.contactLabel}>Telefon</Text>
+                    <Text style={styles.contactValue}>+1 307 271 5151</Text>
+                  </View>
+                </TouchableOpacity>
 
-            <View style={styles.divider} />
+                <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('email')}>
+                  <View style={styles.iconContainer}>
+                    <Mail size={20} color={COLORS.primary} />
+                  </View>
+                  <View style={styles.contactTextContainer}>
+                    <Text style={styles.contactLabel}>E-posta</Text>
+                    <Text style={styles.contactValue}>support@litxtech.com</Text>
+                  </View>
+                </TouchableOpacity>
 
-            <Text style={styles.subtitle}>Hızlı Mesaj</Text>
-            <TextInput
-              style={styles.messageInput}
-              placeholder="Mesajınızı buraya yazın..."
-              placeholderTextColor={COLORS.textLight}
-              value={message}
-              onChangeText={setMessage}
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-              maxLength={1000}
-            />
+                <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('web')}>
+                  <View style={styles.iconContainer}>
+                    <Globe size={20} color={COLORS.primary} />
+                  </View>
+                  <View style={styles.contactTextContainer}>
+                    <Text style={styles.contactLabel}>Web</Text>
+                    <Text style={styles.contactValue}>www.litxtech.com</Text>
+                  </View>
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.sendButton, createTicketMutation.isPending && styles.sendButtonDisabled]}
-              onPress={handleSendMessage}
-              disabled={createTicketMutation.isPending}
-            >
-              <MessageCircle size={20} color={COLORS.white} />
-              <Text style={styles.sendButtonText}>
-                {createTicketMutation.isPending ? 'Gönderiliyor...' : 'Mesaj Gönder'}
-              </Text>
-            </TouchableOpacity>
-          </ScrollView>
+                <View style={styles.divider} />
+
+                <Text style={styles.subtitle}>Hızlı Mesaj</Text>
+                <TextInput
+                  style={styles.messageInput}
+                  placeholder="Mesajınızı buraya yazın..."
+                  placeholderTextColor={COLORS.textLight}
+                  value={message}
+                  onChangeText={setMessage}
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                  maxLength={1000}
+                />
+
+                <TouchableOpacity
+                  style={[styles.sendButton, createTicketMutation.isPending && styles.sendButtonDisabled]}
+                  onPress={handleSendMessage}
+                  disabled={createTicketMutation.isPending}
+                >
+                  <MessageCircle size={20} color={COLORS.white} />
+                  <Text style={styles.sendButtonText}>
+                    {createTicketMutation.isPending ? 'Gönderiliyor...' : 'Mesaj Gönder'}
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
         </View>
-      </KeyboardAvoidingView>
+      </TouchableOpacity>
     </Modal>
   );
 }
@@ -144,11 +153,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end' as const,
   },
+  keyboardView: {
+    flex: 1,
+    justifyContent: 'flex-end' as const,
+  },
+  modalContentWrapper: {
+    width: '100%',
+    backgroundColor: 'transparent',
+  },
   container: {
     backgroundColor: COLORS.white,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '80%',
+    maxHeight: '90%',
+    minHeight: '50%',
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   header: {
     flexDirection: 'row' as const,

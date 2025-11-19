@@ -36,6 +36,34 @@ CREATE TABLE IF NOT EXISTS events (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 2. EVENT LIKES TABLE
+CREATE TABLE IF NOT EXISTS event_likes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(event_id, user_id)
+);
+
+-- Helpers for like counters
+CREATE OR REPLACE FUNCTION increment_event_likes(event_id_param UUID)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE events
+  SET like_count = COALESCE(like_count, 0) + 1
+  WHERE id = event_id_param;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION decrement_event_likes(event_id_param UUID)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE events
+  SET like_count = GREATEST(COALESCE(like_count, 0) - 1, 0)
+  WHERE id = event_id_param;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Eğer tablo zaten varsa ve eksik kolonları ekle
 DO $$ 
 BEGIN

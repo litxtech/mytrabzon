@@ -8,22 +8,22 @@ import { createClient, SupabaseClient, User } from "npm:@supabase/supabase-js@2"
 // Get Supabase configuration from environment
 function getSupabaseAdmin(): SupabaseClient {
   // Supabase Edge Functions'ta otomatik olarak sağlanan environment değişkenleri
-  const supabaseUrl = Deno.env.get("SUPABASE_URL") || Deno.env.get("SUPABASE_PROJECT_URL") || "";
-  const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  // Ayrıca kullanıcı tarafından manuel set edilen APP_ prefixli değişkenleri de kontrol et
+  const supabaseUrl = 
+    Deno.env.get("SUPABASE_URL") || 
+    Deno.env.get("SUPABASE_PROJECT_URL") || 
+    Deno.env.get("APP_SUPABASE_URL") || 
+    "";
+    
+  const supabaseServiceRoleKey = 
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || 
+    Deno.env.get("APP_SERVICE_ROLE_KEY") || 
+    "";
 
-  if (!supabaseUrl) {
-    console.error("❌ SUPABASE_URL environment variable is missing!");
-    throw new Error("Missing SUPABASE_URL environment variable. Please set it in Supabase Dashboard > Edge Functions > Secrets");
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    // Sessizce hata fırlat, gereksiz log yok
+    throw new Error("Missing Supabase configuration");
   }
-
-  if (!supabaseServiceRoleKey) {
-    console.error("❌ SUPABASE_SERVICE_ROLE_KEY environment variable is missing!");
-    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY environment variable. Please set it in Supabase Dashboard > Edge Functions > Secrets");
-  }
-
-  console.log("✅ Supabase admin client initialized");
-  console.log("   URL:", supabaseUrl);
-  console.log("   Key:", supabaseServiceRoleKey ? `***${supabaseServiceRoleKey.slice(-4)}` : "MISSING");
 
   return createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: {
@@ -39,8 +39,7 @@ let supabaseAdminClient: SupabaseClient | null = null;
 try {
   supabaseAdminClient = getSupabaseAdmin();
 } catch (error) {
-  console.error("❌ Failed to initialize Supabase admin client:", error);
-  // Edge Function başlatılırken hata olursa, ilk request'te tekrar deneyecek
+  // Sessizce geç, ilk request'te tekrar deneyecek
 }
 
 export interface Context {
@@ -55,8 +54,7 @@ export const createContext = async (req: Request): Promise<Context> => {
     try {
       supabaseAdminClient = getSupabaseAdmin();
     } catch (error) {
-      console.error("❌ Failed to initialize Supabase admin client in createContext:", error);
-      throw new Error("Backend configuration error. Please check Edge Functions secrets.");
+      throw new Error("Backend configuration error");
     }
   }
 

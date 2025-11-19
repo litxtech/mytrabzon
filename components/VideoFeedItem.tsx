@@ -75,70 +75,136 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
     },
   });
 
+  const [audioSessionReady, setAudioSessionReady] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
+
   // Audio session'ı aktif et
   useEffect(() => {
     let mounted = true;
-    Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      staysActiveInBackground: false,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
-    })
-      .then(() => {
+    
+    const initAudio = async () => {
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          staysActiveInBackground: false,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
         if (mounted) {
-          console.log('✅ Audio session activated (VideoFeedItem)');
+          setAudioSessionReady(true);
+          console.log('✅ Audio session activated');
         }
-      })
-      .catch((error) => {
-        console.error('❌ Audio session activation error:', error);
-      });
+      } catch (error) {
+        // Sessizce geç veya logla, crash olmasın
+        console.warn('⚠️ Audio session activation warning:', error);
+        // Hata olsa bile devam et, bazı durumlarda çalışabilir
+        if (mounted) {
+          setAudioSessionReady(true);
+        }
+      }
+    };
+
+    initAudio();
 
     return () => {
       mounted = false;
     };
   }, []);
 
+  // Video yüklendiğinde hazır olduğunu işaretle
+  const handleVideoLoad = () => {
+    setVideoReady(true);
+    setIsLoading(false);
+  };
+
   // Sadece aktif video oynatılır - diğerleri durur
   useEffect(() => {
-    if (isActive && videoRef.current && videoUrl) {
-      // Audio session aktif olduğundan emin ol
-      Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        staysActiveInBackground: false,
-        playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
-      })
-        .then(() => {
-          if (videoRef.current) {
-            return videoRef.current.playAsync();
+    if (isActive && videoRef.current && videoUrl && audioSessionReady && videoReady) {
+      const playVideo = async () => {
+        try {
+          // Video referansının hala geçerli olduğundan emin ol
+          if (!videoRef.current) {
+            console.warn('⚠️ Video ref is null, skipping play');
+            return;
           }
-        })
-        .then(() => {
-          setIsPlaying(true);
-        })
-        .catch((error) => {
-          console.error('Video play error:', error);
+
+          // Audio session'ı tekrar aktif et (garanti olsun)
+          try {
+            await Audio.setAudioModeAsync({
+              allowsRecordingIOS: false,
+              staysActiveInBackground: false,
+              playsInSilentModeIOS: true,
+              shouldDuckAndroid: true,
+              playThroughEarpieceAndroid: false,
+            });
+          } catch (audioError) {
+            // Audio session hatası kritik değil, devam et
+            console.warn('⚠️ Audio session re-activation warning:', audioError);
+          }
+
+          // Kısa bir gecikme ekle (audio session'ın aktif olması için)
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          // Tekrar kontrol et - video hala mevcut mu?
+          if (videoRef.current) {
+            try {
+              await videoRef.current.playAsync();
+              setIsPlaying(true);
+            } catch (playError: any) {
+              // "audio session not activated" hatası için tekrar dene
+              if (playError?.message?.includes('audio session')) {
+                console.warn('⚠️ Audio session hatası, tekrar deneniyor...');
+                // Audio session'ı tekrar aktif et ve tekrar dene
+                try {
+                  await Audio.setAudioModeAsync({
+                    allowsRecordingIOS: false,
+                    staysActiveInBackground: false,
+                    playsInSilentModeIOS: true,
+                    shouldDuckAndroid: true,
+                    playThroughEarpieceAndroid: false,
+                  });
+                  await new Promise(resolve => setTimeout(resolve, 200));
+                  if (videoRef.current) {
+                    await videoRef.current.playAsync();
+                    setIsPlaying(true);
+                  }
+                } catch (retryError) {
+                  console.warn('⚠️ Video play retry failed:', retryError);
+                  setIsLoading(false);
+                }
+              } else {
+                console.warn('⚠️ Video play warning:', playError);
+                setIsLoading(false);
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ Video play error:', error);
           setIsLoading(false);
-        });
-    } else if (!isActive && videoRef.current) {
-      // Aktif değilse durdur
-      videoRef.current.pauseAsync().catch((error) => {
-        console.error('Video pause error:', error);
+        }
+      };
+
+      playVideo();
+    } else if (!isActive && videoRef.current && videoReady) {
+      // Aktif değilse durdur - video hazır olduğunda
+      videoRef.current.pauseAsync().catch((err) => {
+        // Ignore pause errors - video null olabilir
+        console.warn('⚠️ Video pause warning:', err);
       });
       setIsPlaying(false);
     }
-  }, [isActive, videoUrl]);
+  }, [isActive, videoUrl, audioSessionReady, videoReady]);
 
-  // Sadece aktif video sesli olmalı
+  // Sadece aktif video sesli olmalı - video hazır olduğunda
   useEffect(() => {
-    if (videoRef.current) {
+    if (videoRef.current && videoReady) {
       videoRef.current.setIsMutedAsync(!isActive).catch((error) => {
-        console.error('Video mute error:', error);
+        // Video henüz hazır değilse veya null ise sessizce geç
+        console.warn('⚠️ Video mute operation warning:', error);
       });
     }
-  }, [isActive]);
+  }, [isActive, videoReady]);
 
   const handleLike = () => {
     if (isEvent) {
@@ -172,7 +238,7 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
   };
 
   // Video üzerine tıklama - çift tıklama beğeni, tek tıklama pause/play
-  const handleVideoPress = () => {
+  const handleVideoPress = async () => {
     if (showComments) return; // Yorum paneli açıksa video tıklamalarını engelle
     
     const now = Date.now();
@@ -183,18 +249,63 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
       handleLike();
     } else {
       // Tek tıklama - pause/play toggle
-      if (videoRef.current) {
+      if (videoRef.current && videoReady) {
         if (isPlaying) {
+          // Video hazır olduğunda pause
           videoRef.current.pauseAsync().catch((error) => {
-            console.error('Video pause error:', error);
+            // Video null olabilir, sessizce geç
+            console.warn('⚠️ Video pause warning:', error);
           });
           setIsPlaying(false);
         } else {
-          videoRef.current.playAsync().catch((error) => {
-            console.error('Video play error:', error);
-          });
-          setIsPlaying(true);
+          // Play için audio session kontrolü
+          try {
+            // Audio session'ı aktif et
+            await Audio.setAudioModeAsync({
+              allowsRecordingIOS: false,
+              staysActiveInBackground: false,
+              playsInSilentModeIOS: true,
+              shouldDuckAndroid: true,
+              playThroughEarpieceAndroid: false,
+            });
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Video referansını tekrar kontrol et
+            if (videoRef.current && videoReady) {
+              try {
+                await videoRef.current.playAsync();
+                setIsPlaying(true);
+              } catch (playError: any) {
+                // "audio session not activated" hatası için tekrar dene
+                if (playError?.message?.includes('audio session')) {
+                  console.warn('⚠️ Audio session hatası, tekrar deneniyor...');
+                  try {
+                    await Audio.setAudioModeAsync({
+                      allowsRecordingIOS: false,
+                      staysActiveInBackground: false,
+                      playsInSilentModeIOS: true,
+                      shouldDuckAndroid: true,
+                      playThroughEarpieceAndroid: false,
+                    });
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    if (videoRef.current && videoReady) {
+                      await videoRef.current.playAsync();
+                      setIsPlaying(true);
+                    }
+                  } catch (retryError) {
+                    console.warn('⚠️ Video play retry failed:', retryError);
+                  }
+                } else {
+                  console.warn('⚠️ Video play warning:', playError);
+                }
+              }
+            }
+          } catch (audioError) {
+            console.warn('⚠️ Audio session activation error:', audioError);
+          }
         }
+      } else {
+        console.warn('⚠️ Video ref is null or not ready, cannot toggle play/pause');
       }
     }
     lastTap.current = now;
@@ -261,9 +372,16 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
             }}
             onLoadStart={() => {
               setIsLoading(true);
+              setVideoReady(false);
             }}
             onLoad={() => {
               setIsLoading(false);
+              setVideoReady(true);
+              handleVideoLoad();
+            }}
+            onReadyForDisplay={() => {
+              // Video görüntülenmeye hazır olduğunda
+              setVideoReady(true);
             }}
           />
           {isLoading && (
@@ -353,7 +471,7 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
             styles.commentSheet,
             {
               transform: [{ translateY: commentSheetY }],
-              backgroundColor: 'rgba(0, 0, 0, 0.7)', // Daha şeffaf - video daha görünür
+              backgroundColor: 'rgba(0, 0, 0, 0.9)',
             },
           ]}
           {...panResponder.panHandlers}
@@ -381,11 +499,17 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
 const styles = StyleSheet.create({
   container: {
     width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
     backgroundColor: '#000',
   },
   videoContainer: {
     width: '100%',
     height: '100%',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   video: {
     width: '100%',

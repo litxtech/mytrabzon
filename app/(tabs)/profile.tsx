@@ -1,19 +1,24 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Share, Platform, FlatList, ActivityIndicator, TouchableWithoutFeedback } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Share, Platform, FlatList, ActivityIndicator, TouchableWithoutFeedback, Animated, PanResponder, Dimensions, TextInput } from 'react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, MoreVertical, Share2, Users, MessageCircle, Trophy } from 'lucide-react-native';
+import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, MoreVertical, Share2, Users, MessageCircle, Trophy, Search, UserPlus, X } from 'lucide-react-native';
 import { DISTRICT_BADGES } from '../../constants/districts';
 import { useRouter } from 'expo-router';
 import { Footer } from '../../components/Footer';
 import { SupportPanel } from '../../components/SupportPanel';
 import { SupporterBadge } from '../../components/SupporterBadge';
 import VerifiedBadgeIcon from '../../components/VerifiedBadge';
+import { GenderIcon } from '../../components/GenderIcon';
 import { trpc } from '../../lib/trpc';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+const BOTTOM_SHEET_MAX_HEIGHT = SCREEN_HEIGHT * 0.9; // Çentik bölümüne kadar
+const BOTTOM_SHEET_MIN_HEIGHT = SCREEN_HEIGHT * 0.5; // Minimum yükseklik
 
 type QuickAction = {
   id: string;
@@ -133,12 +138,34 @@ function PostGridItem({ post, firstMedia, router, onDelete }: { post: any; first
 }
 
 // Takipçiler Listesi Component
-function FollowersList({ userId }: { userId: string }) {
+function FollowersList({ userId, onClose }: { userId: string; onClose?: () => void }) {
   const router = useRouter();
-  const { data, isLoading } = trpc.user.getFollowers.useQuery(
+  const [searchQuery, setSearchQuery] = useState('');
+  const { data, isLoading, error } = trpc.user.getFollowers.useQuery(
     { user_id: userId, limit: 100, offset: 0 },
     { enabled: !!userId }
   );
+
+  // Debug log
+  React.useEffect(() => {
+    if (error) {
+      console.error('FollowersList error:', error);
+    }
+    if (data) {
+      console.log('FollowersList data:', data?.followers?.length || 0, 'followers');
+    }
+  }, [data, error]);
+
+  const filteredFollowers = useMemo(() => {
+    if (!data?.followers) return [];
+    if (!searchQuery.trim()) return data.followers;
+    
+    const query = searchQuery.toLowerCase().trim();
+    return data.followers.filter((follower: any) => 
+      follower.full_name?.toLowerCase().includes(query) ||
+      follower.username?.toLowerCase().includes(query)
+    );
+  }, [data?.followers, searchQuery]);
 
   if (isLoading) {
     return (
@@ -148,58 +175,123 @@ function FollowersList({ userId }: { userId: string }) {
     );
   }
 
-  if (!data?.followers || data.followers.length === 0) {
-    return (
-      <View style={styles.emptyContainer}>
-        <Users size={48} color={COLORS.textLight} />
-        <Text style={styles.emptyText}>Henüz takipçi yok</Text>
-        <Text style={styles.emptySubtext}>
-          Paylaşımlarınızı artırarak daha fazla takipçi kazanabilirsiniz
-        </Text>
-      </View>
-    );
-  }
-
   return (
-    <FlatList
-      data={data.followers}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => (
-        <TouchableOpacity
-          style={styles.followerItem}
-          onPress={() => router.push(`/profile/${item.id}` as any)}
-        >
-          <Image
-            source={{ uri: item.avatar_url || 'https://via.placeholder.com/50' }}
-            style={styles.followerAvatar}
-          />
-          <View style={styles.followerInfo}>
-            <Text style={styles.followerName}>{item.full_name}</Text>
-            {item.username && (
-              <Text style={styles.followerUsername}>@{item.username}</Text>
-            )}
-          </View>
-          {item.supporter_badge && item.supporter_badge_visible && (
-            <SupporterBadge
-              visible={true}
-              size="small"
-              color={item.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
-            />
+    <View style={styles.listContainer}>
+      {/* Arama Input */}
+      <View style={styles.searchContainer}>
+        <Search size={20} color={COLORS.textLight} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Kullanıcı ara..."
+          placeholderTextColor={COLORS.textLight}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <X size={18} color={COLORS.textLight} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {filteredFollowers.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Users size={48} color={COLORS.textLight} />
+          <Text style={styles.emptyText}>
+            {searchQuery ? 'Sonuç bulunamadı' : 'Henüz takipçi yok'}
+          </Text>
+          <Text style={styles.emptySubtext}>
+            {searchQuery 
+              ? 'Farklı bir arama terimi deneyin'
+              : 'Paylaşımlarınızı artırarak daha fazla takipçi kazanabilirsiniz'
+            }
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredFollowers}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.followerItem}
+              onPress={() => {
+                if (onClose) onClose();
+                router.push(`/profile/${item.id}` as any);
+              }}
+            >
+              <Image
+                source={{ uri: item.avatar_url || 'https://via.placeholder.com/50' }}
+                style={styles.followerAvatar}
+              />
+              <View style={styles.followerInfo}>
+                <Text style={styles.followerName}>{item.full_name}</Text>
+                {item.username && (
+                  <Text style={styles.followerUsername}>@{item.username}</Text>
+                )}
+              </View>
+              {item.supporter_badge && item.supporter_badge_visible && (
+                <SupporterBadge
+                  visible={true}
+                  size="small"
+                  color={item.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
+                />
+              )}
+            </TouchableOpacity>
           )}
-        </TouchableOpacity>
+          contentContainerStyle={styles.modalListContent}
+        />
       )}
-      contentContainerStyle={styles.modalListContent}
-    />
+    </View>
   );
 }
 
 // Takip Edilenler Listesi Component
-function FollowingList({ userId }: { userId: string }) {
+function FollowingList({ userId, onClose }: { userId: string; onClose?: () => void }) {
   const router = useRouter();
-  const { data, isLoading } = trpc.user.getFollowing.useQuery(
+  const { user: currentUser } = useAuth();
+  const [searchQuery, setSearchQuery] = useState('');
+  const { data, isLoading, error } = trpc.user.getFollowing.useQuery(
     { user_id: userId, limit: 100, offset: 0 },
     { enabled: !!userId }
   );
+
+  // Debug log
+  React.useEffect(() => {
+    if (error) {
+      console.error('FollowingList error:', error);
+    }
+    if (data) {
+      console.log('FollowingList data:', data?.following?.length || 0, 'following');
+    }
+  }, [data, error]);
+
+  const followMutation = trpc.user.follow.useMutation();
+  const unfollowMutation = trpc.user.unfollow.useMutation();
+
+  const filteredFollowing = useMemo(() => {
+    if (!data?.following) return [];
+    if (!searchQuery.trim()) return data.following;
+    
+    const query = searchQuery.toLowerCase().trim();
+    return data.following.filter((following: any) => 
+      following.full_name?.toLowerCase().includes(query) ||
+      following.username?.toLowerCase().includes(query)
+    );
+  }, [data?.following, searchQuery]);
+
+  const handleFollowToggle = async (targetUserId: string, isFollowing: boolean) => {
+    if (!currentUser) return;
+    
+    try {
+      if (isFollowing) {
+        await unfollowMutation.mutateAsync({ following_id: targetUserId });
+      } else {
+        await followMutation.mutateAsync({ following_id: targetUserId });
+      }
+    } catch (error) {
+      console.error('Follow/unfollow error:', error);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -209,48 +301,193 @@ function FollowingList({ userId }: { userId: string }) {
     );
   }
 
-  if (!data?.following || data.following.length === 0) {
-    return (
-      <View style={styles.emptyContainer}>
-        <Users size={48} color={COLORS.textLight} />
-        <Text style={styles.emptyText}>Henüz kimseyi takip etmiyorsunuz</Text>
-        <Text style={styles.emptySubtext}>
-          İlginizi çeken kullanıcıları takip ederek içeriklerini görebilirsiniz
-        </Text>
+  return (
+    <View style={styles.listContainer}>
+      {/* Arama Input */}
+      <View style={styles.searchContainer}>
+        <Search size={20} color={COLORS.textLight} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Kullanıcı ara..."
+          placeholderTextColor={COLORS.textLight}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <X size={18} color={COLORS.textLight} />
+          </TouchableOpacity>
+        )}
       </View>
-    );
-  }
+
+      {filteredFollowing.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Users size={48} color={COLORS.textLight} />
+          <Text style={styles.emptyText}>
+            {searchQuery ? 'Sonuç bulunamadı' : 'Henüz kimseyi takip etmiyorsunuz'}
+          </Text>
+          <Text style={styles.emptySubtext}>
+            {searchQuery 
+              ? 'Farklı bir arama terimi deneyin'
+              : 'İlginizi çeken kullanıcıları takip ederek içeriklerini görebilirsiniz'
+            }
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredFollowing}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.followerItem}
+              onPress={() => {
+                if (onClose) onClose();
+                router.push(`/profile/${item.id}` as any);
+              }}
+            >
+              <Image
+                source={{ uri: item.avatar_url || 'https://via.placeholder.com/50' }}
+                style={styles.followerAvatar}
+              />
+              <View style={styles.followerInfo}>
+                <Text style={styles.followerName}>{item.full_name}</Text>
+                {item.username && (
+                  <Text style={styles.followerUsername}>@{item.username}</Text>
+                )}
+              </View>
+              {item.supporter_badge && item.supporter_badge_visible && (
+                <SupporterBadge
+                  visible={true}
+                  size="small"
+                  color={item.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
+                />
+              )}
+              {currentUser?.id !== item.id && (
+                <TouchableOpacity
+                  style={styles.addButton}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handleFollowToggle(item.id, true);
+                  }}
+                >
+                  <UserPlus size={16} color={COLORS.primary} />
+                </TouchableOpacity>
+              )}
+            </TouchableOpacity>
+          )}
+          contentContainerStyle={styles.modalListContent}
+        />
+      )}
+    </View>
+  );
+}
+
+// Bottom Sheet Modal Component
+function BottomSheetModal({ 
+  visible, 
+  onClose, 
+  title, 
+  children 
+}: { 
+  visible: boolean; 
+  onClose: () => void; 
+  title: string; 
+  children: React.ReactNode;
+}) {
+  const insets = useSafeAreaInsets();
+  const translateY = useRef(new Animated.Value(BOTTOM_SHEET_MAX_HEIGHT)).current;
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dy) > 5;
+      },
+      onPanResponderGrant: () => {
+        translateY.setOffset((translateY as any)._value);
+      },
+      onPanResponderMove: (_, gestureState) => {
+        const newValue = gestureState.dy;
+        if (newValue > 0) {
+          translateY.setValue(newValue);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        translateY.flattenOffset();
+        const shouldClose = gestureState.dy > 100 || gestureState.vy > 0.5;
+        
+        if (shouldClose) {
+          Animated.spring(translateY, {
+            toValue: BOTTOM_SHEET_MAX_HEIGHT,
+            useNativeDriver: true,
+            tension: 50,
+            friction: 8,
+          }).start(() => {
+            onClose();
+          });
+        } else {
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 50,
+            friction: 8,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
+  useEffect(() => {
+    if (visible) {
+      translateY.setValue(BOTTOM_SHEET_MAX_HEIGHT);
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 50,
+        friction: 8,
+      }).start();
+    } else {
+      Animated.spring(translateY, {
+        toValue: BOTTOM_SHEET_MAX_HEIGHT,
+        useNativeDriver: true,
+        tension: 50,
+        friction: 8,
+      }).start();
+    }
+  }, [visible]);
+
+  if (!visible) return null;
 
   return (
-    <FlatList
-      data={data.following}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => (
-        <TouchableOpacity
-          style={styles.followerItem}
-          onPress={() => router.push(`/profile/${item.id}` as any)}
-        >
-          <Image
-            source={{ uri: item.avatar_url || 'https://via.placeholder.com/50' }}
-            style={styles.followerAvatar}
-          />
-          <View style={styles.followerInfo}>
-            <Text style={styles.followerName}>{item.full_name}</Text>
-            {item.username && (
-              <Text style={styles.followerUsername}>@{item.username}</Text>
-            )}
-          </View>
-          {item.supporter_badge && item.supporter_badge_visible && (
-            <SupporterBadge
-              visible={true}
-              size="small"
-              color={item.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
-            />
-          )}
-        </TouchableOpacity>
-      )}
-      contentContainerStyle={styles.modalListContent}
-    />
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      onRequestClose={onClose}
+    >
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.bottomSheetOverlay} />
+      </TouchableWithoutFeedback>
+      <Animated.View
+        style={[
+          styles.bottomSheetContainer,
+          {
+            maxHeight: BOTTOM_SHEET_MAX_HEIGHT,
+            paddingBottom: insets.bottom,
+            transform: [{ translateY }],
+          },
+        ]}
+        {...panResponder.panHandlers}
+      >
+        <View style={styles.bottomSheetHandle} />
+        <View style={styles.bottomSheetHeader}>
+          <Text style={styles.bottomSheetTitle}>{title}</Text>
+          <TouchableOpacity onPress={onClose} style={styles.bottomSheetCloseButton}>
+            <X size={24} color={COLORS.text} />
+          </TouchableOpacity>
+        </View>
+        {children}
+      </Animated.View>
+    </Modal>
   );
 }
 
@@ -573,6 +810,11 @@ export default function ProfileScreen() {
           <View style={styles.profileInfo}>
             <View style={styles.nameRow}>
               <Text style={[styles.name, { color: theme.colors.text }]}>{profile.full_name}</Text>
+              {(() => {
+                const privacySettings = profile.privacy_settings as any;
+                const showGenderIcon = privacySettings?.privacy?.showGenderIcon !== false; // Default true
+                return showGenderIcon && <GenderIcon gender={profile.gender} size={18} />;
+              })()}
               {profile.verified && <VerifiedBadgeIcon size={20} />}
               {profile.supporter_badge && profile.supporter_badge_visible && (
                 <SupporterBadge 
@@ -804,45 +1046,33 @@ export default function ProfileScreen() {
 
       <SupportPanel visible={supportVisible} onClose={() => setSupportVisible(false)} />
 
-      {/* Takipçiler Modal */}
-      <Modal
+      {/* Takipçiler Bottom Sheet */}
+      <BottomSheetModal
         visible={followersModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setFollowersModalVisible(false)}
+        onClose={() => setFollowersModalVisible(false)}
+        title="Takipçiler"
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.followersModalContent, { backgroundColor: theme.colors.card }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Takipçiler</Text>
-              <TouchableOpacity onPress={() => setFollowersModalVisible(false)}>
-                <Text style={[styles.modalCloseText, { color: theme.colors.textLight }]}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            <FollowersList userId={user?.id || ''} />
-          </View>
-        </View>
-      </Modal>
+        {user?.id ? (
+          <FollowersList 
+            userId={user.id} 
+            onClose={() => setFollowersModalVisible(false)}
+          />
+        ) : null}
+      </BottomSheetModal>
 
-      {/* Takip Edilenler Modal */}
-      <Modal
+      {/* Takip Edilenler Bottom Sheet */}
+      <BottomSheetModal
         visible={followingModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setFollowingModalVisible(false)}
+        onClose={() => setFollowingModalVisible(false)}
+        title="Takip Edilenler"
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.followersModalContent, { backgroundColor: theme.colors.card }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Takip Edilenler</Text>
-              <TouchableOpacity onPress={() => setFollowingModalVisible(false)}>
-                <Text style={[styles.modalCloseText, { color: theme.colors.textLight }]}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            <FollowingList userId={user?.id || ''} />
-          </View>
-        </View>
-      </Modal>
+        {user?.id ? (
+          <FollowingList 
+            userId={user.id} 
+            onClose={() => setFollowingModalVisible(false)}
+          />
+        ) : null}
+      </BottomSheetModal>
     </View>
   );
 }
@@ -1266,21 +1496,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
   },
-  emptyContainer: {
-    padding: SPACING.xl,
-    alignItems: 'center' as const,
-  },
-  emptyText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600' as const,
-    color: COLORS.text,
-    marginBottom: SPACING.sm,
-  },
-  emptySubtext: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textLight,
-    textAlign: 'center' as const,
-  },
   menuOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -1483,5 +1698,104 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.xs,
     fontWeight: '600' as const,
+  },
+  // Bottom Sheet Styles
+  bottomSheetOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  bottomSheetContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  bottomSheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: COLORS.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  bottomSheetHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  bottomSheetTitle: {
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '700' as const,
+    color: COLORS.text,
+  },
+  bottomSheetCloseButton: {
+    padding: SPACING.xs,
+  },
+  // List Container Styles
+  listContainer: {
+    flex: 1,
+  },
+  searchContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: COLORS.background,
+    marginHorizontal: SPACING.lg,
+    marginVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 12,
+    gap: SPACING.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    padding: 0,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingVertical: SPACING.xl * 2,
+    paddingHorizontal: SPACING.lg,
+  },
+  emptyText: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600' as const,
+    color: COLORS.text,
+    marginTop: SPACING.md,
+    textAlign: 'center' as const,
+  },
+  emptySubtext: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+    marginTop: SPACING.sm,
+    textAlign: 'center' as const,
+  },
+  addButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.background,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
 });

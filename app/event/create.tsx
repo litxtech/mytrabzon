@@ -176,8 +176,7 @@ export default function CreateEventScreen() {
       return;
     }
 
-    // "Tümü" seçildiyse backend'e Tümü olarak gönder
-    const districtToSend = formData.district === 'Tümü' ? 'Tümü' : formData.district;
+    // İlçe zorunlu - "Tümü" seçeneği kaldırıldı
 
     setLoading(true);
     setUploading(true);
@@ -201,7 +200,7 @@ export default function CreateEventScreen() {
         description: formData.description,
         category: formData.category as any,
         severity: formData.severity,
-        district: districtToSend,
+        district: formData.district,
         city: formData.city,
         latitude: formData.latitude,
         longitude: formData.longitude,
@@ -426,25 +425,6 @@ export default function CreateEventScreen() {
           {showDistrictPicker && formData.city && (
             <View style={styles.pickerContainer}>
               <ScrollView style={styles.pickerScroll} nestedScrollEnabled>
-                <TouchableOpacity
-                  style={[
-                    styles.pickerOption,
-                    formData.district === 'Tümü' && styles.pickerOptionActive,
-                  ]}
-                  onPress={() => {
-                    setFormData({ ...formData, district: 'Tümü' });
-                    setShowDistrictPicker(false);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.pickerOptionText,
-                      formData.district === 'Tümü' && styles.pickerOptionTextActive,
-                    ]}
-                  >
-                    🌍 Tümü (Tüm İlçelere Paylaş)
-                  </Text>
-                </TouchableOpacity>
                 {availableDistricts.map((district) => (
                   <TouchableOpacity
                     key={district}

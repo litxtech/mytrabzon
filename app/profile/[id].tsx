@@ -33,6 +33,7 @@ import { CallButtons } from '@/components/CallButtons';
 import { SupporterBadge } from '@/components/SupporterBadge';
 import { Footer } from '@/components/Footer';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
+import { GenderIcon } from '@/components/GenderIcon';
 
 // Mesaj butonu component'i
 function MessageButton({ targetUserId }: { targetUserId: string }) {
@@ -362,6 +363,11 @@ export default function UserProfileScreen() {
 
           <View style={styles.nameRow}>
             <Text style={styles.name}>{profile.full_name || 'İsimsiz'}</Text>
+            {(() => {
+              const privacySettings = profile.privacy_settings as any;
+              const showGenderIcon = privacySettings?.privacy?.showGenderIcon !== false; // Default true
+              return showGenderIcon && <GenderIcon gender={profile.gender} size={18} />;
+            })()}
             {profile.verified && <VerifiedBadgeIcon size={20} />}
             {profile.supporter_badge && profile.supporter_badge_visible && (
               <SupporterBadge 
@@ -675,7 +681,7 @@ export default function UserProfileScreen() {
                 <Text style={styles.modalCloseText}>✕</Text>
               </TouchableOpacity>
             </View>
-            <FollowersList userId={id!} />
+            {id ? <FollowersList userId={id} /> : null}
           </View>
         </View>
       </Modal>
@@ -695,7 +701,7 @@ export default function UserProfileScreen() {
                 <Text style={styles.modalCloseText}>✕</Text>
               </TouchableOpacity>
             </View>
-            <FollowingList userId={id!} />
+            {id ? <FollowingList userId={id} /> : null}
           </View>
         </View>
       </Modal>
@@ -706,10 +712,20 @@ export default function UserProfileScreen() {
 // Takipçiler Listesi Component
 function FollowersList({ userId }: { userId: string }) {
   const router = useRouter();
-  const { data, isLoading } = trpc.user.getFollowers.useQuery(
+  const { data, isLoading, error } = trpc.user.getFollowers.useQuery(
     { user_id: userId, limit: 100, offset: 0 },
     { enabled: !!userId }
   );
+
+  // Debug log
+  React.useEffect(() => {
+    if (error) {
+      console.error('FollowersList error:', error);
+    }
+    if (data) {
+      console.log('FollowersList data:', data?.followers?.length || 0, 'followers');
+    }
+  }, [data, error]);
 
   if (isLoading) {
     return (
@@ -762,10 +778,20 @@ function FollowersList({ userId }: { userId: string }) {
 // Takip Edilenler Listesi Component
 function FollowingList({ userId }: { userId: string }) {
   const router = useRouter();
-  const { data, isLoading } = trpc.user.getFollowing.useQuery(
+  const { data, isLoading, error } = trpc.user.getFollowing.useQuery(
     { user_id: userId, limit: 100, offset: 0 },
     { enabled: !!userId }
   );
+
+  // Debug log
+  React.useEffect(() => {
+    if (error) {
+      console.error('FollowingList error:', error);
+    }
+    if (data) {
+      console.log('FollowingList data:', data?.following?.length || 0, 'following');
+    }
+  }, [data, error]);
 
   if (isLoading) {
     return (

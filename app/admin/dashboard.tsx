@@ -24,6 +24,8 @@ import {
   Shield,
   Bell,
   Car,
+  Phone,
+  Mail,
 } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { trpc } from '../../lib/trpc';
@@ -251,6 +253,14 @@ export default function AdminDashboardScreen() {
       icon: Bell,
       route: '/admin/send-notification',
       color: COLORS.warning,
+    },
+    {
+      id: 'contacts',
+      title: 'Telefon ve Mailler',
+      description: 'Kullanıcı telefon ve email bilgileri',
+      icon: Phone,
+      route: '/admin/contacts',
+      color: COLORS.primary,
     },
   ];
 

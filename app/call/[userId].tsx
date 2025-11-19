@@ -38,6 +38,7 @@ export default function CallScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const callManagerRef = useRef<AgoraCallManager | null>(null);
   const hasEndedSessionRef = useRef(false);
+  const hasInitializedRef = useRef(false); // Infinite loop önleme
 
   // Agora token mutation hook'u
   const generateAgoraTokenMutation = (trpc as any).match.generateAgoraToken.useMutation();
@@ -58,13 +59,23 @@ export default function CallScreen() {
   }, [endSessionMutation, resolvedSessionId]);
 
   useEffect(() => {
+    // Sadece bir kez initialize et
+    if (hasInitializedRef.current) {
+      return;
+    }
+
     if (!user || !userId) {
       router.back();
       return;
     }
 
     const initCall = async () => {
+      if (hasInitializedRef.current) {
+        return; // Zaten initialize edildi
+      }
+
       try {
+        hasInitializedRef.current = true;
         setIsLoading(true);
         const manager = AgoraCallManager.getInstance();
         callManagerRef.current = manager;
@@ -74,7 +85,7 @@ export default function CallScreen() {
         const channelName = generateChannelName(user.id, userId);
         const uid = Math.floor(Math.random() * 100000);
         
-        // Agora token al (opsiyonel - test mode için gerekli değil)
+        // Agora token al - sadece bir kez
         let token = '';
         try {
           const tokenResult = await generateAgoraTokenMutation.mutateAsync({
@@ -82,6 +93,7 @@ export default function CallScreen() {
             uid: uid,
           });
           token = tokenResult?.token || '';
+          console.log('Agora token alındı, süre: 24 saat');
         } catch (error: any) {
           console.error('Token generation error:', error);
           // Token olmadan devam et (test mode)
@@ -100,6 +112,7 @@ export default function CallScreen() {
         setIsLoading(false);
       } catch (error) {
         console.error('Call initialization error:', error);
+        hasInitializedRef.current = false; // Hata durumunda reset
         Alert.alert('Hata', 'Arama başlatılamadı');
         router.back();
       }
@@ -108,12 +121,14 @@ export default function CallScreen() {
     initCall();
 
     return () => {
+      hasInitializedRef.current = false;
       if (callManagerRef.current) {
         callManagerRef.current.endCall();
+        callManagerRef.current = null;
       }
       markSessionEnded();
     };
-  }, [user, userId, callType, router, markSessionEnded]);
+  }, [user?.id, userId, callType]); // Sadece gerekli dependency'ler
 
   const handleEndCall = async () => {
     if (callManagerRef.current) {

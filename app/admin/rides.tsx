@@ -87,13 +87,105 @@ export default function AdminRidesScreen() {
         } else {
           Alert.alert('PDF Oluşturuldu', `Dosya kaydedildi: ${fileUri}`);
         }
+      } else if (data.rideData && rideDetailQuery.data) {
+        // Client-side'da PDF oluştur
+        await generatePdfClientSide(rideDetailQuery.data);
+      } else if (rideDetailQuery.data) {
+        // Edge Function'dan veri gelmediyse mevcut veriyi kullan
+        await generatePdfClientSide(rideDetailQuery.data);
       }
     },
     onError: (error: any) => {
       setGeneratingPdf(false);
-      Alert.alert('Hata', error.message || 'PDF oluşturulamadı');
+      // Hata durumunda client-side'da PDF oluşturmayı dene
+      if (rideDetailQuery.data) {
+        generatePdfClientSide(rideDetailQuery.data).catch((err: any) => {
+          Alert.alert('Hata', error.message || 'PDF oluşturulamadı');
+        });
+      } else {
+        Alert.alert('Hata', error.message || 'PDF oluşturulamadı');
+      }
     },
   });
+
+  const generatePdfClientSide = async (rideData: any) => {
+    try {
+      const pdfDoc = await PDFDocument.create();
+      const page = pdfDoc.addPage([595, 842]); // A4
+      const { width, height } = page.getSize();
+      
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      
+      let y = height - 50;
+      const margin = 50;
+      const lineHeight = 16;
+      
+      // Başlık
+      page.drawText('YOLCULUK ANLAŞMASI', {
+        x: margin,
+        y,
+        size: 20,
+        font: fontBold,
+      });
+      y -= 40;
+      
+      // Yolculuk bilgileri
+      const addLine = (label: string, value: string | number) => {
+        if (y < 100) {
+          pdfDoc.addPage([595, 842]);
+          y = height - 50;
+        }
+        const currentPage = pdfDoc.getPage(pdfDoc.getPageCount() - 1);
+        currentPage.drawText(`${label}:`, {
+          x: margin,
+          y,
+          size: 11,
+          font: fontBold,
+        });
+        currentPage.drawText(String(value), {
+          x: margin + 150,
+          y,
+          size: 11,
+          font: font,
+        });
+        y -= lineHeight;
+      };
+      
+      addLine('Yolculuk ID', rideData.id?.substring(0, 8) || '-');
+      addLine('Kalkış', rideData.departure_title || rideData.from_location || '-');
+      addLine('Varış', rideData.destination_title || rideData.to_location || '-');
+      addLine('Tarih', formatDateTime(rideData.departure_time || rideData.departure_date));
+      addLine('Durum', rideData.status || '-');
+      addLine('Fiyat', `${rideData.price_per_seat || rideData.price || 0} TL`);
+      addLine('Koltuk', `${rideData.available_seats || rideData.seats || 0}`);
+      
+      if (rideData.driver_full_name || rideData.driver?.full_name) {
+        addLine('Sürücü', rideData.driver_full_name || rideData.driver?.full_name);
+        addLine('Telefon', rideData.driver_phone || rideData.driver?.phone || '-');
+        if (rideData.driver?.email) {
+          addLine('Email', rideData.driver.email);
+        }
+      }
+      
+      // PDF'i kaydet
+      const pdfBytes = await pdfDoc.save();
+      const fileUri = `${FileSystem.documentDirectory}yolculuk-${selectedRideId}.pdf`;
+      await FileSystem.writeAsStringAsync(fileUri, Buffer.from(pdfBytes).toString('base64'), {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      
+      setPdfUrl(fileUri);
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, { dialogTitle: 'Yolculuk PDF İndir' });
+      } else {
+        Alert.alert('PDF Oluşturuldu', `Dosya kaydedildi: ${fileUri}`);
+      }
+    } catch (error: any) {
+      console.error('PDF generation error:', error);
+      Alert.alert('Hata', 'PDF oluşturulamadı: ' + (error.message || 'Bilinmeyen hata'));
+    }
+  };
 
   const handleGeneratePdf = async () => {
     if (!selectedRideId) {

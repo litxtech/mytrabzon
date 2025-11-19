@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
@@ -22,7 +23,8 @@ import {
   Lock, 
   MessageSquare,
   Sun,
-  Moon
+  Moon,
+  MapPin
 } from 'lucide-react-native';
 
 interface UserSettings {
@@ -40,6 +42,10 @@ interface UserSettings {
     showOnline: boolean;
     allowMessages: boolean;
     allowTagging: boolean;
+    showGenderIcon: boolean;
+  };
+  location: {
+    optIn: boolean;
   };
 }
 
@@ -60,13 +66,17 @@ export default function SettingsScreen() {
       follows: true,
       messages: true,
     },
-    privacy: {
-      profileVisible: true,
-      showOnline: true,
-      allowMessages: true,
-      allowTagging: true,
-    },
-  };
+      privacy: {
+        profileVisible: true,
+        showOnline: true,
+        allowMessages: true,
+        allowTagging: true,
+        showGenderIcon: true,
+      },
+      location: {
+        optIn: false,
+      },
+    };
 
   // Load settings from profile
   const loadSettings = (): UserSettings => {
@@ -86,14 +96,18 @@ export default function SettingsScreen() {
         follows: privacySettings.notifications?.follows ?? defaultSettings.notifications.follows,
         messages: privacySettings.notifications?.messages ?? defaultSettings.notifications.messages,
       },
-      privacy: {
-        profileVisible: privacySettings.privacy?.profileVisible ?? defaultSettings.privacy.profileVisible,
-        showOnline: privacySettings.privacy?.showOnline ?? defaultSettings.privacy.showOnline,
-        allowMessages: privacySettings.privacy?.allowMessages ?? defaultSettings.privacy.allowMessages,
-        allowTagging: privacySettings.privacy?.allowTagging ?? defaultSettings.privacy.allowTagging,
-      },
+        privacy: {
+          profileVisible: privacySettings.privacy?.profileVisible ?? defaultSettings.privacy.profileVisible,
+          showOnline: privacySettings.privacy?.showOnline ?? defaultSettings.privacy.showOnline,
+          allowMessages: privacySettings.privacy?.allowMessages ?? defaultSettings.privacy.allowMessages,
+          allowTagging: privacySettings.privacy?.allowTagging ?? defaultSettings.privacy.allowTagging,
+          showGenderIcon: privacySettings.privacy?.showGenderIcon ?? defaultSettings.privacy.showGenderIcon,
+        },
+        location: {
+          optIn: profile?.location_opt_in ?? false,
+        },
+      };
     };
-  };
 
   const [settings, setSettings] = useState<UserSettings>(defaultSettings);
   const [isLoading, setIsLoading] = useState(false);
@@ -170,9 +184,28 @@ export default function SettingsScreen() {
       privacy: settings.privacy,
     };
 
+    // location_opt_in'i ayrı olarak güncelle (profiles tablosunda direkt kolon)
     updateProfileMutation.mutate({
       privacy_settings: updatedPrivacySettings,
+      location_opt_in: settings.location.optIn,
     });
+  };
+
+  const handleLocationOptInToggle = async (value: boolean) => {
+    if (value) {
+      // Konum izni iste
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Konum İzni Gerekli',
+          'Yakındaki kullanıcılar özelliğini kullanmak için konum izni gereklidir.',
+          [{ text: 'Tamam' }]
+        );
+        return;
+      }
+    }
+
+    setSettings({ ...settings, location: { ...settings.location, optIn: value } });
   };
 
   return (
@@ -274,6 +307,24 @@ export default function SettingsScreen() {
             settings.privacy.allowTagging,
             (value) => setSettings({ ...settings, privacy: { ...settings.privacy, allowTagging: value } }),
             'Paylaşımlarda etiketlenebilirsiniz'
+          )}
+          
+          {renderToggle(
+            'Cinsiyet Simgesi',
+            settings.privacy.showGenderIcon,
+            (value) => setSettings({ ...settings, privacy: { ...settings.privacy, showGenderIcon: value } }),
+            'Profilinizde isminizin yanında cinsiyet simgesi göster'
+          )}
+        </View>
+
+        <View style={[styles.section, { backgroundColor: theme.colors.card }]}>
+          {renderSection('Konum', <MapPin size={20} color={theme.colors.primary} />)}
+          
+          {renderToggle(
+            'Yakındaki Kullanıcılar',
+            settings.location.optIn,
+            handleLocationOptInToggle,
+            'Yakınındaki MyTrabzon kullanıcılarıyla karşılaşma özelliğini etkinleştir. Konumunuz sadece yakınlık hesaplaması için kullanılır, haritada gösterilmez.'
           )}
         </View>
 

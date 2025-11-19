@@ -89,8 +89,8 @@ export default function VideoFeedScreen() {
         type: 'video',
         path: videoUrl,
       }],
-      like_count: (event.upvotes || 0) - (event.downvotes || 0), // upvotes - downvotes
-      comment_count: 0, // Event'lerde yorum yok
+      like_count: event.like_count || 0,
+      comment_count: event.comment_count || 0, // Event'lerde yorum var
       share_count: 0,
       views_count: 0,
       created_at: event.created_at,

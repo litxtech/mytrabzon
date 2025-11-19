@@ -50,6 +50,7 @@ export default function MatchVideoScreen() {
 
   const callManagerRef = useRef<AgoraCallManager | null>(null);
   const sessionRef = useRef<any>(null);
+  const hasInitializedRef = useRef(false); // Infinite loop önleme
 
   // Session bilgisini al
   const { data: sessionData } = (trpc as any).match.checkMatch.useQuery(
@@ -84,13 +85,23 @@ export default function MatchVideoScreen() {
   });
 
   useEffect(() => {
-    if (sessionData?.matched && sessionData.session) {
+    // Sadece bir kez initialize et - infinite loop önleme
+    if (sessionData?.matched && sessionData.session && !hasInitializedRef.current) {
       sessionRef.current = sessionData.session;
+      hasInitializedRef.current = true;
       initializeCall();
+    } else if (sessionData?.matched && sessionData.session) {
+      // Session güncellemelerini sadece ref'e kaydet, tekrar initialize etme
+      sessionRef.current = sessionData.session;
     }
   }, [sessionData]);
 
   const initializeCall = async () => {
+    // Zaten initialize edildiyse tekrar çalıştırma
+    if (hasInitializedRef.current && callManagerRef.current) {
+      return;
+    }
+
     if (!sessionRef.current || !user) {
       console.error('initializeCall: sessionRef.current or user is null');
       Alert.alert('Hata', 'Eşleşme bilgisi bulunamadı. Lütfen tekrar deneyin.');
@@ -116,7 +127,7 @@ export default function MatchVideoScreen() {
 
       const uid = Math.floor(Math.random() * 100000);
 
-      // Agora token al
+      // Agora token al - sadece bir kez
       let token = '';
       try {
         const tokenResult = await generateAgoraTokenMutation.mutateAsync({
@@ -124,12 +135,10 @@ export default function MatchVideoScreen() {
           uid: uid,
         });
         token = tokenResult?.token || '';
+        console.log('Agora token alındı, süre: 24 saat');
       } catch (error: any) {
         console.error('Token generation error:', error);
-        // Hata mesajını göster ama devam et (test mode'da token olmadan çalışabilir)
-        if (error.message && !error.message.includes('Eşleşme bulunamadı')) {
-          Alert.alert('Uyarı', 'Token oluşturulamadı, test modunda devam ediliyor.');
-        }
+        // Hata durumunda token olmadan devam et (test mode)
         token = '';
       }
       
@@ -152,8 +161,10 @@ export default function MatchVideoScreen() {
   };
 
   const handleEndCall = async () => {
+    hasInitializedRef.current = false; // Reset flag
     if (callManagerRef.current) {
       await callManagerRef.current.endCall();
+      callManagerRef.current = null;
     }
     if (sessionRef.current) {
       updateSessionMutation.mutate({
@@ -172,7 +183,7 @@ export default function MatchVideoScreen() {
       });
     }
     // Next sonrası yeni eşleşme için geri dön
-    router.replace('/match');
+    router.replace('/match' as any);
   };
 
   const handleToggleVideo = async () => {

@@ -23,7 +23,7 @@ import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
 import { DISTRICTS, DISTRICT_BADGES } from '@/constants/districts';
 import { Post, District } from '@/types/database';
-import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, MoreVertical, AlertCircle, Car, Search } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, MoreVertical, AlertCircle, Trash2, Car, Search } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLogo } from '@/components/AppLogo';
@@ -75,18 +75,10 @@ export default function FeedScreen() {
       refetchOnWindowFocus: false,
       retry: 2, // Hata durumunda 2 kez tekrar dene
       retryDelay: 1000, // 1 saniye bekle
-      onError: (error) => {
-        console.error('❌ Feed yükleme hatası:', error);
-        console.error('Hata detayları:', {
-          message: error.message,
-          data: error.data,
-          cause: error.cause,
-        });
-      },
     }
   );
 
-  // Olay Var event'lerini getir - tüm kullanıcılara göster
+  // Olay Var event'lerini getir - tüm kullanıcılara göster (district filtresi yok, her zaman tüm event'ler görünür)
   const {
     data: eventsData,
     isLoading: eventsLoading,
@@ -94,7 +86,7 @@ export default function FeedScreen() {
     refetch: refetchEvents,
   } = trpc.event.getEvents.useQuery(
     {
-      district: selectedDistrict === 'all' ? undefined : selectedDistrict,
+      // district parametresi yok - her zaman tüm event'ler görünür
       limit: 20,
       offset: 0,
     },
@@ -105,9 +97,6 @@ export default function FeedScreen() {
       refetchOnWindowFocus: false, // Egress optimizasyonu
       retry: 2, // Hata durumunda 2 kez tekrar dene
       retryDelay: 1000, // 1 saniye bekle
-      onError: (error) => {
-        console.error('❌ Event yükleme hatası:', error);
-      },
     }
   );
 
@@ -244,6 +233,13 @@ export default function FeedScreen() {
     onError: (error) => Alert.alert('Hata', error.message),
   });
 
+  const deleteEventMutation = trpc.event.deleteEvent.useMutation({
+    onSuccess: () => {
+      refetchEvents();
+    },
+    onError: (error) => Alert.alert('Hata', error.message),
+  });
+
   const handlePostOptions = useCallback((post: Post) => {
     if (post.author_id !== user?.id) return;
     Alert.alert('Gönderi', 'Seçenekler', [
@@ -304,6 +300,28 @@ export default function FeedScreen() {
               </Text>
             </View>
           </TouchableOpacity>
+          {event.user_id === user?.id && (
+            <TouchableOpacity
+              style={styles.eventDeleteButton}
+              onPress={() => {
+                Alert.alert(
+                  'Olayı Sil',
+                  'Bu olayı tüm ilçelerden kaldırmak istediğinize emin misiniz?',
+                  [
+                    { text: 'Vazgeç', style: 'cancel' },
+                    {
+                      text: 'Sil',
+                      style: 'destructive',
+                      onPress: () => deleteEventMutation.mutate({ event_id: event.id }),
+                    },
+                  ]
+                );
+              }}
+              disabled={deleteEventMutation.isPending}
+            >
+              <Trash2 size={18} color={theme.colors.error} />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.eventContent}>
@@ -422,7 +440,7 @@ export default function FeedScreen() {
         </View>
       </View>
     );
-  }, [router, theme, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible, refetchEvents, formatCount, likeEventMutation]);
+  }, [router, theme, user?.id, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible, refetchEvents, formatCount, likeEventMutation, deleteEventMutation]);
 
   const renderPost = useCallback(({ item }: { item: Post }) => {
     const firstMedia = item.media && item.media.length > 0 ? item.media[0] : null;
@@ -557,7 +575,6 @@ export default function FeedScreen() {
               >
                 <OptimizedImage
                   source={firstMedia.path}
-                  thumbnail={firstMedia.thumbnail}
                   isThumbnail={true}
                   style={styles.postImage}
                 />
@@ -625,39 +642,36 @@ export default function FeedScreen() {
     });
   }, [eventsData?.events, feedData?.posts]);
 
-  const renderRideActions = useMemo(() => (
-    <View style={[styles.rideActionsContainer, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
-      <TouchableOpacity
-        style={[styles.rideActionButton, { backgroundColor: theme.colors.primary }]}
-        onPress={() => router.push('/ride/search')}
-      >
-        <Search size={20} color={COLORS.white} />
-        <Text style={styles.rideActionText}>Yolculuk Ara</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.rideActionButton, { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.primary }]}
-        onPress={() => router.push('/ride/create')}
-      >
-        <Car size={20} color={theme.colors.primary} />
-        <Text style={[styles.rideActionText, { color: theme.colors.primary }]}>Yolculuk Oluştur</Text>
-      </TouchableOpacity>
-    </View>
-  ), [theme, router]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background, paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.md) : 0 }]}>
       <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border, paddingTop: Math.max(insets.top, Platform.OS === 'android' ? SPACING.lg : SPACING.md) }]}>
         <AppLogo size="medium" style={styles.headerLogo} />
-        <TouchableOpacity
-          style={[styles.usersButton, { backgroundColor: theme.colors.surface }]}
-          onPress={() => router.push('/all-users')}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Users size={24} color={theme.colors.primary} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={[styles.headerActionButton, { backgroundColor: theme.colors.primary }]}
+            onPress={() => router.push('/ride/search')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Search size={18} color={COLORS.white} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.headerActionButton, { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.primary }]}
+            onPress={() => router.push('/ride/create')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Car size={18} color={theme.colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.usersButton, { backgroundColor: theme.colors.surface }]}
+            onPress={() => router.push('/all-users')}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Users size={24} color={theme.colors.primary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {renderRideActions}
       {renderSortTabs}
       {renderDistrictFilter}
 
@@ -836,6 +850,18 @@ const styles = StyleSheet.create({
   headerLogo: {
     marginLeft: -SPACING.xs, // Logo için hafif margin ayarı
   },
+  headerActions: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.xs,
+  },
+  headerActionButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
   usersButton: {
     width: 44,
     height: 44,
@@ -843,6 +869,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
     marginTop: 2,
+    marginLeft: SPACING.xs,
   },
   sortContainer: {
     flexDirection: 'row' as const,
@@ -1161,25 +1188,8 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     fontWeight: '700' as const,
   },
-  rideActionsContainer: {
-    flexDirection: 'row',
-    padding: SPACING.md,
-    gap: SPACING.sm,
-    borderBottomWidth: 1,
-  },
-  rideActionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderRadius: 12,
-    gap: SPACING.xs,
-  },
-  rideActionText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '700' as const,
-    color: COLORS.white,
+  eventDeleteButton: {
+    padding: SPACING.xs,
+    marginLeft: SPACING.sm,
   },
 });

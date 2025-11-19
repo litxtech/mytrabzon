@@ -16,7 +16,7 @@ const getBaseUrl = () => {
   const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim();
   
   if (!supabaseUrl) {
-    console.warn("EXPO_PUBLIC_SUPABASE_URL not set, falling back to localhost");
+    // Sessizce localhost'a dön, uyarı yok
     return "http://127.0.0.1:54321/functions/v1/trpc";
   }
   
@@ -35,7 +35,7 @@ const getAdminBaseUrl = () => {
   const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim();
   
   if (!supabaseUrl) {
-    console.warn("EXPO_PUBLIC_SUPABASE_URL not set, falling back to localhost");
+    // Sessizce localhost'a dön, uyarı yok
     return "http://127.0.0.1:54321/functions/v1/admin-worker";
   }
   
@@ -116,13 +116,7 @@ export const trpcClient = trpc.createClient({
               error: errorText.substring(0, 500),
             });
             
-            // Edge Function deploy edilmemişse veya secrets eksikse
-            if (response.status === 500 || response.status === 502 || response.status === 503) {
-              console.error('⚠️ Edge Function hatası! Muhtemelen:');
-              console.error('   1. Edge Function deploy edilmemiş olabilir');
-              console.error('   2. Supabase Secrets ayarlanmamış olabilir');
-              console.error('   3. SUPABASE_URL veya SUPABASE_SERVICE_ROLE_KEY eksik olabilir');
-            }
+            // Hata loglanıyor ama gereksiz uyarılar kaldırıldı
           } else if (__DEV__) {
             console.log('✅ tRPC Response OK:', response.status);
           }

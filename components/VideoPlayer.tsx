@@ -174,17 +174,27 @@ export function VideoPlayer({
 
   const togglePlayPause = async () => {
     if (videoRef.current) {
-      if (isPlaying) {
-        await videoRef.current.pauseAsync();
-      } else {
-        await videoRef.current.playAsync();
+      try {
+        if (isPlaying) {
+          await videoRef.current.pauseAsync();
+        } else {
+          await videoRef.current.playAsync();
+        }
+      } catch (error) {
+        // Video null olabilir veya henüz yüklenmemiş olabilir
+        console.warn('⚠️ Video play/pause operation warning:', error);
       }
     }
   };
 
   const toggleMute = async () => {
     if (videoRef.current) {
-      await videoRef.current.setIsMutedAsync(!isMuted);
+      try {
+        await videoRef.current.setIsMutedAsync(!isMuted);
+      } catch (error) {
+        // Video null olabilir veya henüz yüklenmemiş olabilir
+        console.warn('⚠️ Video mute operation warning:', error);
+      }
     }
   };
 
@@ -504,17 +514,27 @@ function FullScreenVideoPlayer({
 
   const togglePlayPause = async () => {
     if (videoRef.current) {
-      if (isPlaying) {
-        await videoRef.current.pauseAsync();
-      } else {
-        await videoRef.current.playAsync();
+      try {
+        if (isPlaying) {
+          await videoRef.current.pauseAsync();
+        } else {
+          await videoRef.current.playAsync();
+        }
+      } catch (error) {
+        // Video null olabilir veya henüz yüklenmemiş olabilir
+        console.warn('⚠️ FullScreen Video play/pause operation warning:', error);
       }
     }
   };
 
   const toggleMute = async () => {
     if (videoRef.current) {
-      await videoRef.current.setIsMutedAsync(!isMuted);
+      try {
+        await videoRef.current.setIsMutedAsync(!isMuted);
+      } catch (error) {
+        // Video null olabilir veya henüz yüklenmemiş olabilir
+        console.warn('⚠️ FullScreen Video mute operation warning:', error);
+      }
     }
   };
 
@@ -603,7 +623,7 @@ function FullScreenVideoPlayer({
   ).current;
 
   return (
-    <View style={[styles.fullScreenContainer, { paddingTop: insets.top }]}>
+    <View style={styles.fullScreenContainer}>
       <Pressable
         style={styles.videoContainer}
         onPress={handleSingleTap}
@@ -615,7 +635,7 @@ function FullScreenVideoPlayer({
             uri: videoUrl,
             overrideFileExtensionAndroid: 'mp4',
           }}
-          style={[styles.fullScreenVideo, { width, height: height - insets.top - insets.bottom }]}
+          style={[styles.fullScreenVideo, { width, height }]}
           resizeMode={ResizeMode.COVER}
           isLooping
           isMuted={isMuted}
@@ -861,13 +881,22 @@ const styles = StyleSheet.create({
   fullScreenContainer: {
     flex: 1,
     backgroundColor: '#000',
+    width: '100%',
+    height: '100%',
   },
   videoContainer: {
     flex: 1,
-    position: 'relative',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
   },
   fullScreenVideo: {
-    flex: 1,
+    width: '100%',
+    height: '100%',
   },
   commentSheet: {
     position: 'absolute',

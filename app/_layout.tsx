@@ -11,6 +11,7 @@ import { registerForPushNotifications, addNotificationResponseReceivedListener }
 import { supabase } from "@/lib/supabase";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import "@/lib/debug-supabase"; // Supabase bağlantı testi için
+import { ProximityManager } from "@/components/ProximityManager";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -631,6 +632,7 @@ export default function RootLayout() {
             <ThemeProvider>
               <GestureHandlerRootView style={styles.container}>
                 <RootLayoutNav />
+                <ProximityManager />
               </GestureHandlerRootView>
             </ThemeProvider>
           </ChatContext>

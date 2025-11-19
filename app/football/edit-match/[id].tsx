@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
@@ -19,39 +19,74 @@ import { ArrowLeft, ChevronDown } from 'lucide-react-native';
 import { TRABZON_DISTRICTS, GIRESUN_DISTRICTS } from '@/constants/districts';
 import { Footer } from '@/components/Footer';
 
-export default function CreateMatchScreen() {
+export default function EditMatchScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const [loading, setLoading] = useState(false);
   const [showDistrictPicker, setShowDistrictPicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [formData, setFormData] = useState({
-    field_name: '', // Kullanıcı serbest yazacak
+    field_name: '',
     city: 'Trabzon' as 'Trabzon' | 'Giresun',
     district: '',
     match_date: '',
     match_time: '',
-    match_type: 'looking_for_opponent' as 'looking_for_opponent' | 'looking_for_players', // Yeni: Maç tipi
+    match_type: 'looking_for_opponent' as 'looking_for_opponent' | 'looking_for_players',
     team1_name: '',
     team2_name: '',
     max_players: '',
     needed_players: '',
   });
 
+  // Maç detaylarını getir
+  const { data: matchData, isLoading: isLoadingMatch } = (trpc as any).football.getMatchDetails.useQuery(
+    { match_id: id! },
+    { enabled: !!id }
+  );
+
+  // Form verilerini doldur
+  useEffect(() => {
+    if (matchData) {
+      const matchDate = matchData.match_date 
+        ? new Date(matchData.match_date).toLocaleDateString('tr-TR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+          }).replace(/\//g, '.')
+        : '';
+      
+      const matchTime = matchData.start_time 
+        ? matchData.start_time.substring(0, 5) // HH:MM
+        : '';
+
+      setFormData({
+        field_name: matchData.field?.name || '',
+        city: matchData.city || 'Trabzon',
+        district: matchData.district || '',
+        match_date: matchDate,
+        match_time: matchTime,
+        match_type: matchData.status === 'looking_for_players' ? 'looking_for_players' : 'looking_for_opponent',
+        team1_name: matchData.team1?.name || '',
+        team2_name: matchData.team2?.name || '',
+        max_players: String(matchData.max_players || 10),
+        needed_players: String(matchData.missing_players_count || 0),
+      });
+    }
+  }, [matchData]);
+
   const utils = trpc.useUtils();
   
-  const createMatch = (trpc as any).football.createMatch.useMutation({
+  const updateMatch = (trpc as any).football.updateMatch.useMutation({
     onSuccess: async () => {
-      // Query cache'i invalidate et ve refetch yap ki yeni maç görünsün
       await (utils as any).football.getTodayMatches.invalidate();
-      // Hemen refetch yap
-      await (utils as any).football.getTodayMatches.refetch();
-      Alert.alert('Başarılı', 'Maç başarıyla oluşturuldu!');
-      router.replace('/(tabs)/football');
+      await (utils as any).football.getMatchDetails.invalidate({ match_id: id! });
+      Alert.alert('Başarılı', 'Maç başarıyla güncellendi!');
+      router.back();
     },
     onError: (error: any) => {
-      console.error('Create match error:', error);
-      Alert.alert('Hata', error.message || 'Maç oluşturulamadı');
+      console.error('Update match error:', error);
+      Alert.alert('Hata', error.message || 'Maç güncellenemedi');
     },
   });
 
@@ -66,11 +101,9 @@ export default function CreateMatchScreen() {
 
     setLoading(true);
     try {
-      // Tarih ve saat formatını düzelt - Türkiye formatından ISO formatına çevir
       const dateStr = formData.match_date.trim();
       const timeStr = formData.match_time.trim();
       
-      // Tarih formatını kontrol et (DD.MM.YYYY)
       const dateMatch = dateStr.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
       if (!dateMatch) {
         Alert.alert('Hata', 'Tarih formatı yanlış. Örnek: 15.01.2025');
@@ -83,25 +116,20 @@ export default function CreateMatchScreen() {
       const monthNum = parseInt(month, 10);
       const yearNum = parseInt(year, 10);
       
-      // Tarih geçerliliğini kontrol et
       if (dayNum < 1 || dayNum > 31 || monthNum < 1 || monthNum > 12 || yearNum < 2024) {
         Alert.alert('Hata', 'Geçersiz tarih değerleri');
         setLoading(false);
         return;
       }
       
-      // ISO formatına çevir (YYYY-MM-DD)
       const isoDate = `${yearNum}-${monthNum.toString().padStart(2, '0')}-${dayNum.toString().padStart(2, '0')}`;
       
-      // Saat formatını kontrol et (HH:MM)
       if (!/^\d{2}:\d{2}$/.test(timeStr)) {
         Alert.alert('Hata', 'Saat formatı yanlış. Örnek: 18:00');
         setLoading(false);
         return;
       }
       
-      // Türkiye saat dilimine göre ISO formatına çevir
-      // Türkiye UTC+3, bu yüzden UTC'ye çevirirken 3 saat çıkarıyoruz
       const [hours, minutes] = timeStr.split(':').map(Number);
       if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
         Alert.alert('Hata', 'Geçersiz saat değerleri');
@@ -109,30 +137,28 @@ export default function CreateMatchScreen() {
         return;
       }
       
-      // ISO formatına çevir (Türkiye saati için)
-      // Türkiye UTC+3, bu yüzden local time olarak oluşturup UTC'ye çeviriyoruz
       const matchDateTime = new Date(`${isoDate}T${timeStr}:00+03:00`);
       
-      // Geçerli bir tarih mi kontrol et
       if (isNaN(matchDateTime.getTime())) {
         Alert.alert('Hata', 'Geçersiz tarih veya saat');
         setLoading(false);
         return;
       }
       
-      // Maç tipine göre validasyon
       if (formData.match_type === 'looking_for_players' && !formData.needed_players) {
         Alert.alert('Hata', 'Oyuncu aranıyor durumunda eksik oyuncu sayısı zorunludur');
         setLoading(false);
         return;
       }
 
-      await createMatch.mutateAsync({
+      await updateMatch.mutateAsync({
+        match_id: id!,
         field_name: formData.field_name,
         city: formData.city,
         district: formData.district,
         match_date: matchDateTime.toISOString(),
-        match_type: formData.match_type, // Yeni: Maç tipi
+        match_time: `${timeStr}:00`,
+        match_type: formData.match_type,
         team1_name: formData.team1_name || undefined,
         team2_name: formData.team2_name || undefined,
         max_players: formData.max_players ? parseInt(formData.max_players) : undefined,
@@ -141,8 +167,8 @@ export default function CreateMatchScreen() {
           : undefined,
       });
     } catch (err) {
-      console.error('Create match error:', err);
-      Alert.alert('Hata', 'Maç oluşturulurken bir hata oluştu');
+      console.error('Update match error:', err);
+      Alert.alert('Hata', 'Maç güncellenirken bir hata oluştu');
     } finally {
       setLoading(false);
     }
@@ -155,6 +181,14 @@ export default function CreateMatchScreen() {
       router.replace('/(tabs)/football');
     }
   };
+
+  if (isLoadingMatch) {
+    return (
+      <View style={[styles.container, styles.loadingContainer, { paddingTop: insets.top }]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -177,7 +211,52 @@ export default function CreateMatchScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>Yeni Maç Oluştur</Text>
+        <Text style={styles.title}>Maçı Düzenle</Text>
+
+        {/* Maç Tipi Seçimi */}
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Ne Arıyorsunuz? *</Text>
+          <View style={styles.matchTypeContainer}>
+            <TouchableOpacity
+              style={[
+                styles.matchTypeButton,
+                formData.match_type === 'looking_for_opponent' && styles.matchTypeButtonActive,
+              ]}
+              onPress={() => setFormData({ ...formData, match_type: 'looking_for_opponent' })}
+            >
+              <Text
+                style={[
+                  styles.matchTypeButtonText,
+                  formData.match_type === 'looking_for_opponent' && styles.matchTypeButtonTextActive,
+                ]}
+              >
+                🏆 Rakip Takım Aranıyor
+              </Text>
+              <Text style={styles.matchTypeDescription}>
+                Rakip takım arıyorsanız seçin
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.matchTypeButton,
+                formData.match_type === 'looking_for_players' && styles.matchTypeButtonActive,
+              ]}
+              onPress={() => setFormData({ ...formData, match_type: 'looking_for_players' })}
+            >
+              <Text
+                style={[
+                  styles.matchTypeButtonText,
+                  formData.match_type === 'looking_for_players' && styles.matchTypeButtonTextActive,
+                ]}
+              >
+                👥 Oyuncu Aranıyor
+              </Text>
+              <Text style={styles.matchTypeDescription}>
+                Oyuncu arıyorsanız seçin
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
         <View style={styles.formGroup}>
           <Text style={styles.label}>Halı Saha İsmi veya Adres *</Text>
@@ -187,10 +266,8 @@ export default function CreateMatchScreen() {
             value={formData.field_name}
             onChangeText={(text) => setFormData({ ...formData, field_name: text })}
             autoCapitalize="words"
-            multiline={false}
             maxLength={100}
           />
-          <Text style={styles.hintText}>Halı saha ismini veya adresini serbest şekilde yazabilirsiniz</Text>
         </View>
 
         <View style={styles.formGroup}>
@@ -285,14 +362,12 @@ export default function CreateMatchScreen() {
             placeholder="Örnek: 15.01.2025"
             value={formData.match_date}
             onChangeText={(text) => {
-              // Sadece rakam ve nokta kabul et
               const cleaned = text.replace(/[^0-9.]/g, '');
               setFormData({ ...formData, match_date: cleaned });
             }}
             keyboardType="numeric"
             maxLength={10}
           />
-          <Text style={styles.hintText}>Format: GG.AA.YYYY (Örnek: 15.01.2025)</Text>
         </View>
 
         <View style={styles.formGroup}>
@@ -311,7 +386,6 @@ export default function CreateMatchScreen() {
             </Text>
             <ChevronDown size={20} color={COLORS.textLight} />
           </TouchableOpacity>
-          <Text style={styles.hintText}>12:00 - 23:45 arası 15 dakikalık dilimler</Text>
           {showTimePicker && (
             <View style={styles.districtPicker}>
               <ScrollView style={styles.districtScroll} nestedScrollEnabled>
@@ -342,52 +416,6 @@ export default function CreateMatchScreen() {
           )}
         </View>
 
-        {/* Maç Tipi Seçimi - Şeffaf ve Basit */}
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Ne Arıyorsunuz? *</Text>
-          <View style={styles.matchTypeContainer}>
-            <TouchableOpacity
-              style={[
-                styles.matchTypeButton,
-                formData.match_type === 'looking_for_opponent' && styles.matchTypeButtonActive,
-              ]}
-              onPress={() => setFormData({ ...formData, match_type: 'looking_for_opponent' })}
-            >
-              <Text
-                style={[
-                  styles.matchTypeButtonText,
-                  formData.match_type === 'looking_for_opponent' && styles.matchTypeButtonTextActive,
-                ]}
-              >
-                🏆 Rakip Takım Aranıyor
-              </Text>
-              <Text style={styles.matchTypeDescription}>
-                Rakip takım arıyorsanız seçin
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.matchTypeButton,
-                formData.match_type === 'looking_for_players' && styles.matchTypeButtonActive,
-              ]}
-              onPress={() => setFormData({ ...formData, match_type: 'looking_for_players' })}
-            >
-              <Text
-                style={[
-                  styles.matchTypeButtonText,
-                  formData.match_type === 'looking_for_players' && styles.matchTypeButtonTextActive,
-                ]}
-              >
-                👥 Oyuncu Aranıyor
-              </Text>
-              <Text style={styles.matchTypeDescription}>
-                Oyuncu arıyorsanız seçin
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Rakip Takım Aranıyor Durumu */}
         {formData.match_type === 'looking_for_opponent' && (
           <>
             <View style={styles.formGroup}>
@@ -412,7 +440,6 @@ export default function CreateMatchScreen() {
           </>
         )}
 
-        {/* Oyuncu Aranıyor Durumu */}
         {formData.match_type === 'looking_for_players' && (
           <>
             <View style={styles.formGroup}>
@@ -424,7 +451,6 @@ export default function CreateMatchScreen() {
                 onChangeText={(text) => setFormData({ ...formData, needed_players: text })}
                 keyboardType="numeric"
               />
-              <Text style={styles.hintText}>Eksik oyuncu sayısını girin</Text>
             </View>
             <View style={styles.formGroup}>
               <Text style={styles.label}>Maksimum Oyuncu Sayısı (Opsiyonel)</Text>
@@ -447,7 +473,7 @@ export default function CreateMatchScreen() {
           {loading ? (
             <ActivityIndicator color={COLORS.white} />
           ) : (
-            <Text style={styles.submitButtonText}>Maç Oluştur</Text>
+            <Text style={styles.submitButtonText}>Maçı Güncelle</Text>
           )}
         </TouchableOpacity>
         
@@ -472,6 +498,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   scrollView: {
     flex: 1,
@@ -574,7 +604,6 @@ const styles = StyleSheet.create({
   districtOptionText: {
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
-    flexShrink: 0, // Android'de metinlerin tam görünmesi için
   },
   districtOptionTextActive: {
     color: COLORS.primary,
@@ -588,7 +617,6 @@ const styles = StyleSheet.create({
     marginTop: SPACING.lg,
     minHeight: 50,
     justifyContent: 'center',
-    flexDirection: 'row',
   },
   submitButtonDisabled: {
     opacity: 0.6,
@@ -597,14 +625,6 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
-    flexShrink: 0, // Android'de metinlerin tam görünmesi için
-    textAlign: 'center',
-  },
-  hintText: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textLight,
-    marginTop: SPACING.xs,
-    fontStyle: 'italic',
   },
   matchTypeContainer: {
     flexDirection: 'row',
@@ -641,3 +661,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+

@@ -311,7 +311,11 @@ export default function CreatePostScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView 
+        style={styles.content}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.userInfo}>
           <Image
             source={{
@@ -387,8 +391,6 @@ export default function CreatePostScreen() {
         <Text style={styles.characterCount}>
           {content.length} / 1000
         </Text>
-        
-        <Footer />
       </ScrollView>
 
       <View style={styles.toolbar}>
@@ -474,6 +476,9 @@ const styles = StyleSheet.create({
 
   content: {
     flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: SPACING.md,
   },
   userInfo: {
     flexDirection: 'row' as const,

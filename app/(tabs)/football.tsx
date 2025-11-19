@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Image,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { trpc } from '@/lib/trpc';
@@ -16,7 +17,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLogo } from '@/components/AppLogo';
-import { Calendar, MapPin, Clock, AlertCircle, ChevronRight, Plus } from 'lucide-react-native';
+import { Calendar, MapPin, Clock, AlertCircle, ChevronRight, Plus, MoreVertical, Edit, Trash2 } from 'lucide-react-native';
 import { Footer } from '@/components/Footer';
 
 export default function FootballScreen() {
@@ -26,6 +27,7 @@ export default function FootballScreen() {
   const { theme } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCity, setSelectedCity] = useState<'all' | 'Trabzon' | 'Giresun'>('all');
+  const [menuVisibleMatchId, setMenuVisibleMatchId] = useState<string | null>(null);
 
   // Kullanıcı profilini getir (şehir bilgisi için)
   const { data: userProfile } = trpc.user.getProfile.useQuery(
@@ -95,63 +97,146 @@ export default function FootballScreen() {
     });
   };
 
+  const deleteMatchMutation = (trpc as any).football.deleteMatch.useMutation({
+    onSuccess: () => {
+      Alert.alert('Başarılı', 'Maç başarıyla silindi');
+      refetch();
+    },
+    onError: (error: any) => {
+      Alert.alert('Hata', error.message || 'Maç silinemedi');
+    },
+  });
+
   const renderMatch = ({ item }: { item: any }) => {
     const isLookingForOpponent = item.status === 'looking_for_opponent';
     const isLookingForPlayers = item.status === 'looking_for_players';
+    const isOwner = item.organizer_id === user?.id;
     
     return (
-      <TouchableOpacity
-        style={[styles.matchCard, { backgroundColor: theme.colors.card }]}
-        onPress={() => router.push(`/football/match/${item.id}` as any)}
-      >
-        <View style={styles.matchHeader}>
-          <View style={styles.matchTimeContainer}>
-            <Clock size={16} color={theme.colors.primary} />
-            <Text style={[styles.matchTime, { color: theme.colors.text }]}>{formatTime(item)}</Text>
-          </View>
-          <View style={styles.matchFieldContainer}>
-            <MapPin size={14} color={theme.colors.textLight} />
-            <Text style={[styles.matchField, { color: theme.colors.textLight }]}>{item.field?.name}</Text>
-          </View>
-        </View>
+      <View style={[styles.matchCard, { backgroundColor: theme.colors.card }]}>
+        <TouchableOpacity
+          style={styles.matchCardTouchable}
+          onPress={() => router.push(`/football/match/${item.id}` as any)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.matchContent}>
+            {/* Organizatör Profili - Tıklanabilir */}
+            {item.organizer && (
+              <TouchableOpacity
+                style={styles.organizerRow}
+                onPress={() => router.push(`/profile/${item.organizer.id}` as any)}
+                activeOpacity={0.7}
+              >
+                {item.organizer.avatar_url ? (
+                  <Image source={{ uri: item.organizer.avatar_url }} style={styles.organizerAvatar} />
+                ) : (
+                  <View style={styles.organizerAvatarPlaceholder}>
+                    <Text style={styles.organizerAvatarText}>
+                      {(item.organizer.full_name || 'O').charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.organizerInfo}>
+                  <Text style={[styles.organizerName, { color: theme.colors.text }]}>
+                    {item.organizer.full_name || 'Organizatör'}
+                  </Text>
+                  <Text style={[styles.organizerMeta, { color: theme.colors.textLight }]}>
+                    {item.city} • {formatTime(item)}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
 
-        {isLookingForOpponent ? (
-          <View style={[styles.opponentSearchCard, { backgroundColor: theme.colors.warning + '20' }]}>
-            <AlertCircle size={20} color={theme.colors.warning} />
-            <Text style={[styles.opponentSearchText, { color: theme.colors.text }]}>Halısaha Rakibi Aranıyor</Text>
-            <Text style={[styles.opponentSearchSubtext, { color: theme.colors.textLight }]}>
-              {item.organizer?.full_name || 'Organizatör'} rakip takım arıyor
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.matchTeams}>
-            <View style={styles.teamContainer}>
-              <Text style={[styles.teamName, { color: theme.colors.text }]}>{item.team1?.name || 'Takım 1'}</Text>
-              {item.team1?.logo_url && (
-                <Image source={{ uri: item.team1.logo_url }} style={styles.teamLogo} />
-              )}
+            <View style={styles.matchHeader}>
+              <View style={styles.matchTimeContainer}>
+                <Clock size={16} color={theme.colors.primary} />
+                <Text style={[styles.matchTime, { color: theme.colors.text }]}>{formatTime(item)}</Text>
+              </View>
+              <View style={styles.matchFieldContainer}>
+                <MapPin size={14} color={theme.colors.textLight} />
+                <Text style={[styles.matchField, { color: theme.colors.textLight }]}>{item.field?.name}</Text>
+              </View>
             </View>
-            <Text style={[styles.vsText, { color: theme.colors.textLight }]}>VS</Text>
-            <View style={styles.teamContainer}>
-              <Text style={[styles.teamName, { color: theme.colors.text }]}>{item.team2?.name || 'Takım 2'}</Text>
-              {item.team2?.logo_url && (
-                <Image source={{ uri: item.team2.logo_url }} style={styles.teamLogo} />
-              )}
+
+            {/* Durum Badge'i - Şeffaf ve Net */}
+            {isLookingForOpponent ? (
+              <View style={[styles.statusBadge, { backgroundColor: COLORS.warning + '20' }]}>
+                <Text style={[styles.statusBadgeText, { color: COLORS.warning }]}>
+                  🏆 Rakip Takım Aranıyor
+                </Text>
+              </View>
+            ) : isLookingForPlayers ? (
+              <View style={[styles.statusBadge, { backgroundColor: COLORS.error + '20' }]}>
+                <Text style={[styles.statusBadgeText, { color: COLORS.error }]}>
+                  👥 {item.missing_players_count || 0} Oyuncu Aranıyor
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Takım Bilgileri */}
+            {item.team1?.name && (
+              <View style={styles.organizerInfo}>
+                <Text style={[styles.teamNameText, { color: theme.colors.text }]}>
+                  Takım: {item.team1.name}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <ChevronRight size={20} color={theme.colors.textLight} style={styles.chevron} />
+        </TouchableOpacity>
+
+        {/* 3 Nokta Menü - Sadece sahibi için */}
+        {isOwner && (
+          <TouchableOpacity
+            style={styles.menuButton}
+            onPress={() => setMenuVisibleMatchId(menuVisibleMatchId === item.id ? null : item.id)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <MoreVertical size={20} color={theme.colors.textLight} />
+          </TouchableOpacity>
+        )}
+
+        {/* Menü Modal */}
+        {menuVisibleMatchId === item.id && (
+          <View style={styles.menuOverlay} onTouchEnd={() => setMenuVisibleMatchId(null)}>
+            <View style={[styles.menuContainer, { backgroundColor: theme.colors.card }]}>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setMenuVisibleMatchId(null);
+                  router.push(`/football/edit-match/${item.id}` as any);
+                }}
+              >
+                <Edit size={18} color={COLORS.text} />
+                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Düzenle</Text>
+              </TouchableOpacity>
+              <View style={[styles.menuDivider, { backgroundColor: theme.colors.border }]} />
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setMenuVisibleMatchId(null);
+                  Alert.alert(
+                    'Maçı Sil',
+                    'Bu maçı silmek istediğinizden emin misiniz?',
+                    [
+                      { text: 'İptal', style: 'cancel' },
+                      {
+                        text: 'Sil',
+                        style: 'destructive',
+                        onPress: () => deleteMatchMutation.mutate({ match_id: item.id }),
+                      },
+                    ]
+                  );
+                }}
+              >
+                <Trash2 size={18} color={COLORS.error} />
+                <Text style={[styles.menuItemText, { color: COLORS.error }]}>Sil</Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
-
-        {isLookingForPlayers && item.missing_players_count > 0 && (
-          <View style={[styles.missingPlayersBadge, { backgroundColor: theme.colors.error + '20' }]}>
-            <AlertCircle size={14} color={theme.colors.error} />
-            <Text style={[styles.missingPlayersText, { color: theme.colors.error }]}>
-              {item.missing_players_count} oyuncu eksik
-            </Text>
-          </View>
-        )}
-
-        <ChevronRight size={20} color={theme.colors.textLight} style={styles.chevron} />
-      </TouchableOpacity>
+      </View>
     );
   };
 
@@ -298,13 +383,121 @@ const styles = StyleSheet.create({
   matchCard: {
     backgroundColor: COLORS.white,
     borderRadius: 12,
-    padding: SPACING.md,
     marginBottom: SPACING.md,
+    position: 'relative',
+    overflow: 'visible',
+  },
+  matchCardTouchable: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: SPACING.md,
+  },
+  organizerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  organizerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  organizerAvatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primary + '30',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  organizerAvatarText: {
+    color: COLORS.primary,
+    fontWeight: '700',
+    fontSize: FONT_SIZES.md,
+  },
+  organizerName: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
+  },
+  organizerMeta: {
+    fontSize: FONT_SIZES.xs,
+    marginTop: 2,
+  },
+  menuButton: {
+    position: 'absolute',
+    top: SPACING.md,
+    right: SPACING.md,
+    padding: SPACING.xs,
+    zIndex: 10,
+  },
+  menuOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 100,
+  },
+  menuContainer: {
+    position: 'absolute',
+    top: 40,
+    right: SPACING.md,
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    paddingVertical: SPACING.xs,
+    minWidth: 150,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  menuItemText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+  },
+  menuDivider: {
+    height: 1,
+    marginVertical: SPACING.xs,
+  },
+  matchContent: {
+    flex: 1,
+  },
+  statusBadge: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginBottom: SPACING.sm,
+  },
+  statusBadgeText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '700',
+  },
+  organizerInfo: {
+    marginTop: SPACING.xs,
+  },
+  organizerText: {
+    fontSize: FONT_SIZES.sm,
+    marginBottom: SPACING.xs,
+  },
+  teamNameText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+  },
+  playersNeededText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
   },
   matchHeader: {
-    flex: 1,
     marginBottom: SPACING.sm,
   },
   matchTimeContainer: {

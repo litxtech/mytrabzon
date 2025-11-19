@@ -8,12 +8,12 @@ import {
   Image,
   TextInput,
   ActivityIndicator,
-
   KeyboardAvoidingView,
   Platform,
   Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
@@ -26,16 +26,24 @@ import {
   Send,
   ArrowLeft,
   MoreVertical,
+  Trash2,
+  Edit3,
 } from 'lucide-react-native';
 import { Footer } from '@/components/Footer';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
+import { OptimizedImage } from '@/components/OptimizedImage';
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user, profile } = useAuth();
   const queryClient = useQueryClient();
+  const utils = trpc.useUtils();
+  const insets = useSafeAreaInsets();
   const [commentText, setCommentText] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
+  const [menuVisibleCommentId, setMenuVisibleCommentId] = useState<string | null>(null);
 
   const formatCount = (count: number | null | undefined): string => {
     if (!count) return '0';
@@ -143,6 +151,59 @@ export default function PostDetailScreen() {
     },
   });
 
+  const deletePostMutation = trpc.post.deletePost.useMutation({
+    onSuccess: async () => {
+      Alert.alert('Başarılı', 'Gönderi silindi');
+      await utils.post.getPosts.invalidate();
+      router.back();
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Gönderi silinemedi';
+      Alert.alert('Hata', message);
+    },
+  });
+
+  const deleteCommentMutation = trpc.post.deleteComment.useMutation({
+    onSuccess: () => {
+      setMenuVisibleCommentId(null);
+      refetchComments();
+      refetch();
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Yorum silinemedi. Lütfen tekrar deneyin.');
+    },
+  });
+
+  const updateCommentMutation = (trpc.post as any).updateComment.useMutation({
+    onSuccess: () => {
+      setEditingCommentId(null);
+      setEditingCommentText('');
+      setMenuVisibleCommentId(null);
+      refetchComments();
+      refetch();
+    },
+    onError: (error: any) => {
+      Alert.alert('Hata', error.message || 'Yorum güncellenemedi. Lütfen tekrar deneyin.');
+    },
+  });
+
+  const handleDeletePost = () => {
+    if (!post) return;
+
+    Alert.alert(
+      'Gönderiyi Sil',
+      'Bu gönderiyi silmek istediğinize emin misiniz?',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: () => deletePostMutation.mutate({ postId: post.id }),
+        },
+      ]
+    );
+  };
+
   const handleLike = async () => {
     if (!user) {
       Alert.alert('Hata', 'Beğenmek için giriş yapmalısınız');
@@ -174,6 +235,40 @@ export default function PostDetailScreen() {
     }
   };
 
+  const handleDeleteComment = (commentId: string) => {
+    Alert.alert(
+      'Yorumu Sil',
+      'Bu yorumu silmek istediğinize emin misiniz?',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: () => deleteCommentMutation.mutate({ commentId }),
+        },
+      ]
+    );
+  };
+
+  const handleEditComment = (commentId: string, currentContent: string) => {
+    setEditingCommentId(commentId);
+    setEditingCommentText(currentContent);
+    setMenuVisibleCommentId(null);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingCommentId || !editingCommentText.trim()) return;
+    updateCommentMutation.mutate({
+      commentId: editingCommentId,
+      content: editingCommentText.trim(),
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCommentId(null);
+    setEditingCommentText('');
+  };
+
   if (isLoading || !post) {
     return (
       <View style={styles.loadingContainer}>
@@ -185,8 +280,9 @@ export default function PostDetailScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={90}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+      enabled={true}
     >
       <Stack.Screen
         options={{
@@ -200,7 +296,13 @@ export default function PostDetailScreen() {
         }}
       />
 
-      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: SPACING.xl }}>
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={true}
+        nestedScrollEnabled={true}
+      >
         <View style={styles.postCard}>
           <View style={styles.postHeader}>
             <TouchableOpacity
@@ -209,7 +311,7 @@ export default function PostDetailScreen() {
             >
               <Image
                 source={{
-                  uri: post.author?.avatar_url || 'https://via.placeholder.com/40',
+                  uri: (Array.isArray(post.author) ? (post.author as any)[0]?.avatar_url : (post.author as any)?.avatar_url) || 'https://via.placeholder.com/40',
                 }}
                 style={styles.avatar}
               />
@@ -222,15 +324,15 @@ export default function PostDetailScreen() {
               <View style={styles.postAuthorContainer}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Text style={styles.postAuthor}>
-                    {post.author?.full_name}
+                    {Array.isArray(post.author) ? (post.author as any)[0]?.full_name : (post.author as any)?.full_name}
                   </Text>
-                  {post.author?.verified && <VerifiedBadgeIcon size={16} />}
+                  {(Array.isArray(post.author) ? (post.author as any)[0]?.verified : (post.author as any)?.verified) && <VerifiedBadgeIcon size={16} />}
                 </View>
               </View>
-              {post.author?.username && (
+              {(Array.isArray(post.author) ? (post.author as any)[0]?.username : (post.author as any)?.username) && (
                 <View style={styles.postUsernameContainer}>
                   <Text style={styles.postUsername}>
-                    @{post.author.username}
+                    @{Array.isArray(post.author) ? (post.author as any)[0]?.username : (post.author as any)?.username}
                   </Text>
                 </View>
               )}
@@ -253,8 +355,12 @@ export default function PostDetailScreen() {
               </View>
             </TouchableOpacity>
             {post.author_id === user?.id && (
-              <TouchableOpacity>
-                <MoreVertical size={20} color={COLORS.textLight} />
+              <TouchableOpacity 
+                onPress={handleDeletePost}
+                disabled={deletePostMutation.isPending}
+                style={styles.deleteButton}
+              >
+                <Trash2 size={20} color={COLORS.error} />
               </TouchableOpacity>
             )}
           </View>
@@ -302,65 +408,119 @@ export default function PostDetailScreen() {
             Yorumlar ({commentsData?.total || 0})
           </Text>
 
-          {commentsData?.comments.map((comment) => (
-            <View key={comment.id} style={styles.commentCard}>
-              <Image
-                source={{
-                  uri: comment.user?.avatar_url || 'https://via.placeholder.com/32',
-                }}
-                style={styles.commentAvatar}
-              />
-              <View style={styles.commentContent}>
-                <View style={styles.commentAuthorContainer}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={styles.commentAuthor}>
-                      {comment.user?.full_name}
-                    </Text>
-                    {comment.user?.verified && <VerifiedBadgeIcon size={14} />}
+          {commentsData?.comments.map((comment) => {
+            const isEditing = editingCommentId === comment.id;
+            const isOwner = comment.user_id === user?.id;
+            
+            return (
+              <View key={comment.id} style={styles.commentCard}>
+                <Image
+                  source={{
+                    uri: comment.user?.avatar_url || 'https://via.placeholder.com/32',
+                  }}
+                  style={styles.commentAvatar}
+                />
+                <View style={styles.commentContent}>
+                  <View style={styles.commentAuthorContainer}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.commentAuthor}>
+                        {comment.user?.full_name}
+                      </Text>
+                      {comment.user?.verified && <VerifiedBadgeIcon size={14} />}
+                    </View>
+                    {isOwner && !isEditing && (
+                      <TouchableOpacity
+                        style={styles.commentMenuButton}
+                        onPress={() => setMenuVisibleCommentId(menuVisibleCommentId === comment.id ? null : comment.id)}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <MoreVertical size={16} color={COLORS.textLight} />
+                      </TouchableOpacity>
+                    )}
                   </View>
+                  {comment.user?.username && (
+                    <View style={styles.commentUsernameContainer}>
+                      <Text style={styles.commentUsername}>
+                        @{comment.user.username}
+                      </Text>
+                    </View>
+                  )}
+                  {isEditing ? (
+                    <View style={styles.editContainer}>
+                      <TextInput
+                        style={styles.editInput}
+                        value={editingCommentText}
+                        onChangeText={setEditingCommentText}
+                        multiline
+                        maxLength={1000}
+                        autoFocus
+                        textAlignVertical="top"
+                      />
+                      <View style={styles.editActions}>
+                        <TouchableOpacity
+                          style={[styles.editButton, styles.cancelButton]}
+                          onPress={handleCancelEdit}
+                        >
+                          <Text style={styles.editButtonText}>İptal</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.editButton, styles.saveButton]}
+                          onPress={handleSaveEdit}
+                          disabled={!editingCommentText.trim() || updateCommentMutation.isPending}
+                        >
+                          {updateCommentMutation.isPending ? (
+                            <ActivityIndicator size="small" color={COLORS.white} />
+                          ) : (
+                            <Text style={[styles.editButtonText, { color: COLORS.white }]}>Kaydet</Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ) : (
+                    <>
+                      <View style={styles.commentTextContainer}>
+                        <Text style={styles.commentText}>
+                          {comment.content}
+                        </Text>
+                      </View>
+                      <Text style={styles.commentTime}>
+                        {new Date(comment.created_at).toLocaleDateString('tr-TR', {
+                          day: 'numeric',
+                          month: 'short',
+                        })}
+                      </Text>
+                    </>
+                  )}
                 </View>
-                {comment.user?.username && (
-                  <View style={styles.commentUsernameContainer}>
-                    <Text style={styles.commentUsername}>
-                      @{comment.user.username}
-                    </Text>
-                  </View>
-                )}
-                <View style={styles.commentTextContainer}>
-                  <Text style={styles.commentText}>
-                    {comment.content}
-                  </Text>
-                </View>
-                <Text style={styles.commentTime}>
-                  {new Date(comment.created_at).toLocaleDateString('tr-TR', {
-                    day: 'numeric',
-                    month: 'short',
-                  })}
-                </Text>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
         
         <Footer />
       </ScrollView>
 
-      <View style={styles.commentInputContainer}>
-        <Image
-          source={{
-            uri: profile?.avatar_url || user?.user_metadata?.avatar_url || 'https://via.placeholder.com/32',
-          }}
-          style={styles.commentInputAvatar}
-        />
-        <TextInput
-          style={styles.commentInput}
-          placeholder="Yorum yaz..."
-          placeholderTextColor={COLORS.textLight}
-          value={commentText}
-          onChangeText={setCommentText}
-          multiline
-          maxLength={1000}
-        />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        <View style={[styles.commentInputContainer, { paddingBottom: Math.max(insets.bottom, SPACING.sm) }]}>
+          <Image
+            source={{
+              uri: profile?.avatar_url || user?.user_metadata?.avatar_url || 'https://via.placeholder.com/32',
+            }}
+            style={styles.commentInputAvatar}
+          />
+          <TextInput
+            style={styles.commentInput}
+            placeholder="Yorum yaz..."
+            placeholderTextColor={COLORS.textLight}
+            value={commentText}
+            onChangeText={setCommentText}
+            multiline
+            maxLength={1000}
+            textAlignVertical="top"
+          />
         <TouchableOpacity
           style={[
             styles.sendButton,
@@ -374,11 +534,44 @@ export default function PostDetailScreen() {
           ) : (
             <Send size={20} color={COLORS.white} />
           )}
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
-  );
-}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+
+        {/* Yorum Menü Modal */}
+        {menuVisibleCommentId && (
+          <View style={styles.menuOverlay} onTouchEnd={() => setMenuVisibleCommentId(null)}>
+            <View style={styles.menuContainer}>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  const comment = commentsData?.comments.find((c) => c.id === menuVisibleCommentId);
+                  if (comment) {
+                    handleEditComment(comment.id, comment.content);
+                  }
+                }}
+              >
+                <Edit3 size={18} color={COLORS.text} />
+                <Text style={styles.menuItemText}>Düzenle</Text>
+              </TouchableOpacity>
+              <View style={styles.menuDivider} />
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  if (menuVisibleCommentId) {
+                    handleDeleteComment(menuVisibleCommentId);
+                  }
+                }}
+              >
+                <Trash2 size={18} color={COLORS.error} />
+                <Text style={[styles.menuItemText, { color: COLORS.error }]}>Sil</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </KeyboardAvoidingView>
+    );
+  }
 
 const styles = StyleSheet.create({
   container: {
@@ -392,6 +585,9 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: SPACING.xl,
   },
   postCard: {
     backgroundColor: COLORS.white,
@@ -485,6 +681,9 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     gap: SPACING.sm,
   },
+  deleteButton: {
+    padding: SPACING.xs,
+  },
   actionText: {
     fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
@@ -555,10 +754,18 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     backgroundColor: COLORS.white,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    paddingTop: SPACING.sm,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
     gap: SPACING.sm,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
   },
   commentInputAvatar: {
     width: 32,
@@ -569,7 +776,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    paddingVertical: Platform.OS === 'ios' ? SPACING.sm : SPACING.xs,
     borderRadius: 20,
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
@@ -586,5 +793,81 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     backgroundColor: COLORS.border,
+  },
+  commentMenuButton: {
+    marginLeft: 'auto',
+    padding: SPACING.xs,
+  },
+  menuOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    zIndex: 1000,
+  },
+  menuContainer: {
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    paddingVertical: SPACING.xs,
+    minWidth: 150,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  menuItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  menuItemText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '500' as const,
+    color: COLORS.text,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: SPACING.xs,
+  },
+  editContainer: {
+    marginTop: SPACING.xs,
+  },
+  editInput: {
+    backgroundColor: COLORS.background,
+    borderRadius: 8,
+    padding: SPACING.sm,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    minHeight: 60,
+    maxHeight: 120,
+    marginBottom: SPACING.xs,
+    textAlignVertical: 'top' as const,
+  },
+  editActions: {
+    flexDirection: 'row' as const,
+    justifyContent: 'flex-end' as const,
+    gap: SPACING.sm,
+  },
+  editButton: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: 8,
+    minWidth: 70,
+    alignItems: 'center' as const,
+  },
+  cancelButton: {
+    backgroundColor: COLORS.border,
+  },
+  saveButton: {
+    backgroundColor: COLORS.primary,
+  },
+  editButtonText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600' as const,
+    color: COLORS.text,
   },
 });
