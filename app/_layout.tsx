@@ -55,6 +55,8 @@ function RootLayoutNav() {
       <Stack.Screen name="all-users" options={{ title: "Kullanıcılar" }} />
       <Stack.Screen name="profile/edit" options={{ headerShown: false }} />
       <Stack.Screen name="profile/settings" options={{ title: "Ayarlar" }} />
+      <Stack.Screen name="profile/followers" options={{ title: "Takipçiler" }} />
+      <Stack.Screen name="profile/following" options={{ title: "Takip Edilenler" }} />
       <Stack.Screen name="kyc/verify" options={{ headerShown: false }} />
       <Stack.Screen name="admin/kyc" options={{ title: "KYC Başvuruları" }} />
       <Stack.Screen name="ktu/verify" options={{ title: "Öğrenci Doğrulama" }} />

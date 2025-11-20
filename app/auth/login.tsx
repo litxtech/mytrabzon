@@ -1,18 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView, ScrollView, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView, ScrollView, Alert } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Mail, Lock, PhoneCall } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
-import * as AppleAuthentication from 'expo-apple-authentication';
 import { makeRedirectUri } from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
 
-WebBrowser.maybeCompleteAuthSession();
-
-type AuthMode = 'login' | 'register' | 'magic' | 'forgot' | 'phone' | 'phone-password-setup' | 'phone-forgot';
+type AuthMode = 'login' | 'register' | 'email-code' | 'forgot' | 'phone' | 'phone-password-setup' | 'phone-forgot';
 
 export default function LoginScreen() {
   const [mode, setMode] = useState<AuthMode>('login');
@@ -25,8 +21,9 @@ export default function LoginScreen() {
   const [phonePassword, setPhonePassword] = useState('');
   const [phonePasswordConfirm, setPhonePasswordConfirm] = useState('');
   const [phoneUserId, setPhoneUserId] = useState<string | null>(null);
+  const [emailCode, setEmailCode] = useState('');
+  const [emailCodeSent, setEmailCodeSent] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [oauthLoading, setOauthLoading] = useState(false);
   const isNavigatingRef = useRef(false); // Navigation flag - duplicate call'ları önlemek için
   const router = useRouter();
   const pathname = usePathname(); // Mevcut path'i takip et
@@ -76,7 +73,6 @@ export default function LoginScreen() {
 
       // Loading state'leri kapat
       console.log('🔍 [checkProfileAndNavigate] Closing loading states...');
-      setOauthLoading(false);
       setLoading(false);
       console.log('✅ [checkProfileAndNavigate] Loading states closed');
 
@@ -175,7 +171,6 @@ export default function LoginScreen() {
     } catch (error: any) {
       console.error('❌ [checkProfileAndNavigate] Error in checkProfileAndNavigate:', error);
       console.error('❌ [checkProfileAndNavigate] Error details:', JSON.stringify(error, null, 2));
-      setOauthLoading(false);
       setLoading(false);
       
       // Hata durumunda onboarding'e yönlendir
@@ -206,7 +201,6 @@ export default function LoginScreen() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('🔔 [onAuthStateChange] Auth state changed:', event, 'User ID:', session?.user?.id);
       console.log('🔔 [onAuthStateChange] isNavigatingRef.current:', isNavigatingRef.current);
-      console.log('🔔 [onAuthStateChange] oauthLoading:', oauthLoading);
       
       if (event === 'SIGNED_IN' && session?.user) {
         console.log('✅ [onAuthStateChange] User signed in via OAuth:', session.user.id);
@@ -221,35 +215,26 @@ export default function LoginScreen() {
         }
       } else if (event === 'SIGNED_OUT') {
         console.log('👋 [onAuthStateChange] User signed out');
-        setOauthLoading(false);
         setLoading(false);
         isNavigatingRef.current = false;
         console.log('✅ [onAuthStateChange] Reset states and navigation flag');
-      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-        console.log('🔄 [onAuthStateChange] Token refreshed for user:', session.user.id);
-        // Token yenilendiğinde de kontrol et (sadece OAuth loading durumunda)
-        if (oauthLoading && !isNavigatingRef.current) {
-          console.log('🚀 [onAuthStateChange] Calling checkProfileAndNavigate after token refresh');
-          setOauthLoading(false);
-          setLoading(false);
-          await checkProfileAndNavigate(session.user.id);
-          console.log('✅ [onAuthStateChange] checkProfileAndNavigate completed after token refresh');
-        } else {
-          console.log('⏭️ [onAuthStateChange] Skipping checkProfileAndNavigate after token refresh (oauthLoading:', oauthLoading, ', isNavigatingRef:', isNavigatingRef.current, ')');
-        }
       }
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [checkProfileAndNavigate, oauthLoading]);
+  }, [checkProfileAndNavigate]);
 
   useEffect(() => {
     if (mode !== 'phone') {
       setSmsSent(false);
       setSmsCode('');
       setSmsLoading(false);
+    }
+    if (mode === 'email-code') {
+      setEmailCode('');
+      setEmailCodeSent(false);
     }
   }, [mode]);
 
@@ -362,7 +347,7 @@ export default function LoginScreen() {
     }
   };
 
-  const handleMagicLink = async () => {
+  const handleSendEmailCode = async () => {
     const trimmedEmail = email.trim().toLowerCase();
     
     if (!trimmedEmail) {
@@ -378,25 +363,85 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      // Magic link için web callback sayfası kullan (oradan deep link'e yönlendirecek)
-      const deepLinkUrl = getRedirectUrl('auth/callback');
-      const emailRedirectTo = Platform.select({
-        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : deepLinkUrl,
-        default: deepLinkUrl,
-      });
-
+      // Email doğrulama kodu gönder (OTP) - magic link yerine kod gönder
       const { error } = await supabase.auth.signInWithOtp({ 
         email: trimmedEmail,
         options: {
-          emailRedirectTo,
+          shouldCreateUser: mode === 'register', // Kayıt modunda yeni kullanıcı oluştur
+          emailRedirectTo: undefined, // Magic link'i devre dışı bırak
         }
       });
       
-      if (error) throw error;
-      Alert.alert('Başarılı', 'Email adresinize giriş linki gönderildi!');
+      if (error) {
+        throw error;
+      }
+      
+      setEmailCodeSent(true);
+      Alert.alert('Başarılı', 'Email adresinize doğrulama kodu gönderildi!');
     } catch (error: any) {
-      console.error('Error sending magic link:', error);
+      console.error('Error sending email code:', error);
       Alert.alert('Hata', error.message || 'Bir hata oluştu');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyEmailCode = async () => {
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedCode = emailCode.trim();
+    
+    if (!trimmedCode) {
+      Alert.alert('Hata', 'Lütfen doğrulama kodunu girin');
+      return;
+    }
+
+    if (trimmedCode.length !== 6) {
+      Alert.alert('Hata', 'Doğrulama kodu 6 haneli olmalıdır');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Email ve kodu ile giriş yap
+      // Önce email type ile dene, sonra signup type ile dene
+      let { data, error } = await supabase.auth.verifyOtp({
+        email: trimmedEmail,
+        token: trimmedCode,
+        type: 'email',
+      });
+      
+      // Eğer email type başarısız olursa ve register modundaysak, signup type ile dene
+      if (error && mode === 'register') {
+        const { data: signUpData, error: signUpError } = await supabase.auth.verifyOtp({
+          email: trimmedEmail,
+          token: trimmedCode,
+          type: 'signup',
+        });
+        if (signUpError) throw signUpError;
+        data = signUpData;
+      } else if (error) {
+        throw error;
+      }
+
+      if (data?.user) {
+        // Profil kontrolü yap
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', data.user.id)
+          .maybeSingle();
+
+        if (profile?.full_name) {
+          // Profil var, feed'e yönlendir
+          router.replace('/(tabs)/feed');
+        } else {
+          // Profil yok, onboarding'e yönlendir
+          router.replace('/auth/onboarding');
+        }
+      }
+    } catch (error: any) {
+      console.error('Error verifying email code:', error);
+      Alert.alert('Hata', error.message || 'Doğrulama kodu hatalı');
     } finally {
       setLoading(false);
     }
@@ -699,210 +744,83 @@ export default function LoginScreen() {
     }
   };
 
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    setOauthLoading(true);
-    try {
-      console.log('🔐 [GoogleLogin] Starting Google OAuth login...');
-
-      // Platforma göre redirect URL belirle
-      const isNative = Platform.OS === 'ios' || Platform.OS === 'android';
-      const redirectUrl = isNative ? getRedirectUrl('auth/callback') : getRedirectUrl('auth/callback');
-
-      console.log('🔐 [GoogleLogin] Platform:', Platform.OS, 'Redirect URL:', redirectUrl);
-
-      // Web'de Supabase'in standart yönlendirmesini kullan
-      if (Platform.OS === 'web') {
-        const { data, error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: redirectUrl,
-            skipBrowserRedirect: false,
-          },
-        });
-
-        if (error) throw error;
-        if (data.url) {
-          window.location.href = data.url;
-        }
-        return;
-      }
-
-      // Native platformlar için Supabase OAuth - direkt deep link'e yönlendir
-      // skipBrowserRedirect: false kullanarak Supabase'in normal redirect akışını kullan
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: redirectUrl,
-          skipBrowserRedirect: true,
-        },
-      });
-
-      if (error) {
-        console.error('🔐 [GoogleLogin] OAuth error:', error);
-        throw error;
-      }
-
-      if (!data?.url) {
-        throw new Error('OAuth URL alınamadı');
-      }
-
-      console.log('🔐 [GoogleLogin] Opening OAuth session:', data.url);
-      const authResult = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-      if (authResult.type === 'cancel' || authResult.type === 'dismiss') {
-        setLoading(false);
-        setOauthLoading(false);
-      }
-      
-      // OAuth başarılı olduğunda onAuthStateChange callback'i tetiklenecek
-      // ve checkProfileAndNavigate çağrılacak
-      // Bu yüzden burada loading state'i kapatmıyoruz - callback ekranında kapatılacak
-      
-    } catch (error: any) {
-      console.error('🔐 [GoogleLogin] Error during Google login:', error);
-      Alert.alert('Hata', error.message || 'Google ile giriş yapılırken bir hata oluştu');
-      setLoading(false);
-      setOauthLoading(false);
-    }
-  };
 
 
-  const handleAppleLogin = async () => {
-    // Apple ile giriş sadece iOS'ta çalışır
-    if (Platform.OS !== 'ios') {
-      Alert.alert('Bilgi', 'Apple ile giriş sadece iOS cihazlarda kullanılabilir');
-      return;
-    }
-
-    setLoading(true);
-    setOauthLoading(true);
-    try {
-      console.log('Starting Apple native login...');
-      
-      // Apple native authentication kullan
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-      });
-
-      console.log('Apple credential received:', {
-        user: credential.user,
-        email: credential.email,
-        identityToken: !!credential.identityToken,
-      });
-
-      if (!credential.identityToken) {
-        throw new Error('Apple identity token alınamadı');
-      }
-
-      // Identity token'ı decode et ve aud claim'ini kontrol et
-      try {
-        const tokenParts = credential.identityToken.split('.');
-        if (tokenParts.length === 3) {
-          // Base64 decode (React Native için)
-          const base64 = tokenParts[1].replace(/-/g, '+').replace(/_/g, '/');
-          const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
-          const decoded = atob(padded);
-          const payload = JSON.parse(decoded);
-          
-          console.log('Apple identity token payload:', {
-            aud: payload.aud,
-            sub: payload.sub,
-            iss: payload.iss,
-            exp: payload.exp,
-          });
-          
-          // Expo Go kontrolü - aud claim'i "host.exp.Exponent" ise development build gerekli
-          if (payload.aud === 'host.exp.Exponent') {
-            Alert.alert(
-              'Development Build Gerekli',
-              'Apple ile giriş için development build kullanmanız gerekiyor. Expo Go\'da çalışmaz.\n\nLütfen EAS Build ile development build oluşturun.'
-            );
-            setLoading(false);
-            setOauthLoading(false);
-            return;
-          }
-          
-          // aud claim'i Service ID olmalı: com.litxtech.mytrabzon.login
-          if (payload.aud && payload.aud !== 'com.litxtech.mytrabzon.login') {
-            console.warn('⚠️ Token audience mismatch!');
-            console.warn('Expected: com.litxtech.mytrabzon.login');
-            console.warn('Got:', payload.aud);
-            console.warn('Supabase Dashboard → Authentication → Providers → Apple → Service ID (Client ID) alanına "' + payload.aud + '" yazılmalı');
-          }
-        }
-      } catch (decodeError) {
-        console.warn('Could not decode identity token:', decodeError);
-      }
-
-      // Supabase'e identity token ile giriş yap
-      // Not: Supabase'de Apple provider yapılandırmasında Service ID (Client ID) olarak
-      // "com.litxtech.mytrabzon.login" ayarlanmış olmalı
-      const { data, error } = await supabase.auth.signInWithIdToken({
-        provider: 'apple',
-        token: credential.identityToken,
-      });
-
-      if (error) {
-        console.error('Supabase Apple sign in error:', error);
-        throw error;
-      }
-
-      if (data.user) {
-        console.log('Apple login successful:', data.user.id);
-        setOauthLoading(false);
-        setLoading(false);
-        await checkProfileAndNavigate(data.user.id);
-      } else {
-        throw new Error('Kullanıcı bilgisi alınamadı');
-      }
-    } catch (error: any) {
-      // Kullanıcı iptal ettiyse hata gösterme
-      if (error.code === 'ERR_CANCELED' || error.code === 'ERR_REQUEST_CANCELED' || error.message?.includes('canceled')) {
-        console.log('Apple giriş iptal edildi');
-      } else {
-        console.error('Error during Apple login:', error);
-        Alert.alert('Hata', error.message || 'Apple ile giriş yapılırken bir hata oluştu');
-      }
-      setLoading(false);
-      setOauthLoading(false);
-    }
-  };
 
 
   const renderForm = () => {
-    if (mode === 'magic') {
+    if (mode === 'email-code') {
       return (
         <View style={styles.formContainer}>
-          <Text style={styles.formTitle}>Link ile Giriş</Text>
-          <Text style={styles.formSubtitle}>Email adresinize giriş linki göndereceğiz</Text>
+          <Text style={styles.formTitle}>Email ile Giriş</Text>
+          <Text style={styles.formSubtitle}>
+            {emailCodeSent 
+              ? 'Email adresinize gönderilen 6 haneli kodu girin' 
+              : 'Email adresinize doğrulama kodu göndereceğiz'}
+          </Text>
           
           <View style={styles.inputContainer}>
-            <PhoneCall size={20} color={COLORS.white} style={styles.inputIcon} />
+            <Mail size={20} color={COLORS.white} style={styles.inputIcon} />
             <TextInput
               style={styles.input}
               placeholder="Email"
               placeholderTextColor="rgba(255,255,255,0.6)"
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(text) => {
+                setEmail(text);
+                if (emailCodeSent) {
+                  setEmailCodeSent(false);
+                  setEmailCode('');
+                }
+              }}
               keyboardType="email-address"
               autoCapitalize="none"
+              editable={!emailCodeSent}
             />
           </View>
 
+          {emailCodeSent && (
+            <View style={styles.inputContainer}>
+              <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Doğrulama Kodu (6 haneli)"
+                placeholderTextColor="rgba(255,255,255,0.6)"
+                value={emailCode}
+                onChangeText={(text) => setEmailCode(text.replace(/[^0-9]/g, '').slice(0, 6))}
+                keyboardType="number-pad"
+                maxLength={6}
+                autoFocus
+              />
+            </View>
+          )}
+
           <TouchableOpacity
             style={[styles.primaryButton, loading && styles.buttonDisabled]}
-            onPress={handleMagicLink}
+            onPress={emailCodeSent ? handleVerifyEmailCode : handleSendEmailCode}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color={COLORS.white} />
             ) : (
-              <Text style={styles.primaryButtonText}>Link Gönder</Text>
+              <Text style={styles.primaryButtonText}>
+                {emailCodeSent ? 'Kodu Doğrula' : 'Kod Gönder'}
+              </Text>
             )}
           </TouchableOpacity>
+
+          {emailCodeSent && (
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={() => {
+                setEmailCodeSent(false);
+                setEmailCode('');
+              }}
+              disabled={loading}
+            >
+              <Text style={styles.secondaryButtonText}>Farklı Email Kullan</Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity onPress={() => setMode('login')}>
             <Text style={styles.linkText}>Geri Dön</Text>
@@ -1247,42 +1165,18 @@ export default function LoginScreen() {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.googleButton, (loading || oauthLoading) && styles.buttonDisabled]}
-          onPress={handleGoogleLogin}
-          disabled={loading || oauthLoading}
-        >
-          {oauthLoading ? (
-            <ActivityIndicator color={COLORS.white} />
-          ) : (
-            <Text style={styles.googleButtonText}>
-              Google ile {mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
-            </Text>
-          )}
-        </TouchableOpacity>
 
-        {Platform.OS === 'ios' && (
-          <TouchableOpacity
-            style={[styles.appleButton, (loading || oauthLoading) && styles.buttonDisabled]}
-            onPress={handleAppleLogin}
-            disabled={loading || oauthLoading}
-          >
-            {oauthLoading ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <Text style={styles.appleButtonText}>
-                Apple ile {mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
-              </Text>
-            )}
-          </TouchableOpacity>
-        )}
 
         <TouchableOpacity
           style={[styles.magicLinkButton, loading && styles.buttonDisabled]}
-          onPress={() => setMode('magic')}
+          onPress={() => {
+            setMode('email-code');
+            setEmailCodeSent(false);
+            setEmailCode('');
+          }}
           disabled={loading}
         >
-          <Text style={styles.magicLinkButtonText}>Link ile Giriş</Text>
+          <Text style={styles.magicLinkButtonText}>Email Kodu ile Giriş</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -1319,21 +1213,6 @@ export default function LoginScreen() {
           {renderForm()}
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Developed by</Text>
-            <Text style={styles.companyName}>LITXTECH LLC</Text>
-            <TouchableOpacity 
-              onPress={() => Linking.openURL('https://www.litxtech.com')}
-              style={styles.footerLinks}
-            >
-              <Text style={styles.footerLinkText}>www.litxtech.com</Text>
-            </TouchableOpacity>
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <TouchableOpacity onPress={() => Linking.openURL('https://www.litxtech.com')}>
-                <Text style={styles.dividerText}>www.litxtech.com</Text>
-              </TouchableOpacity>
-              <View style={styles.dividerLine} />
-            </View>
             <Text style={styles.terms}>
               Devam ederek{' '}
               <Text 
@@ -1448,38 +1327,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     textAlign: 'center' as const,
   },
-  googleButton: {
-    backgroundColor: '#4285F4',
-    paddingVertical: SPACING.md,
-    borderRadius: 12,
-    alignItems: 'center' as const,
-    marginBottom: SPACING.sm,
-    borderWidth: 1,
-    borderColor: '#357AE8',
-  },
-  googleButtonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600' as const,
-    flexWrap: 'wrap',
-    textAlign: 'center' as const,
-  },
-  appleButton: {
-    backgroundColor: '#000000',
-    paddingVertical: SPACING.md,
-    borderRadius: 12,
-    alignItems: 'center' as const,
-    marginBottom: SPACING.sm,
-    borderWidth: 1,
-    borderColor: '#333333',
-  },
-  appleButtonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600' as const,
-    flexWrap: 'wrap',
-    textAlign: 'center' as const,
-  },
   magicLinkButton: {
     backgroundColor: '#9B59B6',
     paddingVertical: SPACING.md,
@@ -1509,11 +1356,6 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.3)',
   },
-  dividerText: {
-    color: COLORS.white,
-    marginHorizontal: SPACING.md,
-    opacity: 0.7,
-  },
   switchText: {
     color: COLORS.white,
     fontSize: FONT_SIZES.sm,
@@ -1530,32 +1372,14 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     textDecorationLine: 'underline' as const,
   },
+  dividerText: {
+    color: COLORS.white,
+    marginHorizontal: SPACING.md,
+    opacity: 0.7,
+  },
   footer: {
     marginTop: SPACING.xxl,
     alignItems: 'center' as const,
-  },
-  footerText: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.white,
-    opacity: 0.6,
-    marginBottom: SPACING.xs,
-  },
-  companyName: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600' as const,
-    color: COLORS.secondary,
-    marginBottom: SPACING.sm,
-  },
-  footerLinks: {
-    marginBottom: SPACING.md,
-  },
-  footerLink: {
-    textDecorationLine: 'none' as const,
-  },
-  footerLinkText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.white,
-    opacity: 0.8,
   },
   terms: {
     fontSize: FONT_SIZES.xs,

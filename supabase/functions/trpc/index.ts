@@ -335,7 +335,7 @@ const appRouter = createTRPCRouter({
         // Sadece show_in_directory = true olan kullanıcıları göster
         let query = supabase
           .from('profiles')
-          .select('id, full_name, avatar_url, bio, city, district, created_at, gender, public_id, username', { count: 'exact' })
+          .select('id, full_name, avatar_url, bio, city, district, created_at, gender, public_id, username, verified', { count: 'exact' })
           .eq('show_in_directory', true)
           .order('created_at', { ascending: false });
 
@@ -629,55 +629,85 @@ const appRouter = createTRPCRouter({
       .query(async ({ ctx, input }) => {
         const { supabase } = ctx;
 
-        // Toplam takipçi sayısı
-        const { count } = await supabase
-          .from('follows')
-          .select('*', { count: 'exact', head: true })
-          .eq('following_id', input.user_id);
+        try {
+          // Önce takipçi ID'lerini al
+          const { data: followsData, error: followsError } = await supabase
+            .from('follows')
+            .select('follower_id')
+            .eq('following_id', input.user_id)
+            .order('created_at', { ascending: false })
+            .range(input.offset, input.offset + input.limit - 1);
 
-        const { data: follows, error } = await supabase
-          .from('follows')
-          .select(`
-            follower_id,
-            created_at,
-            follower:profiles!follows_follower_id_fkey(
-              id,
-              full_name,
-              username,
-              avatar_url,
-              verified,
-              supporter_badge,
-              supporter_badge_visible,
-              supporter_badge_color
-            )
-          `)
-          .eq('following_id', input.user_id)
-          .order('created_at', { ascending: false })
-          .range(input.offset, input.offset + input.limit - 1);
+          if (followsError) {
+            console.error('Get followers error:', followsError);
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: `Takipçiler yüklenirken hata oluştu: ${followsError.message}`,
+            });
+          }
 
-        if (error) {
+          // Eğer takipçi yoksa boş dizi döndür
+          if (!followsData || followsData.length === 0) {
+            const { count } = await supabase
+              .from('follows')
+              .select('*', { count: 'exact', head: true })
+              .eq('following_id', input.user_id);
+
+            return {
+              followers: [],
+              total: count || 0,
+            };
+          }
+
+          // Takipçi ID'lerini al
+          const followerIds = followsData.map((f: any) => f.follower_id);
+
+          // Profil detaylarını al
+          const { data: profiles, error: profilesError } = await supabase
+            .from('profiles')
+            .select('id, full_name, username, avatar_url, verified, supporter_badge, supporter_badge_color, supporter_badge_visible')
+            .in('id', followerIds);
+
+          if (profilesError) {
+            console.error('Get profiles error:', profilesError);
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: `Profil bilgileri yüklenirken hata oluştu: ${profilesError.message}`,
+            });
+          }
+
+          // Profilleri ID'ye göre map'le
+          const profilesMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+
+          // Toplam takipçi sayısı
+          const { count } = await supabase
+            .from('follows')
+            .select('*', { count: 'exact', head: true })
+            .eq('following_id', input.user_id);
+
+          return {
+            followers: followerIds.map((id: string) => {
+              const profile = profilesMap.get(id) as any;
+              return {
+                id,
+                full_name: profile?.full_name || '',
+                username: profile?.username || null,
+                avatar_url: profile?.avatar_url || null,
+                verified: profile?.verified || false,
+                supporter_badge: profile?.supporter_badge || false,
+                supporter_badge_color: profile?.supporter_badge_color || null,
+                supporter_badge_visible: profile?.supporter_badge_visible || false,
+              };
+            }),
+            total: count || 0,
+          };
+        } catch (error: any) {
           console.error('Get followers error:', error);
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Takipçiler yüklenirken hata oluştu: ' + error.message });
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `Takipçiler yüklenirken hata oluştu: ${error.message || error}`,
+          });
         }
-
-        const followers = (follows || [])
-          .filter((f: any) => f.follower) // Null follower'ları filtrele
-          .map((f: any) => ({
-            id: f.follower.id,
-            full_name: f.follower.full_name || 'İsimsiz',
-            username: f.follower.username || null,
-            avatar_url: f.follower.avatar_url || null,
-            verified: f.follower.verified || false,
-            supporter_badge: f.follower.supporter_badge || null,
-            supporter_badge_visible: f.follower.supporter_badge_visible || false,
-            supporter_badge_color: f.follower.supporter_badge_color || null,
-            created_at: f.created_at,
-          }));
-
-        return { 
-          followers,
-          total: count || 0,
-        };
       }),
 
     // Takip edilenleri getir
@@ -690,55 +720,85 @@ const appRouter = createTRPCRouter({
       .query(async ({ ctx, input }) => {
         const { supabase } = ctx;
 
-        // Toplam takip sayısı
-        const { count } = await supabase
-          .from('follows')
-          .select('*', { count: 'exact', head: true })
-          .eq('follower_id', input.user_id);
+        try {
+          // Önce takip edilen ID'lerini al
+          const { data: followsData, error: followsError } = await supabase
+            .from('follows')
+            .select('following_id')
+            .eq('follower_id', input.user_id)
+            .order('created_at', { ascending: false })
+            .range(input.offset, input.offset + input.limit - 1);
 
-        const { data: follows, error } = await supabase
-          .from('follows')
-          .select(`
-            following_id,
-            created_at,
-            following:profiles!follows_following_id_fkey(
-              id,
-              full_name,
-              username,
-              avatar_url,
-              verified,
-              supporter_badge,
-              supporter_badge_visible,
-              supporter_badge_color
-            )
-          `)
-          .eq('follower_id', input.user_id)
-          .order('created_at', { ascending: false })
-          .range(input.offset, input.offset + input.limit - 1);
+          if (followsError) {
+            console.error('Get following error:', followsError);
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: `Takip edilenler yüklenirken hata oluştu: ${followsError.message}`,
+            });
+          }
 
-        if (error) {
+          // Eğer takip edilen yoksa boş dizi döndür
+          if (!followsData || followsData.length === 0) {
+            const { count } = await supabase
+              .from('follows')
+              .select('*', { count: 'exact', head: true })
+              .eq('follower_id', input.user_id);
+
+            return {
+              following: [],
+              total: count || 0,
+            };
+          }
+
+          // Takip edilen ID'lerini al
+          const followingIds = followsData.map((f: any) => f.following_id);
+
+          // Profil detaylarını al
+          const { data: profiles, error: profilesError } = await supabase
+            .from('profiles')
+            .select('id, full_name, username, avatar_url, verified, supporter_badge, supporter_badge_color, supporter_badge_visible')
+            .in('id', followingIds);
+
+          if (profilesError) {
+            console.error('Get profiles error:', profilesError);
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: `Profil bilgileri yüklenirken hata oluştu: ${profilesError.message}`,
+            });
+          }
+
+          // Profilleri ID'ye göre map'le
+          const profilesMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+
+          // Toplam takip sayısı
+          const { count } = await supabase
+            .from('follows')
+            .select('*', { count: 'exact', head: true })
+            .eq('follower_id', input.user_id);
+
+          return {
+            following: followingIds.map((id: string) => {
+              const profile = profilesMap.get(id) as any;
+              return {
+                id,
+                full_name: profile?.full_name || '',
+                username: profile?.username || null,
+                avatar_url: profile?.avatar_url || null,
+                verified: profile?.verified || false,
+                supporter_badge: profile?.supporter_badge || false,
+                supporter_badge_color: profile?.supporter_badge_color || null,
+                supporter_badge_visible: profile?.supporter_badge_visible || false,
+              };
+            }),
+            total: count || 0,
+          };
+        } catch (error: any) {
           console.error('Get following error:', error);
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Takip edilenler yüklenirken hata oluştu: ' + error.message });
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `Takip edilenler yüklenirken hata oluştu: ${error.message || error}`,
+          });
         }
-
-        const following = (follows || [])
-          .filter((f: any) => f.following) // Null following'leri filtrele
-          .map((f: any) => ({
-            id: f.following.id,
-            full_name: f.following.full_name || 'İsimsiz',
-            username: f.following.username || null,
-            avatar_url: f.following.avatar_url || null,
-            verified: f.following.verified || false,
-            supporter_badge: f.following.supporter_badge || null,
-            supporter_badge_visible: f.following.supporter_badge_visible || false,
-            supporter_badge_color: f.following.supporter_badge_color || null,
-            created_at: f.created_at,
-          }));
-
-        return { 
-          following,
-          total: count || 0,
-        };
       }),
 
     // Takip istatistiklerini getir
@@ -806,6 +866,64 @@ const appRouter = createTRPCRouter({
         }
 
         return { policies: policies || [] };
+      }),
+
+    consentToPolicies: publicProcedure
+      .input(
+        z.object({
+          policyIds: z.array(z.string()),
+          userId: z.string().uuid().optional(), // Opsiyonel: eğer authenticated değilse user_id gönderilebilir
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        // User ID'yi belirle: önce context'ten, sonra input'tan
+        const userId = user?.id || input.userId;
+        
+        if (!userId) {
+          throw new TRPCError({ 
+            code: 'UNAUTHORIZED',
+            message: 'Giriş yapmanız gerekiyor',
+          });
+        }
+
+        // Politikaları al
+        const { data: policies, error: policiesError } = await supabase
+          .from('policies')
+          .select('id, policy_type')
+          .in('id', input.policyIds);
+
+        if (policiesError || !policies || policies.length === 0) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Geçersiz politika ID\'leri',
+          });
+        }
+
+        // Onay kayıtlarını oluştur
+        const consents = policies.map((policy) => ({
+          user_id: userId,
+          policy_id: policy.id,
+          policy_type: policy.policy_type,
+          consented: true,
+          policy_version: 1, // Şimdilik 1, versiyon sistemi eklendiğinde güncellenecek
+        }));
+
+        const { error: insertError } = await supabase
+          .from('user_policy_consents')
+          .upsert(consents, {
+            onConflict: 'user_id,policy_id,policy_version',
+          });
+
+        if (insertError) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: insertError.message,
+          });
+        }
+
+        return { success: true, consentedCount: consents.length };
       }),
 
     // ============================================
@@ -1221,7 +1339,16 @@ const appRouter = createTRPCRouter({
           .select(
             `
             *,
-            author:profiles!posts_author_id_fkey(*)
+            author:profiles!posts_author_id_fkey(
+              id,
+              full_name,
+              username,
+              avatar_url,
+              verified,
+              supporter_badge,
+              supporter_badge_visible,
+              supporter_badge_color
+            )
           `,
             { count: "exact" }
           )
@@ -1382,6 +1509,87 @@ const appRouter = createTRPCRouter({
           });
 
         if (error) throw new Error(error.message);
+
+        // Beğeni bildirimi oluştur
+        try {
+          const { data: post } = await supabase
+            .from('posts')
+            .select('author_id, author:profiles!posts_author_id_fkey(full_name)')
+            .eq('id', input.postId)
+            .single();
+
+          if (post && post.author_id && post.author_id !== user.id) {
+            const { data: likerProfile } = await supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', user.id)
+              .single();
+
+            const likerName = likerProfile?.full_name || 'Bir kullanıcı';
+            const { data: notification } = await supabase
+              .from('notifications')
+              .insert({
+                user_id: post.author_id,
+                type: 'SYSTEM',
+                title: 'Yeni Beğeni',
+                body: `${likerName} gönderinizi beğendi`,
+                data: {
+                  type: 'LIKE',
+                  post_id: input.postId,
+                  liker_id: user.id,
+                  liker_name: likerName,
+                },
+                push_sent: false,
+              })
+              .select()
+              .single();
+
+            // Push bildirimi gönder
+            if (notification) {
+              const { data: targetProfile } = await supabase
+                .from('profiles')
+                .select('push_token')
+                .eq('id', post.author_id)
+                .maybeSingle();
+
+              if (targetProfile?.push_token) {
+                try {
+                  const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+                  await fetch(expoPushUrl, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      Accept: 'application/json',
+                      'Accept-Encoding': 'gzip, deflate',
+                    },
+                    body: JSON.stringify({
+                      to: targetProfile.push_token,
+                      sound: 'default',
+                      title: 'Yeni Beğeni',
+                      body: `${likerName} gönderinizi beğendi`,
+                      data: {
+                        type: 'LIKE',
+                        postId: input.postId,
+                      },
+                      badge: 1,
+                    }),
+                  });
+
+                  await supabase
+                    .from('notifications')
+                    .update({ push_sent: true })
+                    .eq('id', notification.id);
+                } catch (pushError) {
+                  console.error('Like push notification error:', pushError);
+                }
+              }
+            }
+          }
+        } catch (notificationError) {
+          console.error('Like notification error:', notificationError);
+          // Bildirim hatası olsa bile beğeni işlemi başarılı, devam et
+        }
+
         return { liked: true };
       }),
 
@@ -1542,7 +1750,16 @@ const appRouter = createTRPCRouter({
           .from('posts')
           .select(`
             *,
-            author:profiles!posts_author_id_fkey(*)
+            author:profiles!posts_author_id_fkey(
+              id,
+              full_name,
+              username,
+              avatar_url,
+              verified,
+              supporter_badge,
+              supporter_badge_visible,
+              supporter_badge_color
+            )
           `)
           .eq('id', input.postId)
           .eq('is_deleted', false)
@@ -1618,6 +1835,103 @@ const appRouter = createTRPCRouter({
           .single();
 
         if (error) throw new Error(error.message);
+
+        // Yorum bildirimi oluştur
+        try {
+          // Post veya event'in sahibini bul
+          let postAuthorId: string | null = null;
+          const { data: post } = await supabase
+            .from('posts')
+            .select('author_id')
+            .eq('id', input.post_id)
+            .single();
+
+          if (post) {
+            postAuthorId = post.author_id;
+          } else {
+            const { data: event } = await supabase
+              .from('events')
+              .select('user_id')
+              .eq('id', input.post_id)
+              .single();
+            if (event) {
+              postAuthorId = event.user_id;
+            }
+          }
+
+          if (postAuthorId && postAuthorId !== user.id) {
+            const { data: commenterProfile } = await supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', user.id)
+              .single();
+
+            const commenterName = commenterProfile?.full_name || 'Bir kullanıcı';
+            const { data: notification } = await supabase
+              .from('notifications')
+              .insert({
+                user_id: postAuthorId,
+                type: 'SYSTEM',
+                title: 'Yeni Yorum',
+                body: `${commenterName} gönderinize yorum yaptı: ${input.content.substring(0, 50)}${input.content.length > 50 ? '...' : ''}`,
+                data: {
+                  type: 'COMMENT',
+                  post_id: input.post_id,
+                  comment_id: data.id,
+                  commenter_id: user.id,
+                  commenter_name: commenterName,
+                },
+                push_sent: false,
+              })
+              .select()
+              .single();
+
+            // Push bildirimi gönder
+            if (notification) {
+              const { data: targetProfile } = await supabase
+                .from('profiles')
+                .select('push_token')
+                .eq('id', postAuthorId)
+                .maybeSingle();
+
+              if (targetProfile?.push_token) {
+                try {
+                  const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+                  await fetch(expoPushUrl, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      Accept: 'application/json',
+                      'Accept-Encoding': 'gzip, deflate',
+                    },
+                    body: JSON.stringify({
+                      to: targetProfile.push_token,
+                      sound: 'default',
+                      title: 'Yeni Yorum',
+                      body: `${commenterName} gönderinize yorum yaptı`,
+                      data: {
+                        type: 'COMMENT',
+                        postId: input.post_id,
+                      },
+                      badge: 1,
+                    }),
+                  });
+
+                  await supabase
+                    .from('notifications')
+                    .update({ push_sent: true })
+                    .eq('id', notification.id);
+                } catch (pushError) {
+                  console.error('Comment push notification error:', pushError);
+                }
+              }
+            }
+          }
+        } catch (notificationError) {
+          console.error('Comment notification error:', notificationError);
+          // Bildirim hatası olsa bile yorum işlemi başarılı, devam et
+        }
+
         return data;
       }),
 
@@ -1672,10 +1986,10 @@ const appRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Unauthorized' });
         }
 
-        // Yorumun kullanıcıya ait olduğunu kontrol et
+        // Yorumun kullanıcıya ait olduğunu ve post'un hala var olduğunu kontrol et
         const { data: comment, error: fetchError } = await supabase
           .from("comments")
-          .select("*")
+          .select("*, post_id")
           .eq("id", input.commentId)
           .eq("user_id", user.id)
           .single();
@@ -1687,6 +2001,34 @@ const appRouter = createTRPCRouter({
           });
         }
 
+        // Post'un hala var olduğunu kontrol et (posts veya events tablosunda)
+        const { data: post, error: postError } = await supabase
+          .from("posts")
+          .select("id")
+          .eq("id", comment.post_id)
+          .eq("is_deleted", false)
+          .single();
+
+        // Eğer posts'ta yoksa events'te kontrol et
+        let postExists = !!post;
+        if (postError || !post) {
+          const { data: event } = await supabase
+            .from("events")
+            .select("id")
+            .eq("id", comment.post_id)
+            .eq("is_deleted", false)
+            .single();
+          postExists = !!event;
+        }
+
+        if (!postExists) {
+          throw new TRPCError({ 
+            code: 'BAD_REQUEST', 
+            message: 'Gönderi bulunamadı veya silinmiş' 
+          });
+        }
+
+        // Sadece content ve updated_at güncelle (foreign key'leri değiştirme)
         const { data, error } = await supabase
           .from("comments")
           .update({
@@ -1724,7 +2066,16 @@ const appRouter = createTRPCRouter({
           .select(
             `
             *,
-            user:profiles!comments_user_id_fkey(*)
+            user:profiles!comments_user_id_fkey(
+              id,
+              full_name,
+              username,
+              avatar_url,
+              verified,
+              supporter_badge,
+              supporter_badge_visible,
+              supporter_badge_color
+            )
           `,
             { count: "exact" }
           )
@@ -3124,6 +3475,80 @@ const appRouter = createTRPCRouter({
           .insert(documents);
         
         if (docsError) throw new Error(docsError.message);
+
+        // Admin'e KYC başvurusu bildirimi gönder
+        try {
+          const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+          const { data: userProfile } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', user.id)
+            .single();
+
+          const userName = userProfile?.full_name || 'Bir kullanıcı';
+          
+          const { data: notification } = await supabase
+            .from('notifications')
+            .insert({
+              user_id: SPECIAL_ADMIN_ID,
+              type: 'SYSTEM',
+              title: 'Yeni KYC Başvurusu',
+              body: `${userName} kimlik doğrulama başvurusu yaptı. Başvuruyu inceleyin.`,
+              data: {
+                type: 'KYC_REQUEST',
+                kyc_id: kycRequest.id,
+                user_id: user.id,
+                user_name: userName,
+              },
+              push_sent: false,
+            })
+            .select()
+            .single();
+
+          // Push bildirimi gönder
+          if (notification) {
+            const { data: adminProfile } = await supabase
+              .from('profiles')
+              .select('push_token')
+              .eq('id', SPECIAL_ADMIN_ID)
+              .maybeSingle();
+
+            if (adminProfile?.push_token) {
+              try {
+                const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+                await fetch(expoPushUrl, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'Accept-Encoding': 'gzip, deflate',
+                  },
+                  body: JSON.stringify({
+                    to: adminProfile.push_token,
+                    sound: 'default',
+                    title: 'Yeni KYC Başvurusu',
+                    body: `${userName} kimlik doğrulama başvurusu yaptı.`,
+                    data: {
+                      type: 'KYC_REQUEST',
+                      kycId: kycRequest.id,
+                    },
+                    badge: 1,
+                  }),
+                });
+
+                await supabase
+                  .from('notifications')
+                  .update({ push_sent: true })
+                  .eq('id', notification.id);
+              } catch (pushError) {
+                console.error('KYC request push notification error:', pushError);
+              }
+            }
+          }
+        } catch (notificationError) {
+          console.error('KYC request notification error:', notificationError);
+          // Bildirim hatası olsa bile KYC başvurusu başarılı, devam et
+        }
         
         return {
           success: true,
@@ -3543,52 +3968,6 @@ const appRouter = createTRPCRouter({
           missingPolicies,
           consents: consents || [],
         };
-      }),
-
-    consentToPolicies: protectedProcedure
-      .input(
-        z.object({
-          policyIds: z.array(z.string()),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const { supabase, user } = ctx;
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-        const { data: policies, error: policiesError } = await supabase
-          .from('policies')
-          .select('id, policy_type')
-          .in('id', input.policyIds);
-
-        if (policiesError || !policies || policies.length === 0) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Geçersiz politika ID\'leri',
-          });
-        }
-
-        const consents = policies.map((policy) => ({
-          user_id: user.id,
-          policy_id: policy.id,
-          policy_type: policy.policy_type,
-          consented: true,
-          policy_version: 1,
-        }));
-
-        const { error: insertError } = await supabase
-          .from('user_policy_consents')
-          .upsert(consents, {
-            onConflict: 'user_id,policy_id,policy_version',
-          });
-
-        if (insertError) {
-          throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
-            message: insertError.message,
-          });
-        }
-
-        return { success: true, consentedCount: consents.length };
       }),
   }),
 
@@ -6178,54 +6557,6 @@ const appRouter = createTRPCRouter({
         };
       }),
 
-    consentToPolicies: protectedProcedure
-      .input(
-        z.object({
-          policyIds: z.array(z.string()),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const { supabase, user } = ctx;
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-        // Politikaları al
-        const { data: policies, error: policiesError } = await supabase
-          .from('policies')
-          .select('id, policy_type')
-          .in('id', input.policyIds);
-
-        if (policiesError || !policies || policies.length === 0) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Geçersiz politika ID\'leri',
-          });
-        }
-
-        // Onay kayıtlarını oluştur
-        const consents = policies.map(policy => ({
-          user_id: user.id,
-          policy_id: policy.id,
-          policy_type: policy.policy_type,
-          consented: true,
-          policy_version: 1, // Şimdilik 1, versiyon sistemi eklendiğinde güncellenecek
-        }));
-
-        const { error: insertError } = await supabase
-          .from('user_policy_consents')
-          .upsert(consents, {
-            onConflict: 'user_id,policy_id,policy_version',
-          });
-
-        if (insertError) {
-          throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
-            message: insertError.message,
-          });
-        }
-
-        return { success: true, consentedCount: consents.length };
-      }),
-
     consentToFeature: protectedProcedure
       .input(
         z.object({
@@ -7249,20 +7580,364 @@ const appRouter = createTRPCRouter({
         
         if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
 
-        const { data: profileRow } = await supabase
-          .from("profiles")
-          .select("is_verified")
-          .eq("id", input.userId)
-          .single();
-
-        const stillVerified = profileRow?.is_verified === true;
-
+        // Profiles tablosundaki verified alanını false yap
         await supabase
           .from("profiles")
-          .update({ verified: stillVerified })
+          .update({ verified: false })
           .eq("id", input.userId);
 
         return { success: true };
+      }),
+
+    // KYC Yönetimi
+    getKycRequests: protectedProcedure
+      .input(
+        z.object({
+          status: z.enum(['pending', 'approved', 'rejected']).optional(),
+          limit: z.number().min(1).max(100).default(50),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        if (user.id !== SPECIAL_ADMIN_ID) {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("role, id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+        }
+        
+        // Önce toplam sayıyı al
+        let countQuery = supabase
+          .from("kyc_requests")
+          .select("*", { count: "exact", head: true });
+        
+        if (input.status) {
+          countQuery = countQuery.eq("status", input.status);
+        }
+        
+        const { count } = await countQuery;
+        
+        // KYC isteklerini al
+        let query = supabase
+          .from("kyc_requests")
+          .select("*");
+        
+        if (input.status) {
+          query = query.eq("status", input.status);
+        }
+        
+        query = query
+          .order("created_at", { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+        
+        const { data: requestsData, error } = await query;
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        // Manuel olarak user ve documents verilerini ekle
+        const userIds = (requestsData || []).map((r: any) => r.user_id);
+        const requestIds = (requestsData || []).map((r: any) => r.id);
+        
+        const [usersData, documentsData] = await Promise.all([
+          userIds.length > 0 ? supabase
+            .from('profiles')
+            .select('id, full_name, avatar_url, username, email')
+            .in('id', userIds)
+            .then(({ data }) => data || []) : Promise.resolve([]),
+          requestIds.length > 0 ? supabase
+            .from('kyc_documents')
+            .select('*')
+            .in('kyc_request_id', requestIds)
+            .then(({ data }) => data || []) : Promise.resolve([]),
+        ]);
+        
+        // Verileri birleştir
+        const requestsWithRelations = (requestsData || []).map((request: any) => {
+          const user = usersData.find((u: any) => u.id === request.user_id) || null;
+          const documents = documentsData.filter((d: any) => d.kyc_request_id === request.id);
+          
+          return {
+            ...request,
+            user,
+            documents,
+          };
+        });
+        
+        return {
+          requests: requestsWithRelations,
+          total: count || 0,
+        };
+      }),
+
+    approveKyc: protectedProcedure
+      .input(z.object({ kycId: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        let adminUserId: string;
+        if (user.id === SPECIAL_ADMIN_ID) {
+          const { data: adminUserRecord } = await supabase
+            .from("admin_users")
+            .select("id")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          adminUserId = adminUserRecord?.id || user.id;
+        } else {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+          adminUserId = adminUser.id;
+        }
+        
+        // KYC request'i güncelle
+        const { data: kycRequest, error: fetchError } = await supabase
+          .from("kyc_requests")
+          .select("user_id, full_name")
+          .eq("id", input.kycId)
+          .single();
+        
+        if (fetchError || !kycRequest) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'KYC başvurusu bulunamadı' });
+        }
+        
+        const { data, error } = await supabase
+          .from("kyc_requests")
+          .update({
+            status: 'approved',
+            reviewed_at: new Date().toISOString(),
+            reviewed_by: adminUserId,
+          })
+          .eq("id", input.kycId)
+          .select()
+          .single();
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        // Profile'ı güncelle (trigger otomatik yapacak ama emin olmak için)
+        await supabase
+          .from("profiles")
+          .update({ is_verified: true, verified: true })
+          .eq("id", kycRequest.user_id);
+
+        // KYC onay bildirimi gönder
+        try {
+          const { data: notification } = await supabase
+            .from('notifications')
+            .insert({
+              user_id: kycRequest.user_id,
+              type: 'SYSTEM',
+              title: 'Kimlik Doğrulama Onaylandı',
+              body: `Kimlik doğrulama başvurunuz onaylandı. Artık doğrulanmış kullanıcı olarak işaretlendiniz.`,
+              data: {
+                type: 'KYC_APPROVED',
+                kyc_id: input.kycId,
+              },
+              push_sent: false,
+            })
+            .select()
+            .single();
+
+          // Push bildirimi gönder
+          if (notification) {
+            const { data: targetProfile } = await supabase
+              .from('profiles')
+              .select('push_token')
+              .eq('id', kycRequest.user_id)
+              .maybeSingle();
+
+            if (targetProfile?.push_token) {
+              try {
+                const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+                await fetch(expoPushUrl, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'Accept-Encoding': 'gzip, deflate',
+                  },
+                  body: JSON.stringify({
+                    to: targetProfile.push_token,
+                    sound: 'default',
+                    title: 'Kimlik Doğrulama Onaylandı',
+                    body: 'Kimlik doğrulama başvurunuz onaylandı.',
+                    data: {
+                      type: 'KYC_APPROVED',
+                      kycId: input.kycId,
+                    },
+                    badge: 1,
+                  }),
+                });
+
+                await supabase
+                  .from('notifications')
+                  .update({ push_sent: true })
+                  .eq('id', notification.id);
+              } catch (pushError) {
+                console.error('KYC approval push notification error:', pushError);
+              }
+            }
+          }
+        } catch (notificationError) {
+          console.error('KYC approval notification error:', notificationError);
+        }
+        
+        return data;
+      }),
+
+    rejectKyc: protectedProcedure
+      .input(
+        z.object({
+          kycId: z.string().uuid(),
+          reviewNotes: z.string().min(1),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        let adminUserId: string;
+        if (user.id === SPECIAL_ADMIN_ID) {
+          const { data: adminUserRecord } = await supabase
+            .from("admin_users")
+            .select("id")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          adminUserId = adminUserRecord?.id || user.id;
+        } else {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+          adminUserId = adminUser.id;
+        }
+        
+        // KYC request'i güncelle
+        const { data: kycRequest, error: fetchError } = await supabase
+          .from("kyc_requests")
+          .select("user_id, full_name")
+          .eq("id", input.kycId)
+          .single();
+        
+        if (fetchError || !kycRequest) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'KYC başvurusu bulunamadı' });
+        }
+        
+        const { data, error } = await supabase
+          .from("kyc_requests")
+          .update({
+            status: 'rejected',
+            reviewed_at: new Date().toISOString(),
+            reviewed_by: adminUserId,
+            review_notes: input.reviewNotes,
+          })
+          .eq("id", input.kycId)
+          .select()
+          .single();
+        
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        
+        // Profile'ı güncelle (trigger otomatik yapacak ama emin olmak için)
+        await supabase
+          .from("profiles")
+          .update({ is_verified: false, verified: false })
+          .eq("id", kycRequest.user_id);
+
+        // KYC red bildirimi gönder
+        try {
+          const { data: notification } = await supabase
+            .from('notifications')
+            .insert({
+              user_id: kycRequest.user_id,
+              type: 'SYSTEM',
+              title: 'Kimlik Doğrulama Reddedildi',
+              body: `Kimlik doğrulama başvurunuz reddedildi. Sebep: ${input.reviewNotes}`,
+              data: {
+                type: 'KYC_REJECTED',
+                kyc_id: input.kycId,
+                review_notes: input.reviewNotes,
+              },
+              push_sent: false,
+            })
+            .select()
+            .single();
+
+          // Push bildirimi gönder
+          if (notification) {
+            const { data: targetProfile } = await supabase
+              .from('profiles')
+              .select('push_token')
+              .eq('id', kycRequest.user_id)
+              .maybeSingle();
+
+            if (targetProfile?.push_token) {
+              try {
+                const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+                await fetch(expoPushUrl, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'Accept-Encoding': 'gzip, deflate',
+                  },
+                  body: JSON.stringify({
+                    to: targetProfile.push_token,
+                    sound: 'default',
+                    title: 'Kimlik Doğrulama Reddedildi',
+                    body: `Kimlik doğrulama başvurunuz reddedildi.`,
+                    data: {
+                      type: 'KYC_REJECTED',
+                      kycId: input.kycId,
+                    },
+                    badge: 1,
+                  }),
+                });
+
+                await supabase
+                  .from('notifications')
+                  .update({ push_sent: true })
+                  .eq('id', notification.id);
+              } catch (pushError) {
+                console.error('KYC rejection push notification error:', pushError);
+              }
+            }
+          }
+        } catch (notificationError) {
+          console.error('KYC rejection notification error:', notificationError);
+        }
+        
+        return data;
       }),
 
     // Gönderi yönetimi
@@ -7514,14 +8189,14 @@ const appRouter = createTRPCRouter({
 
         // Bildirim kayıtlarını oluştur
         // body alanı NOT NULL olduğu için boş olamaz
-        const bodyText = input.body?.trim() || input.title?.trim() || 'Bildirim';
-        
-        if (!bodyText || bodyText.length === 0) {
+        if (!input.body || input.body.trim().length === 0) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: 'Mesaj içeriği boş olamaz',
+            message: 'Mesaj içeriği (body) boş olamaz',
           });
         }
+        
+        const bodyText = input.body.trim();
         
         // Data objesini oluştur (medya URL'i varsa ekle)
         const notificationData: any = { ...(input.data || {}) };
@@ -7529,12 +8204,19 @@ const appRouter = createTRPCRouter({
           notificationData.mediaUrl = input.mediaUrl;
         }
         
+        // Admin bildirimleri mytrabzonteam adıyla gönderilir
+        const adminTitle = input.type === 'SYSTEM' ? `MyTrabzonTeam: ${input.title}` : input.title;
+        
         const notifications = targetUserIds.map((userId) => ({
           user_id: userId,
           type: input.type,
-          title: input.title,
+          title: adminTitle,
           body: bodyText, // notifications tablosunda body kolonu var
-          data: notificationData,
+          data: {
+            ...notificationData,
+            sender: 'mytrabzonteam',
+            sender_name: 'MyTrabzonTeam',
+          },
           push_sent: false,
           is_deleted: false,
         }));
@@ -7572,12 +8254,17 @@ const appRouter = createTRPCRouter({
         if (pushTokens.length > 0) {
           try {
             const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+            const adminTitle = input.type === 'SYSTEM' ? `MyTrabzonTeam: ${input.title}` : input.title;
             const messages = pushTokens.map((token) => ({
               to: token,
               sound: 'default',
-              title: input.title,
-              body: input.body,
-              data: input.data || {},
+              title: adminTitle,
+              body: bodyText,
+              data: {
+                ...(input.data || {}),
+                sender: 'mytrabzonteam',
+                sender_name: 'MyTrabzonTeam',
+              },
               badge: 1,
             }));
 
@@ -7909,6 +8596,20 @@ const appRouter = createTRPCRouter({
           });
         }
 
+        // User'ın varlığını kontrol et (profiles tablosunda)
+        const { data: userProfile, error: userError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', user.id)
+          .single();
+
+        if (userError || !userProfile) {
+          throw new TRPCError({ 
+            code: 'UNAUTHORIZED', 
+            message: 'Kullanıcı profili bulunamadı' 
+          });
+        }
+
         // Yorum ekle
         const { data, error } = await supabase
           .from('event_comments')
@@ -8176,232 +8877,6 @@ const appRouter = createTRPCRouter({
         }
 
         return { success: true };
-      }),
-
-    // KYC Yönetimi
-    getKycRequests: protectedProcedure
-      .input(
-        z.object({
-          status: z.enum(['pending', 'approved', 'rejected']).optional(),
-          limit: z.number().min(1).max(100).default(50),
-          offset: z.number().min(0).default(0),
-        })
-      )
-      .query(async ({ ctx, input }) => {
-        const { supabase, user } = ctx;
-        
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        
-        // Admin kontrolü
-        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
-        if (user.id !== SPECIAL_ADMIN_ID) {
-          const { data: adminUser } = await supabase
-            .from("admin_users")
-            .select("role, id")
-            .eq("user_id", user.id)
-            .eq("is_active", true)
-            .single();
-          
-          if (!adminUser) {
-            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
-          }
-        }
-        
-        // Önce toplam sayıyı al
-        let countQuery = supabase
-          .from("kyc_requests")
-          .select("*", { count: "exact", head: true });
-        
-        if (input.status) {
-          countQuery = countQuery.eq("status", input.status);
-        }
-        
-        const { count } = await countQuery;
-        
-        // KYC isteklerini al
-        let query = supabase
-          .from("kyc_requests")
-          .select("*");
-        
-        if (input.status) {
-          query = query.eq("status", input.status);
-        }
-        
-        query = query
-          .order("created_at", { ascending: false })
-          .range(input.offset, input.offset + input.limit - 1);
-        
-        const { data: requestsData, error } = await query;
-        
-        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-        
-        // Manuel olarak user ve documents verilerini ekle
-        const userIds = (requestsData || []).map((r: any) => r.user_id);
-        const requestIds = (requestsData || []).map((r: any) => r.id);
-        
-        const [usersData, documentsData] = await Promise.all([
-          userIds.length > 0 ? supabase
-            .from('profiles')
-            .select('id, full_name, avatar_url, username, email')
-            .in('id', userIds)
-            .then(({ data }) => data || []) : Promise.resolve([]),
-          requestIds.length > 0 ? supabase
-            .from('kyc_documents')
-            .select('*')
-            .in('kyc_request_id', requestIds)
-            .then(({ data }) => data || []) : Promise.resolve([]),
-        ]);
-        
-        // Verileri birleştir
-        const requestsWithRelations = (requestsData || []).map((request: any) => {
-          const user = usersData.find((u: any) => u.id === request.user_id) || null;
-          const documents = documentsData.filter((d: any) => d.kyc_request_id === request.id);
-          
-          return {
-            ...request,
-            user,
-            documents,
-          };
-        });
-        
-        return {
-          requests: requestsWithRelations,
-          total: count || 0,
-        };
-      }),
-
-    approveKyc: protectedProcedure
-      .input(z.object({ kycId: z.string().uuid() }))
-      .mutation(async ({ ctx, input }) => {
-        const { supabase, user } = ctx;
-        
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        
-        // Admin kontrolü
-        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
-        let adminUserId: string;
-        if (user.id === SPECIAL_ADMIN_ID) {
-          const { data: adminUserRecord } = await supabase
-            .from("admin_users")
-            .select("id")
-            .eq("user_id", user.id)
-            .maybeSingle();
-          adminUserId = adminUserRecord?.id || user.id;
-        } else {
-          const { data: adminUser } = await supabase
-            .from("admin_users")
-            .select("id")
-            .eq("user_id", user.id)
-            .eq("is_active", true)
-            .single();
-          
-          if (!adminUser) {
-            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
-          }
-          adminUserId = adminUser.id;
-        }
-        
-        // KYC request'i güncelle
-        const { data: kycRequest, error: fetchError } = await supabase
-          .from("kyc_requests")
-          .select("user_id")
-          .eq("id", input.kycId)
-          .single();
-        
-        if (fetchError || !kycRequest) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'KYC başvurusu bulunamadı' });
-        }
-        
-        const { data, error } = await supabase
-          .from("kyc_requests")
-          .update({
-            status: 'approved',
-            reviewed_at: new Date().toISOString(),
-            reviewed_by: adminUserId,
-          })
-          .eq("id", input.kycId)
-          .select()
-          .single();
-        
-        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-        
-        // Profile'ı güncelle (trigger otomatik yapacak ama emin olmak için)
-        await supabase
-          .from("profiles")
-          .update({ is_verified: true, verified: true })
-          .eq("id", kycRequest.user_id);
-        
-        return data;
-      }),
-
-    rejectKyc: protectedProcedure
-      .input(
-        z.object({
-          kycId: z.string().uuid(),
-          reviewNotes: z.string().min(1),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const { supabase, user } = ctx;
-        
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-        
-        // Admin kontrolü
-        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
-        let adminUserId: string;
-        if (user.id === SPECIAL_ADMIN_ID) {
-          const { data: adminUserRecord } = await supabase
-            .from("admin_users")
-            .select("id")
-            .eq("user_id", user.id)
-            .maybeSingle();
-          adminUserId = adminUserRecord?.id || user.id;
-        } else {
-          const { data: adminUser } = await supabase
-            .from("admin_users")
-            .select("id")
-            .eq("user_id", user.id)
-            .eq("is_active", true)
-            .single();
-          
-          if (!adminUser) {
-            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
-          }
-          adminUserId = adminUser.id;
-        }
-        
-        // KYC request'i güncelle
-        const { data: kycRequest, error: fetchError } = await supabase
-          .from("kyc_requests")
-          .select("user_id")
-          .eq("id", input.kycId)
-          .single();
-        
-        if (fetchError || !kycRequest) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'KYC başvurusu bulunamadı' });
-        }
-        
-        const { data, error } = await supabase
-          .from("kyc_requests")
-          .update({
-            status: 'rejected',
-            reviewed_at: new Date().toISOString(),
-            reviewed_by: adminUserId,
-            review_notes: input.reviewNotes,
-          })
-          .eq("id", input.kycId)
-          .select()
-          .single();
-        
-        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-        
-        // Profile'ı güncelle (trigger otomatik yapacak ama emin olmak için)
-        await supabase
-          .from("profiles")
-          .update({ is_verified: false, verified: false })
-          .eq("id", kycRequest.user_id);
-        
-        return data;
       }),
   }),
 
@@ -9121,10 +9596,11 @@ const appRouter = createTRPCRouter({
           .from('notifications')
           .insert({
             user_id: booking.passenger_id,
-            type: 'RIDE_BOOKING_REJECTED',
+            type: 'RESERVATION',
             title: 'Rezervasyon Reddedildi',
-            message: `Yolculuk rezervasyonunuz reddedildi. ${booking.ride.departure_title} → ${booking.ride.destination_title}`,
+            body: `Yolculuk rezervasyonunuz reddedildi. ${booking.ride.departure_title} → ${booking.ride.destination_title}`,
             data: {
+              type: 'RIDE_BOOKING_REJECTED',
               ride_offer_id: booking.ride_offer_id,
               booking_id: booking.id,
             },
@@ -9601,7 +10077,7 @@ async function createNotificationsForEvent(
       event_id: event.id,
       type: 'EVENT',
       title: event.title,
-      message: event.description || `${event.category} - ${district}`,
+      body: event.description || `${event.category} - ${district}`,
       data: { 
         event_id: event.id, 
         severity, 
@@ -9738,33 +10214,107 @@ async function createProximityNotification(
   pairId: string
 ) {
   try {
+    // Kullanıcı bilgilerini al
+    const [userAProfile, userBProfile] = await Promise.all([
+      supabase.from('profiles').select('full_name, push_token').eq('id', userAId).single(),
+      supabase.from('profiles').select('full_name, push_token').eq('id', userBId).single(),
+    ]);
+
+    const userAName = userAProfile.data?.full_name || 'Bir kullanıcı';
+    const userBName = userBProfile.data?.full_name || 'Bir kullanıcı';
+
     // Her iki kullanıcı için de bildirim oluştur
     const notifications = [
       {
         user_id: userAId,
-        type: 'proximity_request',
+        type: 'SYSTEM',
         title: 'Yakınında bir MyTrabzon kullanıcısı var',
-        message: 'Yakınında bir MyTrabzon kullanıcısı var (≈200 m içinde). Bağlanmak istiyor musun?',
+        body: `${userBName} yakınında (≈200 m içinde). Bağlanmak istiyor musun?`,
         data: {
+          type: 'PROXIMITY',
           pair_id: pairId,
           other_user_id: userBId,
+          other_user_name: userBName,
         },
-        read: false,
+        push_sent: false,
+        is_deleted: false,
       },
       {
         user_id: userBId,
-        type: 'proximity_request',
+        type: 'SYSTEM',
         title: 'Yakınında bir MyTrabzon kullanıcısı var',
-        message: 'Yakınında bir MyTrabzon kullanıcısı var (≈200 m içinde). Bağlanmak istiyor musun?',
+        body: `${userAName} yakınında (≈200 m içinde). Bağlanmak istiyor musun?`,
         data: {
+          type: 'PROXIMITY',
           pair_id: pairId,
           other_user_id: userAId,
+          other_user_name: userAName,
         },
-        read: false,
+        push_sent: false,
+        is_deleted: false,
       },
     ];
 
-    await supabase.from('notifications').insert(notifications);
+    const { data: insertedNotifications, error: insertError } = await supabase
+      .from('notifications')
+      .insert(notifications)
+      .select('id, user_id');
+
+    if (insertError) {
+      console.error('Create proximity notification insert error:', insertError);
+      return;
+    }
+
+    // Push bildirimleri gönder
+    const pushTokens: { userId: string; token: string }[] = [];
+    if (userBProfile.data?.push_token) {
+      pushTokens.push({ userId: userAId, token: userBProfile.data.push_token });
+    }
+    if (userAProfile.data?.push_token) {
+      pushTokens.push({ userId: userBId, token: userAProfile.data.push_token });
+    }
+
+    if (pushTokens.length > 0 && insertedNotifications) {
+      try {
+        const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+        const messages = pushTokens.map(({ userId, token }) => {
+          const notification = insertedNotifications.find((n: any) => n.user_id === userId);
+          const otherUser = userId === userAId ? userBName : userAName;
+          return {
+            to: token,
+            sound: 'default',
+            title: 'Yakınında bir MyTrabzon kullanıcısı var',
+            body: `${otherUser} yakınında (≈200 m içinde). Bağlanmak istiyor musun?`,
+            data: {
+              type: 'PROXIMITY',
+              pairId: pairId,
+            },
+            badge: 1,
+          };
+        });
+
+        const response = await fetch(expoPushUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            'Accept-Encoding': 'gzip, deflate',
+          },
+          body: JSON.stringify(messages),
+        });
+
+        if (response.ok) {
+          // Başarılı gönderimleri işaretle
+          const sentNotificationIds = insertedNotifications.map((n: any) => n.id);
+          await supabase
+            .from('notifications')
+            .update({ push_sent: true })
+            .in('id', sentNotificationIds);
+        }
+      } catch (pushError) {
+        console.error('Proximity push notification error:', pushError);
+      }
+    }
   } catch (error) {
     console.error('Create proximity notification error:', error);
   }
@@ -9778,33 +10328,103 @@ async function createMatchNotification(
   pairId: string
 ) {
   try {
+    // Kullanıcı bilgilerini al
+    const [userAProfile, userBProfile] = await Promise.all([
+      supabase.from('profiles').select('full_name, push_token').eq('id', userAId).single(),
+      supabase.from('profiles').select('full_name, push_token').eq('id', userBId).single(),
+    ]);
+
+    const userAName = userAProfile.data?.full_name || 'Bir kullanıcı';
+    const userBName = userBProfile.data?.full_name || 'Bir kullanıcı';
+
     // Her iki kullanıcı için de "eşleştiniz" bildirimi
     const notifications = [
       {
         user_id: userAId,
-        type: 'proximity_match',
+        type: 'SYSTEM',
         title: 'Yakındaki kullanıcıyla eşleştiniz',
-        message: 'Yakındaki kullanıcıyla eşleştiniz! Artık birbirinizin profilini görebilirsiniz.',
+        body: `${userBName} ile eşleştiniz! Artık birbirinizin profilini görebilirsiniz.`,
         data: {
+          type: 'PROXIMITY_MATCH',
           pair_id: pairId,
           other_user_id: userBId,
+          other_user_name: userBName,
         },
-        read: false,
+        push_sent: false,
+        is_deleted: false,
       },
       {
         user_id: userBId,
-        type: 'proximity_match',
+        type: 'SYSTEM',
         title: 'Yakındaki kullanıcıyla eşleştiniz',
-        message: 'Yakındaki kullanıcıyla eşleştiniz! Artık birbirinizin profilini görebilirsiniz.',
+        body: `${userAName} ile eşleştiniz! Artık birbirinizin profilini görebilirsiniz.`,
         data: {
+          type: 'PROXIMITY_MATCH',
           pair_id: pairId,
           other_user_id: userAId,
+          other_user_name: userAName,
         },
-        read: false,
+        push_sent: false,
+        is_deleted: false,
       },
     ];
 
-    await supabase.from('notifications').insert(notifications);
+    const { data: insertedNotifications, error: insertError } = await supabase
+      .from('notifications')
+      .insert(notifications)
+      .select('id, user_id');
+
+    if (insertError) {
+      console.error('Create match notification insert error:', insertError);
+      return;
+    }
+
+    // Push bildirimleri gönder
+    const pushTokens: { userId: string; token: string; otherUserName: string }[] = [];
+    if (userBProfile.data?.push_token) {
+      pushTokens.push({ userId: userAId, token: userBProfile.data.push_token, otherUserName: userBName });
+    }
+    if (userAProfile.data?.push_token) {
+      pushTokens.push({ userId: userBId, token: userAProfile.data.push_token, otherUserName: userAName });
+    }
+
+    if (pushTokens.length > 0 && insertedNotifications) {
+      try {
+        const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+        const messages = pushTokens.map(({ userId, token, otherUserName }) => ({
+          to: token,
+          sound: 'default',
+          title: 'Yakındaki kullanıcıyla eşleştiniz',
+          body: `${otherUserName} ile eşleştiniz!`,
+          data: {
+            type: 'PROXIMITY_MATCH',
+            pairId: pairId,
+          },
+          badge: 1,
+        }));
+
+        const response = await fetch(expoPushUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            'Accept-Encoding': 'gzip, deflate',
+          },
+          body: JSON.stringify(messages),
+        });
+
+        if (response.ok) {
+          // Başarılı gönderimleri işaretle
+          const sentNotificationIds = insertedNotifications.map((n: any) => n.id);
+          await supabase
+            .from('notifications')
+            .update({ push_sent: true })
+            .in('id', sentNotificationIds);
+        }
+      } catch (pushError) {
+        console.error('Proximity match push notification error:', pushError);
+      }
+    }
   } catch (error) {
     console.error('Create match notification error:', error);
   }

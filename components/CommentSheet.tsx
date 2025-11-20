@@ -14,8 +14,6 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Alert,
   Keyboard,
 } from 'react-native';
@@ -28,12 +26,14 @@ import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatTimeAgo } from '@/lib/time-utils';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
+import { useRouter } from 'expo-router';
 
 interface CommentSheetProps {
   postId: string;
 }
 
 export function CommentSheet({ postId }: CommentSheetProps) {
+  const router = useRouter();
   const { theme } = useTheme();
   const { user, profile } = useAuth();
   const insets = useSafeAreaInsets();
@@ -43,7 +43,7 @@ export function CommentSheet({ postId }: CommentSheetProps) {
   const [menuVisibleCommentId, setMenuVisibleCommentId] = useState<string | null>(null);
   const commentInputRef = useRef<TextInput>(null);
 
-  const { data: commentsData, isLoading, refetch } = trpc.post.getComments.useQuery(
+  const { data: commentsData, refetch } = trpc.post.getComments.useQuery(
     { post_id: postId, limit: 50, offset: 0 },
     { enabled: !!postId }
   );
@@ -134,16 +134,73 @@ export function CommentSheet({ postId }: CommentSheetProps) {
   const comments = commentsData?.comments || [];
 
   return (
-    <KeyboardAvoidingView
-      style={styles.keyboardAvoider}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
-      enabled={true}
-    >
-      <View style={styles.container} pointerEvents="box-none">
+    <View style={styles.container}>
+      {/* Yorum Input - En üstte sabit, klavyenin üstünde */}
+      <View
+        style={[
+          styles.inputContainer,
+          {
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+          },
+          { paddingBottom: Math.max(insets.bottom, SPACING.md) },
+        ]}
+      >
+        <Image
+          source={{ uri: profile?.avatar_url || 'https://via.placeholder.com/32' }}
+          style={styles.inputAvatar}
+          contentFit="cover"
+        />
+        <TextInput
+          ref={commentInputRef}
+          style={[
+            styles.input,
+            { backgroundColor: 'rgba(255, 255, 255, 0.15)', color: COLORS.white },
+          ]}
+          placeholder="Yorum yaz..."
+          placeholderTextColor="rgba(255, 255, 255, 0.6)"
+          value={commentText}
+          onChangeText={setCommentText}
+          multiline={false}
+          maxLength={500}
+          blurOnSubmit={true}
+          returnKeyType="send"
+          onSubmitEditing={handleSendComment}
+        />
+        <TouchableOpacity
+          style={[
+            styles.sendButton,
+            { backgroundColor: theme.colors.primary },
+            (!commentText.trim() || createCommentMutation.isPending) && styles.sendButtonDisabled,
+          ]}
+          onPress={() => {
+            handleSendComment();
+            Keyboard.dismiss(); // Gönder butonuna tıklayınca klavyeyi kapat
+          }}
+          disabled={!commentText.trim() || createCommentMutation.isPending}
+        >
+          {createCommentMutation.isPending ? (
+            <ActivityIndicator size="small" color={COLORS.white} />
+          ) : (
+            <Send size={20} color={COLORS.white} />
+          )}
+        </TouchableOpacity>
+      </View>
+
+      {/* Yorumlar Listesi - Aşağıda scroll edilebilir */}
       <FlatList
         data={comments}
         keyExtractor={(item) => item.id}
+        style={styles.commentsList}
+        contentContainerStyle={[
+          styles.listContent,
+          comments.length === 0 && styles.listContentEmpty,
+        ]}
+        keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={Keyboard.dismiss}
+        showsVerticalScrollIndicator={true}
+        inverted={false}
+        nestedScrollEnabled={true}
         renderItem={({ item }) => {
           const isEditing = editingCommentId === item.id;
           const isOwner = item.user_id === user?.id;
@@ -158,19 +215,36 @@ export function CommentSheet({ postId }: CommentSheetProps) {
                 setMenuVisibleCommentId(null);
               }}
             >
-              <Image
-                source={{ uri: item.author?.avatar_url || 'https://via.placeholder.com/32' }}
-                style={styles.commentAvatar}
-                contentFit="cover"
-              />
+              <TouchableOpacity
+                onPress={() => {
+                  if (item.user?.id) {
+                    router.push(`/profile/${item.user.id}` as any);
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Image
+                  source={{ uri: item.user?.avatar_url || 'https://via.placeholder.com/32' }}
+                  style={styles.commentAvatar}
+                  contentFit="cover"
+                />
+              </TouchableOpacity>
               <View style={styles.commentContent}>
                 <View style={styles.commentHeader}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (item.user?.id) {
+                        router.push(`/profile/${item.user.id}` as any);
+                      }
+                    }}
+                    activeOpacity={0.7}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                  >
                     <Text style={[styles.commentAuthor, { color: COLORS.white }]}>
-                      {item.author?.full_name}
+                      {item.user?.full_name || 'İsimsiz'}
                     </Text>
-                    {item.author?.verified && <VerifiedBadgeIcon size={14} />}
-                  </View>
+                    {item.user?.verified && <VerifiedBadgeIcon size={14} />}
+                  </TouchableOpacity>
                   <Text style={[styles.commentTime, { color: 'rgba(255, 255, 255, 0.6)' }]}>
                     {formatTimeAgo(item.created_at)}
                   </Text>
@@ -236,64 +310,7 @@ export function CommentSheet({ postId }: CommentSheetProps) {
             </Text>
           </View>
         }
-        contentContainerStyle={[
-          styles.listContent,
-          comments.length === 0 && styles.listContentEmpty,
-        ]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
       />
-
-      {/* Yorum Input - Instagram tarzı, şeffaf arka plan, en altta sabit */}
-        <View
-          style={[
-            styles.inputContainer,
-            {
-              backgroundColor: 'rgba(0, 0, 0, 0.6)',
-              borderTopColor: 'rgba(255, 255, 255, 0.1)',
-            },
-            { paddingBottom: Math.max(insets.bottom, SPACING.md) },
-          ]}
-        >
-          <Image
-            source={{ uri: profile?.avatar_url || 'https://via.placeholder.com/32' }}
-            style={styles.inputAvatar}
-            contentFit="cover"
-          />
-          <TextInput
-            ref={commentInputRef}
-            style={[
-              styles.input,
-              { backgroundColor: 'rgba(255, 255, 255, 0.15)', color: COLORS.white },
-            ]}
-            placeholder="Yorum yaz..."
-            placeholderTextColor="rgba(255, 255, 255, 0.6)"
-            value={commentText}
-            onChangeText={setCommentText}
-            multiline
-            maxLength={500}
-            textAlignVertical="top"
-            blurOnSubmit={true}
-            returnKeyType="send"
-            onSubmitEditing={handleSendComment}
-          />
-          <TouchableOpacity
-            style={[
-              styles.sendButton,
-              { backgroundColor: theme.colors.primary },
-              (!commentText.trim() || createCommentMutation.isPending) && styles.sendButtonDisabled,
-            ]}
-            onPress={handleSendComment}
-            disabled={!commentText.trim() || createCommentMutation.isPending}
-          >
-            {createCommentMutation.isPending ? (
-              <ActivityIndicator size="small" color={COLORS.white} />
-            ) : (
-              <Send size={20} color={COLORS.white} />
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
 
       {/* Yorum Menü Modal */}
       {menuVisibleCommentId && (
@@ -326,20 +343,23 @@ export function CommentSheet({ postId }: CommentSheetProps) {
           </View>
         </View>
       )}
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  keyboardAvoider: {
-    flex: 1,
-    width: '100%',
-  },
   container: {
     flex: 1,
+    flexDirection: 'column',
+    overflow: 'hidden', // Container overflow'u kontrol et
+  },
+  commentsList: {
+    flex: 1,
+    overflow: 'hidden', // Yukarıdaki yorumlar kaybolacak
   },
   listContent: {
     padding: SPACING.md,
+    paddingTop: SPACING.sm, // Üstten az padding
     flexGrow: 1,
   },
   listContentEmpty: {
@@ -393,11 +413,14 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    padding: SPACING.md,
-    paddingTop: SPACING.sm,
-    borderTopWidth: 1,
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 0.7,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     gap: SPACING.sm,
+    zIndex: 10, // Input bar her zaman üstte
   },
   inputAvatar: {
     width: 32,
@@ -406,11 +429,11 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    borderRadius: 20,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    maxHeight: 100,
-    fontSize: FONT_SIZES.sm,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: COLORS.white,
   },
   sendButton: {
     width: 36,

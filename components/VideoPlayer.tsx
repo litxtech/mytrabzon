@@ -82,6 +82,16 @@ export function VideoPlayer({
 }: VideoPlayerProps) {
   const { theme } = useTheme();
   const videoRef = useRef<Video>(null);
+  
+  // Early return if videoUrl is invalid
+  if (!videoUrl || typeof videoUrl !== 'string' || videoUrl.trim() === '') {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
+        <ActivityIndicator size="large" color={COLORS.white} />
+        <Text style={{ color: COLORS.white, marginTop: 10 }}>Video yükleniyor...</Text>
+      </View>
+    );
+  }
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(previewMode); // Önizlemede sessiz başlar
   const [showFullScreen, setShowFullScreen] = useState(false);
@@ -104,9 +114,7 @@ export function VideoPlayer({
       playThroughEarpieceAndroid: false,
     })
       .then(() => {
-        if (mounted) {
-          console.log('✅ Audio session activated');
-        }
+        // Audio session activated silently
       })
       .catch((err) => {
         if (mounted) {
@@ -301,36 +309,44 @@ export function VideoPlayer({
           onPress={handleSingleTap}
           onLongPress={handleDoubleTap}
         >
-          <Video
-            ref={videoRef}
-            source={{ 
-              uri: videoUrl,
-              overrideFileExtensionAndroid: 'mp4',
-            }}
-            style={styles.previewVideo}
-            resizeMode={ResizeMode.COVER}
-            isLooping
-            isMuted={isMuted}
-            shouldPlay={autoPlay || isPlaying}
-            onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
-            useNativeControls={false}
-            usePoster={false}
-            posterSource={undefined}
-            progressUpdateIntervalMillis={100}
-            onError={(error) => {
-              console.error('Preview Video error:', error);
-              setIsLoading(false);
-            }}
-            onLoadStart={() => {
-              setIsLoading(true);
-            }}
-            onLoad={() => {
-              setIsLoading(false);
-            }}
-            onReadyForDisplay={() => {
-              setIsLoading(false);
-            }}
-          />
+          {videoUrl && videoUrl.trim() !== '' && typeof videoUrl === 'string' ? (
+            <Video
+              key={`preview-video-${postId}-${videoUrl.substring(0, 20)}`}
+              ref={videoRef}
+              source={{ 
+                uri: videoUrl.trim(),
+                overrideFileExtensionAndroid: 'mp4',
+              }}
+              style={styles.previewVideo}
+              resizeMode={ResizeMode.COVER}
+              isLooping
+              isMuted={isMuted}
+              shouldPlay={(autoPlay || isPlaying) && !isLoading}
+              onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+              useNativeControls={false}
+              usePoster={false}
+              posterSource={undefined}
+              progressUpdateIntervalMillis={100}
+              onError={(error) => {
+                console.error('Preview Video error:', error);
+                setIsLoading(false);
+              }}
+              onLoadStart={() => {
+                setIsLoading(true);
+              }}
+              onLoad={() => {
+                setIsLoading(false);
+              }}
+              onReadyForDisplay={() => {
+                setIsLoading(false);
+              }}
+            />
+          ) : (
+            <View style={[styles.previewVideo, { justifyContent: 'center', alignItems: 'center' }]}>
+              <ActivityIndicator size="large" color={COLORS.white} />
+              <Text style={{ color: COLORS.white, marginTop: 10 }}>Video yükleniyor...</Text>
+            </View>
+          )}
           
           {isLoading && (
             <View style={styles.loadingOverlay}>
@@ -487,30 +503,38 @@ export function VideoPlayer({
 
   return (
     <View style={styles.normalContainer}>
-      <Video
-        ref={videoRef}
-        source={{ uri: videoUrl }}
-        style={styles.normalVideo}
-        resizeMode={ResizeMode.CONTAIN}
-        isLooping
-        isMuted={isMuted}
-        shouldPlay={isPlaying}
-        onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
-        useNativeControls
-        onError={(error) => {
-          console.error('Normal Video error:', error);
-          setIsLoading(false);
-        }}
-        onLoadStart={() => {
-          setIsLoading(true);
-        }}
-        onLoad={() => {
-          setIsLoading(false);
-        }}
-        onReadyForDisplay={() => {
-          setIsLoading(false);
-        }}
-      />
+      {videoUrl && videoUrl.trim() !== '' && typeof videoUrl === 'string' ? (
+        <Video
+          key={`normal-video-${postId}-${videoUrl.substring(0, 20)}`}
+          ref={videoRef}
+          source={{ uri: videoUrl.trim() }}
+          style={styles.normalVideo}
+          resizeMode={ResizeMode.CONTAIN}
+          isLooping
+          isMuted={isMuted}
+          shouldPlay={isPlaying && !isLoading}
+          onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+          useNativeControls
+          onError={(error) => {
+            console.error('Normal Video error:', error);
+            setIsLoading(false);
+          }}
+          onLoadStart={() => {
+            setIsLoading(true);
+          }}
+          onLoad={() => {
+            setIsLoading(false);
+          }}
+          onReadyForDisplay={() => {
+            setIsLoading(false);
+          }}
+        />
+      ) : (
+        <View style={[styles.normalVideo, { justifyContent: 'center', alignItems: 'center' }]}>
+          <ActivityIndicator size="large" color={COLORS.text} />
+          <Text style={{ color: COLORS.text, marginTop: 10 }}>Video yükleniyor...</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -564,6 +588,7 @@ function FullScreenVideoPlayer({
   const { width, height } = Dimensions.get('window');
   const SCREEN_HEIGHT = height;
   const COMMENT_SHEET_HEIGHT = SCREEN_HEIGHT * 0.5;
+  const isPlayingRef = useRef(true); // Ref ile gerçek durumu takip et
 
   const handleShareNormal = async () => {
     setShowShareModal(false);
@@ -595,19 +620,19 @@ function FullScreenVideoPlayer({
   const commentSheetY = useRef(new Animated.Value(COMMENT_SHEET_HEIGHT)).current;
   const hasStartedRef = useRef(false);
 
-  // Sola swipe ile çıkış için pan responder
+  // Sola ve sağa swipe ile çıkış için pan responder
   const swipePanResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => !showComments, // Yorum paneli açıkken devre dışı
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        // Sola swipe (dx < 0) ve yorum paneli kapalıysa
+        // Sola veya sağa swipe ve yorum paneli kapalıysa
         if (showComments) return false;
-        // Sola doğru hareket varsa ve yatay hareket dikey hareketten fazlaysa
-        return gestureState.dx < -30 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
+        // Yatay hareket varsa ve yatay hareket dikey hareketten fazlaysa
+        return Math.abs(gestureState.dx) > 30 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
       },
       onPanResponderRelease: (_, gestureState) => {
-        // Sola yeterince çekildiyse çık (eşik: -80px)
-        if (!showComments && gestureState.dx < -80 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5) {
+        // Sola veya sağa yeterince çekildiyse çık (eşik: 80px)
+        if (!showComments && Math.abs(gestureState.dx) > 80 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5) {
           onClose?.();
         }
       },
@@ -625,9 +650,7 @@ function FullScreenVideoPlayer({
       playThroughEarpieceAndroid: false,
     })
       .then(() => {
-        if (mounted) {
-          console.log('✅ Audio session activated (FullScreen)');
-        }
+        // Audio session activated silently
       })
       .catch((err) => {
         if (mounted) {
@@ -640,12 +663,20 @@ function FullScreenVideoPlayer({
   }, []);
 
   useEffect(() => {
-    // Tam ekran açıldığında video'yu otomatik başlat
+    // Tam ekran açıldığında video'yu otomatik başlat (sadece bir kez)
     if (videoRef.current && !hasStartedRef.current) {
       hasStartedRef.current = true;
+      setIsPlaying(true);
+      isPlayingRef.current = true;
+      // Video hazır olduğunda başlat
       const timer = setTimeout(() => {
-        videoRef.current?.playAsync().catch(console.error);
-        setIsPlaying(true);
+        if (videoRef.current) {
+          videoRef.current.playAsync().catch((err) => {
+            console.warn('Video play error:', err);
+            setIsPlaying(false);
+            isPlayingRef.current = false;
+          });
+        }
       }, 500); // Audio session'ın aktif olması için biraz bekle
       return () => clearTimeout(timer);
     }
@@ -677,50 +708,53 @@ function FullScreenVideoPlayer({
 
   const handlePlaybackStatusUpdate = (status: AVPlaybackStatus) => {
     if (status.isLoaded) {
-      // Sadece değiştiğinde state'i güncelle (infinite loop'u önle)
-      if (status.isPlaying !== isPlaying) {
-        setIsPlaying(status.isPlaying);
-      }
-      if (status.isMuted !== isMuted) {
-        setIsMuted(status.isMuted);
-      }
-      if (status.durationMillis !== duration) {
-        setDuration(status.durationMillis || 0);
-      }
-      if (status.positionMillis !== position) {
-        setPosition(status.positionMillis || 0);
-      }
-      if (isLoading) {
+      // Duration ve position güncellemeleri (bunlar sürekli değişir, sorun değil)
+      setDuration(status.durationMillis || 0);
+      setPosition(status.positionMillis || 0);
+      
+      // Loading durumunu güncelle - video oynuyorsa loading false
+      if (isLoading && status.isPlaying) {
         setIsLoading(false);
       }
       
-      // Sadece ilk yüklemede ve henüz başlamadıysa otomatik başlat
-      if (!hasStartedRef.current && !status.isPlaying && !status.didJustFinish) {
-        hasStartedRef.current = true;
-        setTimeout(() => {
-          videoRef.current?.playAsync().catch(console.error);
-        }, 200);
+      // isPlaying state'ini sadece gerçekten değiştiğinde güncelle
+      // Ref ile karşılaştır, gereksiz re-render'ları önle
+      if (status.isPlaying !== isPlayingRef.current) {
+        isPlayingRef.current = status.isPlaying;
+        setIsPlaying(status.isPlaying);
+      }
+      
+      // isMuted state'ini güncelle
+      if (status.isMuted !== isMuted) {
+        setIsMuted(status.isMuted);
       }
     } else if (status.error) {
       console.error('Full screen video playback error:', status.error);
-      if (isLoading) {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
+      isPlayingRef.current = false;
+      setIsPlaying(false);
     }
   };
 
   const togglePlayPause = async () => {
-    if (videoRef.current) {
-      try {
-        if (isPlaying) {
-          await videoRef.current.pauseAsync();
-        } else {
-          await videoRef.current.playAsync();
-        }
-      } catch (error) {
-        // Video null olabilir veya henüz yüklenmemiş olabilir
-        console.warn('⚠️ FullScreen Video play/pause operation warning:', error);
+    if (!videoRef.current || isLoading) return;
+    
+    try {
+      const newPlayingState = !isPlayingRef.current;
+      isPlayingRef.current = newPlayingState;
+      setIsPlaying(newPlayingState); // Optimistic update
+      
+      if (newPlayingState) {
+        await videoRef.current.playAsync();
+      } else {
+        await videoRef.current.pauseAsync();
       }
+    } catch (error) {
+      // Hata durumunda state'i geri al
+      const revertState = !isPlayingRef.current;
+      isPlayingRef.current = revertState;
+      setIsPlaying(revertState);
+      console.warn('⚠️ FullScreen Video play/pause operation warning:', error);
     }
   };
 
@@ -826,24 +860,27 @@ function FullScreenVideoPlayer({
         onPress={handleSingleTap}
         onLongPress={handleDoubleTap}
       >
-        {videoUrl ? (
+        {videoUrl && videoUrl.trim() !== '' && typeof videoUrl === 'string' ? (
           <Video
+            key={`fullscreen-video-${postId}-${videoUrl.substring(0, 20)}`}
             ref={videoRef}
             source={{ 
-              uri: videoUrl,
+              uri: videoUrl.trim(),
               overrideFileExtensionAndroid: 'mp4',
             }}
             style={[styles.fullScreenVideo, { width, height }]}
             resizeMode={ResizeMode.COVER}
             isLooping
             isMuted={isMuted}
-            shouldPlay={isPlaying}
+            shouldPlay={isPlaying && !isLoading} // Added isLoading check
             onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
             usePoster={false}
             progressUpdateIntervalMillis={100}
             onError={(error) => {
               console.error('FullScreen Video error:', error);
               setIsLoading(false);
+              isPlayingRef.current = false;
+              setIsPlaying(false);
             }}
             onLoadStart={() => {
               setIsLoading(true);
@@ -858,6 +895,7 @@ function FullScreenVideoPlayer({
         ) : (
           <View style={[styles.fullScreenVideo, { width, height, justifyContent: 'center', alignItems: 'center' }]}>
             <ActivityIndicator size="large" color={COLORS.white} />
+            <Text style={{ color: COLORS.white, marginTop: 10 }}>Video yükleniyor...</Text>
           </View>
         )}
 
@@ -880,19 +918,23 @@ function FullScreenVideoPlayer({
               </TouchableOpacity>
             </View>
 
-            {/* Orta - Play/Pause */}
-            <View style={styles.centerControls}>
-              <TouchableOpacity
-                style={styles.playPauseButton}
-                onPress={togglePlayPause}
-              >
-                {isPlaying ? (
-                  <Pause size={60} color={COLORS.white} fill={COLORS.white} />
-                ) : (
-                  <Play size={60} color={COLORS.white} fill={COLORS.white} />
-                )}
-              </TouchableOpacity>
-            </View>
+            {/* Orta - Play/Pause (sadece kontroller açıkken ve video durduğunda veya loading'de göster) */}
+            {showControls && (!isPlaying || isLoading) && (
+              <View style={styles.centerControls}>
+                <TouchableOpacity
+                  style={styles.playPauseButton}
+                  onPress={togglePlayPause}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator size="large" color={COLORS.white} />
+                  ) : isPlaying ? (
+                    <Pause size={60} color={COLORS.white} fill={COLORS.white} />
+                  ) : (
+                    <Play size={60} color={COLORS.white} fill={COLORS.white} />
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Alt Bar - Progress ve Ses */}
             <View style={styles.bottomBar}>

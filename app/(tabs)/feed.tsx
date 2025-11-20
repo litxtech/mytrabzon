@@ -527,10 +527,10 @@ export default function FeedScreen() {
 
         {firstMedia && (
           <>
-            {isVideo ? (
+            {isVideo && firstMedia.path && typeof firstMedia.path === 'string' && firstMedia.path.trim() !== '' ? (
               <View style={styles.videoContainer}>
                 <VideoPlayer
-                  videoUrl={firstMedia.path}
+                  videoUrl={firstMedia.path.trim()}
                   postId={item.id}
                   isLiked={item.is_liked}
                   isSaved={false}
@@ -812,9 +812,9 @@ export default function FeedScreen() {
           >
             <Text style={styles.modalCloseText}>✕</Text>
           </TouchableOpacity>
-                 {selectedVideo && (
+                 {selectedVideo && typeof selectedVideo === 'string' && selectedVideo.trim() !== '' ? (
                    <VideoPlayer
-                     videoUrl={selectedVideo}
+                     videoUrl={selectedVideo.trim()}
                      postId=""
                      isLiked={false}
                      likeCount={0}
@@ -828,7 +828,7 @@ export default function FeedScreen() {
                      previewMode={false}
                      showControls={true}
                    />
-                 )}
+                 ) : null}
         </View>
       </Modal>
 

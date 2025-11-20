@@ -8,7 +8,7 @@ import { trpc } from "@/lib/trpc";
 import { TabBarBadge } from "@/components/TabBarBadge";
 
 export default function TabLayout() {
-  const { profile, loading } = useAuth();
+  const { profile, user, loading } = useAuth();
   const { theme } = useTheme();
   const { rooms } = useChat();
   const router = useRouter();
@@ -28,12 +28,20 @@ export default function TabLayout() {
   const unreadNotificationCount = unreadNotificationData?.count || 0;
 
   useEffect(() => {
-    if (!loading && !profile) {
+    // Sadece user yoksa ve loading tamamlandıysa redirect yap
+    // Profile yoksa da tab layout render edilmeli (profile sayfası kendi kontrolünü yapar)
+    if (!loading && !user) {
       router.replace('/auth/login');
     }
-  }, [loading, profile, router]);
+  }, [loading, user, router]);
 
-  if (loading || !profile) {
+  // Loading durumunda loading göster, user yoksa null döndür
+  if (loading) {
+    return null; // Loading gösterilebilir ama şimdilik null
+  }
+
+  // User yoksa null döndür (auth sayfasına yönlendirilecek)
+  if (!user) {
     return null;
   }
 

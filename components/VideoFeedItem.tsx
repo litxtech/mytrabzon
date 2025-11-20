@@ -18,6 +18,8 @@ import {
   Modal,
   Share,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Video, ResizeMode, Audio } from 'expo-av';
 import { Heart, MessageCircle, Share2, Bookmark, X, VolumeX } from 'lucide-react-native';
@@ -97,7 +99,7 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
         });
         if (mounted) {
           setAudioSessionReady(true);
-          console.log('✅ Audio session activated');
+          // Audio session activated silently
         }
       } catch (error) {
         // Sessizce geç veya logla, crash olmasın
@@ -124,12 +126,18 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
 
   // Sadece aktif video oynatılır - diğerleri durur
   useEffect(() => {
-    if (isActive && videoRef.current && videoUrl && audioSessionReady && videoReady) {
+    if (isActive && videoRef.current && videoUrl && videoUrl.trim() !== '' && audioSessionReady && videoReady) {
       const playVideo = async () => {
         try {
           // Video referansının hala geçerli olduğundan emin ol
           if (!videoRef.current) {
             console.warn('⚠️ Video ref is null, skipping play');
+            return;
+          }
+          
+          // Video URL'inin geçerli olduğundan emin ol
+          if (!videoUrl || videoUrl.trim() === '') {
+            console.warn('⚠️ Video URL is invalid, skipping play');
             return;
           }
 
@@ -202,13 +210,13 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
 
   // Sadece aktif video sesli olmalı - video hazır olduğunda
   useEffect(() => {
-    if (videoRef.current && videoReady) {
+    if (videoRef.current && videoReady && videoUrl && videoUrl.trim() !== '') {
       videoRef.current.setIsMutedAsync(!isActive).catch((error) => {
         // Video henüz hazır değilse veya null ise sessizce geç
         console.warn('⚠️ Video mute operation warning:', error);
       });
     }
-  }, [isActive, videoReady]);
+  }, [isActive, videoReady, videoUrl]);
 
   const handleLike = () => {
     if (isEvent) {
@@ -244,6 +252,8 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
   // Video üzerine tıklama - çift tıklama beğeni, tek tıklama pause/play
   const handleVideoPress = async () => {
     if (showComments) return; // Yorum paneli açıksa video tıklamalarını engelle
+    if (!videoUrl || videoUrl.trim() === '') return; // Video URL geçersizse işlem yapma
+    if (!videoRef.current) return; // Video ref null ise işlem yapma
     
     const now = Date.now();
     const DOUBLE_TAP_DELAY = 300;
@@ -253,7 +263,7 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
       handleLike();
     } else {
       // Tek tıklama - pause/play toggle
-      if (videoRef.current && videoReady) {
+      if (videoRef.current && videoReady && videoUrl && videoUrl.trim() !== '') {
         if (isPlaying) {
           // Video hazır olduğunda pause
           videoRef.current.pauseAsync().catch((error) => {
@@ -395,18 +405,22 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
         onPress={handleVideoPress}
         disabled={showComments}
       >
-        {videoUrl ? (
+        {videoUrl && videoUrl.trim() !== '' && typeof videoUrl === 'string' ? (
           <Video
+            key={`video-${post.id}-${index}-${videoUrl.substring(0, 20)}`}
             ref={videoRef}
-            source={{ uri: videoUrl, overrideFileExtensionAndroid: 'mp4' }}
+            source={{ 
+              uri: videoUrl.trim(),
+              overrideFileExtensionAndroid: 'mp4' 
+            }}
             style={styles.video}
             resizeMode={ResizeMode.COVER}
             isLooping
             isMuted={isMuted}
-            shouldPlay={isActive && videoReady}
+            shouldPlay={isActive && videoReady && !isLoading}
             useNativeControls={false}
             onError={(error) => {
-              console.error('Video error:', error);
+              console.error('VideoFeedItem Video error:', error);
               setIsLoading(false);
               setVideoReady(false);
             }}
@@ -421,12 +435,14 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
             }}
             onReadyForDisplay={() => {
               // Video görüntülenmeye hazır olduğunda
+              setIsLoading(false);
               setVideoReady(true);
             }}
           />
         ) : (
           <View style={[styles.video, { justifyContent: 'center', alignItems: 'center' }]}>
-            <Text style={{ color: COLORS.white }}>Video yükleniyor...</Text>
+            <ActivityIndicator size="large" color={COLORS.white} />
+            <Text style={{ color: COLORS.white, marginTop: 10 }}>Video yükleniyor...</Text>
           </View>
         )}
         {isLoading && (
@@ -520,26 +536,34 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
           ]}
           pointerEvents="box-none"
         >
-          {/* Drag Handle - Sadece drag handle'a pan responder */}
-          <View 
-            style={styles.dragHandleContainer}
-            {...commentPanResponder.panHandlers}
-            pointerEvents="auto"
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={0}
           >
-            <View style={[styles.dragHandle, { backgroundColor: theme.colors.textLight }]} />
-          </View>
-          
-          <View style={[styles.commentSheetHeader, { borderBottomColor: theme.colors.border }]} pointerEvents="auto">
-            <Text style={[styles.commentSheetTitle, { color: theme.colors.text }]}>
-              Yorumlar ({post.comment_count || 0})
-            </Text>
-            <TouchableOpacity onPress={handleCloseComments}>
-              <X size={24} color={theme.colors.text} />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.commentSheetContent} pointerEvents="auto">
-            <CommentSheet postId={post.id} />
-          </View>
+            <View style={{ flex: 1 }}>
+              {/* Drag Handle - Sadece drag handle'a pan responder */}
+              <View 
+                style={styles.dragHandleContainer}
+                {...commentPanResponder.panHandlers}
+                pointerEvents="auto"
+              >
+                <View style={[styles.dragHandle, { backgroundColor: theme.colors.textLight }]} />
+              </View>
+              
+              <View style={[styles.commentSheetHeader, { borderBottomColor: theme.colors.border }]} pointerEvents="auto">
+                <Text style={[styles.commentSheetTitle, { color: theme.colors.text }]}>
+                  Yorumlar ({post.comment_count || 0})
+                </Text>
+                <TouchableOpacity onPress={handleCloseComments}>
+                  <X size={24} color={theme.colors.text} />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.commentSheetContent} pointerEvents="auto">
+                <CommentSheet postId={post.id} />
+              </View>
+            </View>
+          </KeyboardAvoidingView>
         </Animated.View>
       )}
 
@@ -697,7 +721,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: SCREEN_HEIGHT * 0.6, // Maksimum yükseklik
+    maxHeight: SCREEN_HEIGHT * 0.65, // Maksimum yükseklik
+    flexShrink: 1,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     shadowColor: '#000',

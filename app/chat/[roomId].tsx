@@ -14,6 +14,7 @@ import {
   Modal,
   Linking,
   SafeAreaView,
+  Keyboard,
 } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -347,6 +348,9 @@ export default function ChatRoomScreen() {
       content: messageText.trim(),
       replyTo: replyTo?.id,
     });
+    
+    // Mesaj gönderildikten sonra klavyeyi kapat
+    Keyboard.dismiss();
   };
 
   const handlePickDocument = async () => {
@@ -833,6 +837,9 @@ export default function ChatRoomScreen() {
               renderItem={renderMessage}
               inverted
               contentContainerStyle={styles.messagesList}
+              style={{ flex: 1 }}
+              keyboardShouldPersistTaps="handled"
+              onScrollBeginDrag={Keyboard.dismiss}
               ListFooterComponent={
                 roomTyping.length > 0 ? (
                   <View style={styles.typingContainer}>
@@ -873,7 +880,7 @@ export default function ChatRoomScreen() {
             </View>
           )}
 
-          {/* Input Container - Sadece mesajlar sekmesinde göster - NORMAL FLOW'DA */}
+          {/* Input Container - En altta sabit, klavyenin üstünde */}
           {activeTab === 'messages' && (
             <View style={styles.inputContainer}>
               <TouchableOpacity 
@@ -902,6 +909,9 @@ export default function ChatRoomScreen() {
                 }}
                 multiline
                 maxLength={1000}
+                returnKeyType="send"
+                blurOnSubmit={false}
+                onSubmitEditing={handleSendMessage}
               />
 
               <TouchableOpacity style={styles.emojiButton}>

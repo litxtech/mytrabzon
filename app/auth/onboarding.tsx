@@ -81,13 +81,34 @@ export default function OnboardingScreen() {
   }, [policiesData, policiesAccepted]);
 
   const handlePolicyAccept = async (policyIds: string[]) => {
+    if (!policyIds || policyIds.length === 0) {
+      console.error('No policy IDs provided');
+      Alert.alert('Hata', 'Politika ID\'leri bulunamadı');
+      return;
+    }
+
+    if (!user?.id) {
+      console.error('No user ID available');
+      Alert.alert('Hata', 'Kullanıcı bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
+      return;
+    }
+
+    setLoading(true);
     try {
-      await consentMutation.mutateAsync({ policyIds });
+      console.log('📝 [onboarding] Accepting policies:', policyIds, 'for user:', user.id);
+      const result = await consentMutation.mutateAsync({ 
+        policyIds,
+        userId: user.id, // User ID'yi açıkça gönder
+      });
+      console.log('✅ [onboarding] Policies accepted successfully:', result);
       setPoliciesAccepted(true);
       setShowPolicyModal(false);
-    } catch (error) {
-      console.error('Error accepting policies:', error);
-      alert('Politika onayı sırasında bir hata oluştu');
+    } catch (error: any) {
+      console.error('❌ [onboarding] Error accepting policies:', error);
+      const errorMessage = error?.message || 'Politika onayı sırasında bir hata oluştu';
+      Alert.alert('Hata', errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 

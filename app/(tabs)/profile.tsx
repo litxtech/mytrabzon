@@ -1,24 +1,19 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Share, Platform, FlatList, ActivityIndicator, TouchableWithoutFeedback, Animated, PanResponder, Dimensions, TextInput, Linking, Pressable } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Platform, ActivityIndicator, TouchableWithoutFeedback, RefreshControl, Linking } from 'react-native';
 import { Image } from 'expo-image';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode, Audio } from 'expo-av';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, MoreVertical, Share2, Users, MessageCircle, Trophy, Search, UserPlus, X, Instagram, Twitter, Facebook, Linkedin, Youtube, Music } from 'lucide-react-native';
+import { LogOut, Settings, Edit3, Heart, MoreVertical, MessageCircle, Instagram, Twitter, Facebook, Linkedin, Youtube, Shield, Car, Trophy, Search } from 'lucide-react-native';
 import { DISTRICT_BADGES } from '../../constants/districts';
-import { SOCIAL_MEDIA_PLATFORMS } from '../../constants/cities';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Footer } from '../../components/Footer';
-import { SupportPanel } from '../../components/SupportPanel';
 import { SupporterBadge } from '../../components/SupporterBadge';
 import VerifiedBadgeIcon from '../../components/VerifiedBadge';
+import { GenderIcon } from '../../components/GenderIcon';
 import { trpc } from '../../lib/trpc';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-const SCREEN_HEIGHT = Dimensions.get('window').height;
-const BOTTOM_SHEET_MAX_HEIGHT = SCREEN_HEIGHT * 0.9; // Çentik bölümüne kadar
-const BOTTOM_SHEET_MIN_HEIGHT = SCREEN_HEIGHT * 0.5; // Minimum yükseklik
 
 type QuickAction = {
   id: string;
@@ -29,12 +24,11 @@ type QuickAction = {
   tone?: 'danger' | 'success';
 };
 
-// Post Grid Item Component (Instagram benzeri overlay ile) - Video desteği ile
+// Post Grid Item Component
 function PostGridItem({ post, firstMedia, router, onDelete }: { post: any; firstMedia: any; router: any; onDelete?: (postId: string) => void }) {
   const [isPressed, setIsPressed] = useState(false);
   const [isVideo, setIsVideo] = useState(false);
-  const videoRef = React.useRef<any>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const videoRef = useRef<Video>(null);
 
   React.useEffect(() => {
     if (firstMedia) {
@@ -44,15 +38,27 @@ function PostGridItem({ post, firstMedia, router, onDelete }: { post: any; first
   }, [firstMedia]);
 
   // Video otomatik oynatma
-  React.useEffect(() => {
-    if (isVideo && videoRef.current && !isPressed) {
-      videoRef.current?.playAsync?.().catch(console.error);
-      setIsPlaying(true);
-    } else if (isVideo && videoRef.current && isPressed) {
-      videoRef.current?.pauseAsync?.().catch(console.error);
-      setIsPlaying(false);
+  useEffect(() => {
+    if (isVideo && firstMedia?.path && videoRef.current) {
+      // Audio session'ı aktif et
+      Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        staysActiveInBackground: false,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      }).catch(() => {
+        // Sessizce devam et
+      });
+
+      const timer = setTimeout(() => {
+        videoRef.current?.playAsync().catch(() => {
+          // Hata durumunda sessizce devam et
+        });
+      }, 300);
+      return () => clearTimeout(timer);
     }
-  }, [isVideo, isPressed]);
+  }, [isVideo, firstMedia]);
 
   const handlePress = () => {
     if (isVideo) {
@@ -89,16 +95,19 @@ function PostGridItem({ post, firstMedia, router, onDelete }: { post: any; first
       activeOpacity={1}
     >
       {firstMedia ? (
-        isVideo ? (
+        isVideo && firstMedia.path ? (
           <Video
             ref={videoRef}
-            source={{ uri: firstMedia.path, overrideFileExtensionAndroid: 'mp4' }}
+            source={{ uri: firstMedia.path }}
             style={styles.postGridImage}
             resizeMode={ResizeMode.COVER}
             isLooping
             isMuted
-            shouldPlay={isPlaying}
+            shouldPlay
             useNativeControls={false}
+            onError={() => {
+              // Hata durumunda sessizce devam et
+            }}
           />
         ) : (
           <Image
@@ -114,7 +123,6 @@ function PostGridItem({ post, firstMedia, router, onDelete }: { post: any; first
           </Text>
         </View>
       )}
-      {/* Instagram benzeri overlay */}
       <View style={[styles.postGridOverlay, isPressed && styles.postGridOverlayVisible]}>
         <View style={styles.postGridStats}>
           <Heart size={16} color={COLORS.white} fill={COLORS.white} />
@@ -128,566 +136,104 @@ function PostGridItem({ post, firstMedia, router, onDelete }: { post: any; first
           <Text style={styles.postGridBadgeText}>+{post.media.length - 1}</Text>
         </View>
       )}
-      {isVideo && (
-        <View style={styles.videoBadge}>
-          <Text style={styles.videoBadgeText}>▶</Text>
-        </View>
-      )}
     </TouchableOpacity>
   );
 }
 
-// Takipçiler Listesi Component
-function FollowersList({ userId, onClose }: { userId: string; onClose?: () => void }) {
-  const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState('');
-  const { data, isLoading, error } = trpc.user.getFollowers.useQuery(
-    { user_id: userId, limit: 100, offset: 0 },
-    { enabled: !!userId }
-  );
-
-  // Debug log
-  React.useEffect(() => {
-    if (error) {
-      console.error('FollowersList error:', error);
-    }
-    if (data) {
-      console.log('FollowersList data:', data?.followers?.length || 0, 'followers');
-    }
-  }, [data, error]);
-
-  const filteredFollowers = useMemo(() => {
-    if (!data?.followers) return [];
-    if (!searchQuery.trim()) return data.followers;
-    
-    const query = searchQuery.toLowerCase().trim();
-    return data.followers.filter((follower: any) => 
-      follower.full_name?.toLowerCase().includes(query) ||
-      follower.username?.toLowerCase().includes(query)
-    );
-  }, [data?.followers, searchQuery]);
-
-  if (isLoading) {
-    return (
-      <View style={styles.modalLoadingContainer}>
-        <ActivityIndicator size="small" color={COLORS.primary} />
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.listContainer}>
-      {/* Arama Input */}
-      <View style={styles.searchContainer}>
-        <Search size={20} color={COLORS.textLight} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Kullanıcı ara..."
-          placeholderTextColor={COLORS.textLight}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <X size={18} color={COLORS.textLight} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {filteredFollowers.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Users size={48} color={COLORS.textLight} />
-          <Text style={styles.emptyText}>
-            {searchQuery ? 'Sonuç bulunamadı' : 'Henüz takipçi yok'}
-          </Text>
-          <Text style={styles.emptySubtext}>
-            {searchQuery 
-              ? 'Farklı bir arama terimi deneyin'
-              : 'Paylaşımlarınızı artırarak daha fazla takipçi kazanabilirsiniz'
-            }
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredFollowers}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.followerItem}
-              onPress={() => {
-                if (onClose) onClose();
-                router.push(`/profile/${item.id}` as any);
-              }}
-            >
-              <Image
-                source={{ uri: item.avatar_url || 'https://via.placeholder.com/50' }}
-                style={styles.followerAvatar}
-              />
-              <View style={styles.followerInfo}>
-                <Text style={styles.followerName}>{item.full_name}</Text>
-                {item.username && (
-                  <Text style={styles.followerUsername}>@{item.username}</Text>
-                )}
-              </View>
-              {item.supporter_badge && item.supporter_badge_visible && (
-                <SupporterBadge
-                  visible={true}
-                  size="small"
-                  color={item.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
-                />
-              )}
-            </TouchableOpacity>
-          )}
-          contentContainerStyle={styles.modalListContent}
-        />
-      )}
-    </View>
-  );
-}
-
-// Takip Edilenler Listesi Component
-function FollowingList({ userId, onClose }: { userId: string; onClose?: () => void }) {
-  const router = useRouter();
-  const { user: currentUser } = useAuth();
-  const [searchQuery, setSearchQuery] = useState('');
-  const { data, isLoading, error } = trpc.user.getFollowing.useQuery(
-    { user_id: userId, limit: 100, offset: 0 },
-    { enabled: !!userId }
-  );
-
-  // Debug log
-  React.useEffect(() => {
-    if (error) {
-      console.error('FollowingList error:', error);
-    }
-    if (data) {
-      console.log('FollowingList data:', data?.following?.length || 0, 'following');
-    }
-  }, [data, error]);
-
-  const followMutation = trpc.user.follow.useMutation();
-  const unfollowMutation = trpc.user.unfollow.useMutation();
-
-  const filteredFollowing = useMemo(() => {
-    if (!data?.following) return [];
-    if (!searchQuery.trim()) return data.following;
-    
-    const query = searchQuery.toLowerCase().trim();
-    return data.following.filter((following: any) => 
-      following.full_name?.toLowerCase().includes(query) ||
-      following.username?.toLowerCase().includes(query)
-    );
-  }, [data?.following, searchQuery]);
-
-  const handleFollowToggle = async (targetUserId: string, isFollowing: boolean) => {
-    if (!currentUser) return;
-    
-    try {
-      if (isFollowing) {
-        await unfollowMutation.mutateAsync({ following_id: targetUserId });
-      } else {
-        await followMutation.mutateAsync({ following_id: targetUserId });
-      }
-    } catch (error) {
-      console.error('Follow/unfollow error:', error);
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <View style={styles.modalLoadingContainer}>
-        <ActivityIndicator size="small" color={COLORS.primary} />
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.listContainer}>
-      {/* Arama Input */}
-      <View style={styles.searchContainer}>
-        <Search size={20} color={COLORS.textLight} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Kullanıcı ara..."
-          placeholderTextColor={COLORS.textLight}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <X size={18} color={COLORS.textLight} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {filteredFollowing.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Users size={48} color={COLORS.textLight} />
-          <Text style={styles.emptyText}>
-            {searchQuery ? 'Sonuç bulunamadı' : 'Henüz kimseyi takip etmiyorsunuz'}
-          </Text>
-          <Text style={styles.emptySubtext}>
-            {searchQuery 
-              ? 'Farklı bir arama terimi deneyin'
-              : 'İlginizi çeken kullanıcıları takip ederek içeriklerini görebilirsiniz'
-            }
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredFollowing}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.followerItem}
-              onPress={() => {
-                if (onClose) onClose();
-                router.push(`/profile/${item.id}` as any);
-              }}
-            >
-              <Image
-                source={{ uri: item.avatar_url || 'https://via.placeholder.com/50' }}
-                style={styles.followerAvatar}
-              />
-              <View style={styles.followerInfo}>
-                <Text style={styles.followerName}>{item.full_name}</Text>
-                {item.username && (
-                  <Text style={styles.followerUsername}>@{item.username}</Text>
-                )}
-              </View>
-              {item.supporter_badge && item.supporter_badge_visible && (
-                <SupporterBadge
-                  visible={true}
-                  size="small"
-                  color={item.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
-                />
-              )}
-              {currentUser?.id !== item.id && (
-                <TouchableOpacity
-                  style={styles.addButton}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    handleFollowToggle(item.id, true);
-                  }}
-                >
-                  <UserPlus size={16} color={COLORS.primary} />
-                </TouchableOpacity>
-              )}
-            </TouchableOpacity>
-          )}
-          contentContainerStyle={styles.modalListContent}
-        />
-      )}
-    </View>
-  );
-}
-
-// Bottom Sheet Modal Component
-function BottomSheetModal({ 
-  visible, 
-  onClose, 
-  title, 
-  children 
-}: { 
-  visible: boolean; 
-  onClose: () => void; 
-  title: string; 
-  children: React.ReactNode;
-}) {
-  const insets = useSafeAreaInsets();
-  const translateY = useRef(new Animated.Value(BOTTOM_SHEET_MAX_HEIGHT)).current;
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dy) > 5;
-      },
-      onPanResponderGrant: () => {
-        translateY.setOffset((translateY as any)._value);
-      },
-      onPanResponderMove: (_, gestureState) => {
-        const newValue = gestureState.dy;
-        if (newValue > 0) {
-          translateY.setValue(newValue);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        translateY.flattenOffset();
-        const shouldClose = gestureState.dy > 100 || gestureState.vy > 0.5;
-        
-        if (shouldClose) {
-          Animated.spring(translateY, {
-            toValue: BOTTOM_SHEET_MAX_HEIGHT,
-            useNativeDriver: true,
-            tension: 50,
-            friction: 8,
-          }).start(() => {
-            onClose();
-          });
-        } else {
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            tension: 50,
-            friction: 8,
-          }).start();
-        }
-      },
-    })
-  ).current;
-
-  useEffect(() => {
-    if (visible) {
-      translateY.setValue(BOTTOM_SHEET_MAX_HEIGHT);
-      Animated.spring(translateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 50,
-        friction: 8,
-      }).start();
-    } else {
-      Animated.spring(translateY, {
-        toValue: BOTTOM_SHEET_MAX_HEIGHT,
-        useNativeDriver: true,
-        tension: 50,
-        friction: 8,
-      }).start();
-    }
-  }, [visible]);
-
-  if (!visible) return null;
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="none"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
-      <Pressable 
-        style={styles.bottomSheetOverlay}
-        onPress={onClose}
-      />
-      <Pressable
-        onPress={(e) => e.stopPropagation()}
-        style={{ flex: 1 }}
-      >
-        <Animated.View
-          style={[
-            styles.bottomSheetContainer,
-            {
-              maxHeight: BOTTOM_SHEET_MAX_HEIGHT,
-              paddingBottom: insets.bottom,
-              transform: [{ translateY }],
-            },
-          ]}
-          {...panResponder.panHandlers}
-          onStartShouldSetResponder={() => true}
-        >
-          <View style={styles.bottomSheetHandle} />
-          <View style={styles.bottomSheetHeader}>
-            <Text style={styles.bottomSheetTitle}>{title}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.bottomSheetCloseButton}>
-              <X size={24} color={COLORS.text} />
-            </TouchableOpacity>
-          </View>
-          <View style={{ flex: 1 }} pointerEvents="auto">
-            {children}
-          </View>
-        </Animated.View>
-      </Pressable>
-    </Modal>
-  );
-}
 
 export default function ProfileScreen() {
-  const { profile, user, signOut, refreshProfile } = useAuth();
+  const { profile, user, signOut, loading: authLoading } = useAuth();
   const { theme } = useTheme();
   const router = useRouter();
-  const [supportVisible, setSupportVisible] = useState(false);
-  const [menuVisible, setMenuVisible] = useState(false);
-  const [followersModalVisible, setFollowersModalVisible] = useState(false);
-  const [followingModalVisible, setFollowingModalVisible] = useState(false);
   const insets = useSafeAreaInsets();
-  
-  // Profil sayfasına focus olduğunda profili yenile
-  useFocusEffect(
-    React.useCallback(() => {
-      if (user?.id) {
-        refreshProfile();
-      }
-    }, [user?.id, refreshProfile])
-  );
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [avatarModalVisible, setAvatarModalVisible] = useState(false);
 
-  const deleteAccountMutation = trpc.user.requestAccountDeletion.useMutation();
-  const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
-  
-  // Admin kontrolü - admin_users tablosundan direkt kontrol et
-  const [isAdmin, setIsAdmin] = useState(false);
-  
-  useEffect(() => {
-    if (!user?.id) {
-      setIsAdmin(false);
-      return;
-    }
-    
-    // Supabase'den direkt kontrol et
-    const checkAdmin = async () => {
-      if (user.id === SPECIAL_ADMIN_ID) {
+  // Admin kontrolü - Sadece belirli hesap için
+  const ADMIN_USER_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+  const ADMIN_EMAIL = 'support@litxtech.com';
+  const ADMIN_USERNAME = 'mytrabzonteam';
+
+  React.useEffect(() => {
+    if (user?.id === ADMIN_USER_ID) {
+      // Email ve username kontrolü
+      const userEmail = user.email || user.user_metadata?.email || '';
+      const username = profile?.username || user.user_metadata?.username || '';
+      
+      if (userEmail === ADMIN_EMAIL && username === ADMIN_USERNAME) {
         setIsAdmin(true);
-        return;
+      } else {
+        setIsAdmin(false);
       }
-
-      const { supabase } = await import('../../lib/supabase');
-      const { data, error } = await supabase
-        .from('admin_users')
-        .select('id, role, is_active')
-        .eq('user_id', user.id)
-        .eq('is_active', true)
-        .maybeSingle();
-      
-      setIsAdmin(!!data && !error);
-    };
-    
-    checkAdmin();
-  }, [user?.id]);
-
-  // KYC durumu kontrolü
-  const { data: kycData } = trpc.kyc.get.useQuery(undefined, {
-    enabled: !!user?.id,
-  });
-
-  // Kullanıcının gönderilerini getir
-  const utils = trpc.useUtils();
-  const { data: postsData, isLoading: postsLoading } = trpc.post.getPosts.useQuery({
-    author_id: user?.id,
-    limit: 50,
-    offset: 0,
-  }, {
-    enabled: !!user?.id, // Sadece user varsa query çalışsın
-  });
-
-  // Gönderi silme mutation'ı
-  const deletePostMutation = trpc.post.deletePost.useMutation({
-    onSuccess: () => {
-      // Gönderileri yeniden yükle
-      utils.post.getPosts.invalidate({ author_id: user?.id });
-      Alert.alert('Başarılı', 'Gönderi silindi');
-    },
-    onError: (error) => {
-      Alert.alert('Hata', error.message || 'Gönderi silinemedi');
-    },
-  });
-
-  const handleDeletePost = (postId: string) => {
-    deletePostMutation.mutate({ postId });
-  };
-
-  // Kullanıcının geçmiş maçlarını getir
-  const { data: userMatchesData } = (trpc as any).football.getUserMatches.useQuery(
-    {
-      user_id: user?.id || '',
-      limit: 20,
-      offset: 0,
-    },
-    {
-      enabled: !!user?.id,
+    } else {
+      setIsAdmin(false);
     }
-  );
-
-  // Geçmiş maçları filtrele (süresi geçmiş olanlar)
-  const pastMatches = useMemo(() => {
-    if (!userMatchesData?.matches || !Array.isArray(userMatchesData.matches)) return [];
-    const now = Date.now();
-    const gracePeriod = 5 * 60 * 1000; // 5 dakika tolerans
-    
-    return userMatchesData.matches.filter((match: any) => {
-      let matchDateTime: string | null = null;
-      
-      if (match.match_date_time) {
-        matchDateTime = match.match_date_time;
-      } else if (match.match_date && match.start_time) {
-        matchDateTime = `${match.match_date}T${match.start_time}+03:00`;
-      }
-      
-      if (!matchDateTime) return false;
-      
-      const start = new Date(matchDateTime).getTime();
-      // Süresi geçmiş maçlar (başlangıç + 5 dakika < şimdi)
-      return start + gracePeriod < now;
-    });
-  }, [userMatchesData]);
-
-  // İstatistikleri hesapla
-  const totalPosts = postsData?.posts?.length || 0;
+  }, [user?.id, user?.email, user?.user_metadata?.email, profile?.username, user?.user_metadata?.username]);
   
-  // Takipçi ve takip sayılarını getir - gerçek zamanlı güncelleme için refetch
-  const { data: followStats, refetch: refetchFollowStats } = trpc.user.getFollowStats.useQuery(
-    { user_id: user?.id || '' },
-    { enabled: !!user?.id }
-  );
-  
-  const followersCount = followStats?.followers_count || 0;
-  const followingCount = followStats?.following_count || 0;
-
-  // Takip/takipçi sayılarını periyodik olarak güncelle (her 5 saniyede bir)
-  useEffect(() => {
-    if (!user?.id) return;
-    const interval = setInterval(() => {
-      refetchFollowStats();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [user?.id, refetchFollowStats]);
-
-  const handleLogout = async () => {
-    await signOut();
-    router.replace('/auth/login');
-  };
-
-  const handleDeleteAccount = () => {
-    Alert.alert(
-      'Hesabı Sil',
-      'Hesabınızı silmek istediğinizden emin misiniz?\n\nHesabınız 7 gün süreyle askıya alınacak ve bu süre sonunda kalıcı olarak silinecektir. Bu süre içinde giriş yaparsanız hesabınızı geri yükleyebilirsiniz.\n\nSilinen veriler:\n• Profil bilgileriniz\n• Paylaşımlarınız\n• Yorumlarınız\n• Mesajlarınız\n• Tüm kişisel verileriniz',
-      [
-        { text: 'İptal', style: 'cancel' },
-        {
-          text: 'Sil',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteAccountMutation.mutateAsync();
-              Alert.alert(
-                'Hesap Silme İsteği Alındı',
-                'Hesabınız 7 gün içinde kalıcı olarak silinecektir. Bu süre içinde giriş yaparsanız hesabınızı geri yükleyebilirsiniz.',
-                [
-                  {
-                    text: 'Tamam',
-                    onPress: () => {
-                      signOut();
-                      router.replace('/auth/login');
-                    }
-                  }
-                ]
-              );
-            } catch (error) {
-              Alert.alert('Hata', 'Hesap silme işlemi sırasında bir hata oluştu.');
-              console.error('Delete account error:', error);
-            }
-          }
-        }
-      ]
+  // Loading durumunda loading göster
+  if (authLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
     );
+  }
+
+  // User yoksa loading göster
+  if (!user) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+    );
+  }
+
+  // Profile yoksa placeholder göster
+  const displayProfile = profile || {
+    id: user.id,
+    full_name: user.user_metadata?.full_name || 'Kullanıcı',
+    username: user.user_metadata?.username || '',
+    avatar_url: user.user_metadata?.avatar_url || 'https://via.placeholder.com/100',
+    bio: '',
+    district: null,
+    gender: null,
+    verified: false,
+    privacy_settings: { show_social_media: true, show_gender: true },
+    social_media: {},
+    supporter_badge: null,
+    supporter_badge_visible: false,
+    supporter_badge_color: null,
   };
 
-  const handleShareProfile = async () => {
-    try {
-      const message = `MyTrabzon profilimi keşfet: ${profile?.full_name || 'Kullanıcı'}`;
-      await Share.share({ message });
-    } catch (error: any) {
-      Alert.alert('Hata', error.message || 'Paylaşım yapılamadı');
-    } finally {
-      setMenuVisible(false);
+  const showGender = displayProfile.privacy_settings?.show_gender !== false && displayProfile.gender;
+
+  const socialMedia = (displayProfile.social_media || {}) as {
+    instagram?: string;
+    twitter?: string;
+    facebook?: string;
+    linkedin?: string;
+    youtube?: string;
+    tiktok?: string;
+  };
+  const showSocialMedia = displayProfile.privacy_settings?.show_social_media !== false;
+
+  // Sosyal medya linklerini açma fonksiyonu
+  const openSocialMedia = (platform: string, username: string) => {
+    const urls: Record<string, string> = {
+      instagram: `https://instagram.com/${username.replace('@', '')}`,
+      twitter: `https://twitter.com/${username.replace('@', '')}`,
+      facebook: `https://facebook.com/${username.replace('@', '')}`,
+      linkedin: `https://linkedin.com/in/${username.replace('@', '')}`,
+      youtube: `https://youtube.com/@${username.replace('@', '')}`,
+      tiktok: `https://tiktok.com/@${username.replace('@', '')}`,
+    };
+    const url = urls[platform];
+    if (url) {
+      Linking.openURL(url).catch(() => {
+        Alert.alert('Hata', 'Link açılamadı');
+      });
     }
   };
 
@@ -696,83 +242,95 @@ export default function ProfileScreen() {
     router.push(path as any);
   };
 
-  const kycAction = (() => {
-    if (profile?.verified) {
-      return {
-        id: 'kyc-verified',
-        label: 'Kimlik Onaylı',
-        icon: CheckCircle2,
-        disabled: true,
-        tone: 'success',
-      };
+  const handleLogout = async () => {
+    setMenuVisible(false);
+    await signOut();
+    router.replace('/auth/login');
+  };
+
+  // Adım 2: getFollowStats query'si ekleniyor
+  const { data: followStats } = trpc.user.getFollowStats.useQuery(
+    { user_id: user?.id || '' },
+    { 
+      enabled: !!user?.id && user.id.length > 0,
+      retry: false,
+      staleTime: 30 * 1000,
+      refetchOnMount: false,
+      refetchOnWindowFocus: false,
+      refetchInterval: false,
     }
+  );
 
-    if (kycData?.status === 'pending') {
-      return {
-        id: 'kyc-pending',
-        label: 'Onay Bekleniyor',
-        icon: Clock,
-        disabled: true,
-      };
+  // Adım 3: getPosts query'si ekleniyor
+  const utils = trpc.useUtils();
+  const { data: postsData, refetch: refetchPosts } = trpc.post.getPosts.useQuery({
+    author_id: user?.id,
+    limit: 50,
+    offset: 0,
+  }, {
+    enabled: !!user?.id && !!user.id,
+    retry: false,
+    staleTime: 2 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  });
+
+  // Post silme mutation'ı
+  const deletePostMutation = trpc.post.deletePost.useMutation({
+    onSuccess: async () => {
+      Alert.alert('Başarılı', 'Gönderi silindi');
+      await utils.post.getPosts.invalidate();
+      await refetchPosts();
+      await utils.user.getFollowStats.invalidate();
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Gönderi silinemedi';
+      Alert.alert('Hata', message);
+    },
+  });
+
+  const handleDeletePost = (postId: string) => {
+    deletePostMutation.mutate({ postId });
+  };
+
+  const totalPosts = postsData?.posts?.length || 0;
+  const followersCount = followStats?.followers_count || 0;
+  const followingCount = followStats?.following_count || 0;
+
+  // Pull to refresh handler
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        utils.post.getPosts.invalidate(),
+        utils.user.getFollowStats.invalidate(),
+        refetchPosts(),
+      ]);
+    } finally {
+      setRefreshing(false);
     }
+  };
 
-    if (kycData?.status === 'rejected') {
-      return {
-        id: 'kyc-retry',
-        label: 'Tekrar Doğrula',
-        icon: XCircle,
-        onPress: () => handleNavigate('/kyc/verify'),
-        tone: 'danger',
-      };
-    }
-
-    return {
-      id: 'kyc-start',
-      label: 'Kimliği Doğrula',
-      icon: Shield,
-      onPress: () => handleNavigate('/kyc/verify'),
-    };
-  })();
-
-  // Sadece "Profili Düzenle" ve "Destekle" butonları grid'de kalacak
   const quickActions: QuickAction[] = [
     { id: 'edit', label: 'Profili Düzenle', icon: Edit3, onPress: () => handleNavigate('/profile/edit') },
     { id: 'donate', label: 'Destekle', icon: Heart, onPress: () => handleNavigate('/support/donate') },
   ];
-
-  // Menüye eklenecek butonlar
-  const menuActions: QuickAction[] = [
-    { id: 'share', label: 'Profili Paylaş', icon: Share2, onPress: handleShareProfile },
-    { id: 'matches', label: 'Paylaşılan Maçlar', icon: Trophy, onPress: () => {
-      setMenuVisible(false);
-      router.push('/profile/my-matches' as any);
-    }, disabled: pastMatches.length === 0 },
-    { id: 'settings', label: 'Ayarlar', icon: Settings, onPress: () => handleNavigate('/profile/settings') },
-    { id: 'support', label: 'Destek', icon: HelpCircle, onPress: () => { setMenuVisible(false); setSupportVisible(true); } },
-    kycAction as QuickAction,
-    { id: 'logout', label: 'Çıkış Yap', icon: LogOut, onPress: () => { setMenuVisible(false); handleLogout(); }, tone: 'danger' },
-    { id: 'delete', label: 'Hesabı Sil', icon: Trash2, onPress: () => { setMenuVisible(false); handleDeleteAccount(); }, tone: 'danger' },
-  ];
-
-  if (isAdmin) {
-    menuActions.splice(4, 0, {
-      id: 'admin',
-      label: 'Admin Paneli',
-      icon: Shield,
-      onPress: () => handleNavigate('/admin/dashboard'),
-    });
-  }
-
-
-  if (!profile) return null;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background, paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.md) : 0 }]}>
       <ScrollView 
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: Platform.OS === 'android' ? SPACING.lg : 0 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.colors.primary}
+            colors={[theme.colors.primary]}
+          />
+        }
       >
-        {/* Header - Resimdeki gibi */}
+        {/* Header */}
         <View style={[styles.profileHeader, { backgroundColor: theme.colors.card, paddingTop: Math.max(insets.top, SPACING.md) }]}>
           <TouchableOpacity 
             style={[styles.menuButton, { backgroundColor: theme.colors.card }]} 
@@ -781,255 +339,178 @@ export default function ProfileScreen() {
           >
             <MoreVertical size={18} color={theme.colors.text} />
           </TouchableOpacity>
-          <View style={styles.profileTopRow}>
-            <View style={styles.profileLeft}>
-              <View style={styles.avatarContainer}>
-                <TouchableOpacity 
-                  onPress={() => router.push('/profile/edit')}
-                  activeOpacity={0.8}
-                >
+          
+          {/* Profil Avatar - Merkezi ve Büyük */}
+          <View style={styles.profileTopSection}>
+            <View style={styles.avatarContainer}>
+              <TouchableOpacity 
+                onLongPress={() => setAvatarModalVisible(true)}
+                delayLongPress={300}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.avatarWrapper, { borderColor: theme.colors.primary }]}>
                   <Image
-                    source={{ uri: profile.avatar_url || 'https://via.placeholder.com/100' }}
+                    source={{ uri: displayProfile.avatar_url || 'https://via.placeholder.com/120' }}
                     style={styles.avatar}
                   />
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.storyAddButton}
-                  onPress={() => router.push('/profile/edit')}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.storyAddIcon}>+</Text>
-                </TouchableOpacity>
-              </View>
+                </View>
+              </TouchableOpacity>
             </View>
-            <View style={styles.profileRight}>
-              <View style={styles.statsRow}>
-                <TouchableOpacity style={styles.statItem} onPress={() => {}}>
-                  <Text style={[styles.statValue, { color: theme.colors.text }]}>{totalPosts}</Text>
-                  <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>gönderi</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.statItem} 
-                  onPress={() => setFollowersModalVisible(true)}
-                >
-                  <Text style={[styles.statValue, { color: theme.colors.text }]}>{followersCount}</Text>
-                  <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>takipçi</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.statItem} 
-                  onPress={() => setFollowingModalVisible(true)}
-                >
-                  <Text style={[styles.statValue, { color: theme.colors.text }]}>{followingCount}</Text>
-                  <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>takip</Text>
-                </TouchableOpacity>
-              </View>
+
+            {/* İstatistikler - Modern Kart Tasarımı */}
+            <View style={styles.statsContainer}>
+              <TouchableOpacity 
+                style={[styles.statCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.statValue, { color: theme.colors.text }]}>{totalPosts}</Text>
+                <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>Gönderi</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.statCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                onPress={() => router.push('/profile/followers' as any)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.statValue, { color: theme.colors.text }]}>{followersCount}</Text>
+                <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>Takipçi</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.statCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                onPress={() => router.push('/profile/following' as any)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.statValue, { color: theme.colors.text }]}>{followingCount}</Text>
+                <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>Takip</Text>
+              </TouchableOpacity>
             </View>
           </View>
           
+          {/* Kullanıcı Bilgileri */}
           <View style={styles.profileInfo}>
             <View style={styles.nameRow}>
-              <Text style={[styles.name, { color: theme.colors.text }]}>{profile.full_name}</Text>
-              {(() => {
-                const privacySettings = profile.privacy_settings as any;
-                // GenderIcon component removed
-                return null;
-              })()}
-              {profile.verified && <VerifiedBadgeIcon size={20} />}
-              {profile.supporter_badge && profile.supporter_badge_visible && (
+              <Text style={[styles.name, { color: theme.colors.text }]}>{displayProfile.full_name}</Text>
+              {showGender && (
+                <GenderIcon 
+                  gender={displayProfile.gender as 'male' | 'female' | 'other'} 
+                  size={18} 
+                />
+              )}
+              {displayProfile.verified && <VerifiedBadgeIcon size={18} />}
+              {displayProfile.supporter_badge && displayProfile.supporter_badge_visible && (
                 <SupporterBadge 
                   visible={true} 
                   size="small" 
-                  color={profile.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
+                  color={displayProfile.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
                 />
               )}
             </View>
-            {profile.username && (
-              <Text style={[styles.username, { color: theme.colors.textLight }]}>@{profile.username}</Text>
+            {displayProfile.username && (
+              <Text style={[styles.username, { color: theme.colors.textLight }]}>@{displayProfile.username}</Text>
             )}
-            {profile.bio && (
+            {displayProfile.bio && (
               <Text style={[styles.bio, { color: theme.colors.text }]} numberOfLines={3}>
-                {profile.bio}
+                {displayProfile.bio}
               </Text>
             )}
-            {profile.district && (
+            {displayProfile.district && (
               <View style={styles.locationRow}>
                 <Text style={[styles.locationText, { color: theme.colors.textLight }]}>
-                  {DISTRICT_BADGES[profile.district as keyof typeof DISTRICT_BADGES] || '📍'} {profile.district}
+                  {DISTRICT_BADGES[displayProfile.district as keyof typeof DISTRICT_BADGES] || '📍'} {displayProfile.district}
                 </Text>
               </View>
             )}
-            
-            {/* Sosyal Medya Linkleri */}
-            {(() => {
-              const privacySettings = profile.privacy_settings as any;
-              const showSocialMedia = privacySettings?.show_social_media !== false;
-              const socialMedia = profile.social_media as any;
-              
-              // Debug log
-              console.log('🔍 Social Media Debug:', {
-                showSocialMedia,
-                socialMedia,
-                privacySettings,
-                hasSocialMedia: !!socialMedia,
-              });
-              
-              if (!showSocialMedia || !socialMedia) return null;
-              
-              const socialMediaLinks = [
-                { key: 'instagram', label: 'Instagram', icon: Instagram, url: socialMedia.instagram },
-                { key: 'twitter', label: 'Twitter/X', icon: Twitter, url: socialMedia.twitter },
-                { key: 'facebook', label: 'Facebook', icon: Facebook, url: socialMedia.facebook },
-                { key: 'linkedin', label: 'LinkedIn', icon: Linkedin, url: socialMedia.linkedin },
-                { key: 'tiktok', label: 'TikTok', icon: Music, url: socialMedia.tiktok },
-                { key: 'youtube', label: 'YouTube', icon: Youtube, url: socialMedia.youtube },
-              ].filter(item => item.url && item.url.trim() !== '');
-              
-              if (socialMediaLinks.length === 0) return null;
-              
-              const handleSocialMediaPress = (platform: string, username: string) => {
-                let url = '';
-                const cleanUsername = username.trim().replace(/^@/, '').replace(/^https?:\/\//, '').replace(/\/$/, '');
-                
-                switch (platform) {
-                  case 'instagram':
-                    url = `instagram://user?username=${cleanUsername}`;
-                    Linking.canOpenURL(url).then(supported => {
-                      if (supported) {
-                        Linking.openURL(url);
-                      } else {
-                        Linking.openURL(`https://www.instagram.com/${cleanUsername}`);
-                      }
-                    });
-                    break;
-                  case 'twitter':
-                    url = `twitter://user?screen_name=${cleanUsername}`;
-                    Linking.canOpenURL(url).then(supported => {
-                      if (supported) {
-                        Linking.openURL(url);
-                      } else {
-                        Linking.openURL(`https://twitter.com/${cleanUsername}`);
-                      }
-                    });
-                    break;
-                  case 'facebook':
-                    url = `fb://profile/${cleanUsername}`;
-                    Linking.canOpenURL(url).then(supported => {
-                      if (supported) {
-                        Linking.openURL(url);
-                      } else {
-                        Linking.openURL(`https://www.facebook.com/${cleanUsername}`);
-                      }
-                    });
-                    break;
-                  case 'linkedin':
-                    url = `linkedin://profile/${cleanUsername}`;
-                    Linking.canOpenURL(url).then(supported => {
-                      if (supported) {
-                        Linking.openURL(url);
-                      } else {
-                        Linking.openURL(`https://www.linkedin.com/in/${cleanUsername}`);
-                      }
-                    });
-                    break;
-                  case 'tiktok':
-                    url = `snssdk1233://user/profile/${cleanUsername}`;
-                    Linking.canOpenURL(url).then(supported => {
-                      if (supported) {
-                        Linking.openURL(url);
-                      } else {
-                        Linking.openURL(`https://www.tiktok.com/@${cleanUsername}`);
-                      }
-                    });
-                    break;
-                  case 'youtube':
-                    url = `vnd.youtube://channel/${cleanUsername}`;
-                    Linking.canOpenURL(url).then(supported => {
-                      if (supported) {
-                        Linking.openURL(url);
-                      } else {
-                        Linking.openURL(`https://www.youtube.com/@${cleanUsername}`);
-                      }
-                    });
-                    break;
-                }
-              };
-              
+
+            {/* Sosyal Medya Linkleri - Kompakt ve Modern */}
+            {showSocialMedia && Object.keys(socialMedia).length > 0 && (
+              <View style={styles.socialMediaContainer}>
+                {socialMedia.instagram && (
+                  <TouchableOpacity
+                    style={[styles.socialMediaButton, { backgroundColor: theme.colors.background }]}
+                    onPress={() => openSocialMedia('instagram', socialMedia.instagram!)}
+                    activeOpacity={0.7}
+                  >
+                    <Instagram size={16} color="#E4405F" />
+                  </TouchableOpacity>
+                )}
+                {socialMedia.twitter && (
+                  <TouchableOpacity
+                    style={[styles.socialMediaButton, { backgroundColor: theme.colors.background }]}
+                    onPress={() => openSocialMedia('twitter', socialMedia.twitter!)}
+                    activeOpacity={0.7}
+                  >
+                    <Twitter size={16} color="#1DA1F2" />
+                  </TouchableOpacity>
+                )}
+                {socialMedia.facebook && (
+                  <TouchableOpacity
+                    style={[styles.socialMediaButton, { backgroundColor: theme.colors.background }]}
+                    onPress={() => openSocialMedia('facebook', socialMedia.facebook!)}
+                    activeOpacity={0.7}
+                  >
+                    <Facebook size={16} color="#1877F2" />
+                  </TouchableOpacity>
+                )}
+                {socialMedia.linkedin && (
+                  <TouchableOpacity
+                    style={[styles.socialMediaButton, { backgroundColor: theme.colors.background }]}
+                    onPress={() => openSocialMedia('linkedin', socialMedia.linkedin!)}
+                    activeOpacity={0.7}
+                  >
+                    <Linkedin size={16} color="#0A66C2" />
+                  </TouchableOpacity>
+                )}
+                {socialMedia.youtube && (
+                  <TouchableOpacity
+                    style={[styles.socialMediaButton, { backgroundColor: theme.colors.background }]}
+                    onPress={() => openSocialMedia('youtube', socialMedia.youtube!)}
+                    activeOpacity={0.7}
+                  >
+                    <Youtube size={16} color="#FF0000" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </View>
+
+          {/* Quick Actions */}
+          <View style={[styles.quickActions, { backgroundColor: theme.colors.card }]}>
+            {quickActions.map((action) => {
+              const IconComponent = action.icon;
+              const isDisabled = action.disabled;
+              const toneColor =
+                action.tone === 'danger'
+                  ? theme.colors.error
+                  : action.tone === 'success'
+                  ? theme.colors.success
+                  : theme.colors.primary;
               return (
-                <View style={styles.socialMediaContainer}>
-                  {socialMediaLinks.map((item) => {
-                    const IconComponent = item.icon;
-                    return (
-                      <TouchableOpacity
-                        key={item.key}
-                        style={[styles.socialMediaButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-                        onPress={() => handleSocialMediaPress(item.key, item.url)}
-                      >
-                        <IconComponent size={18} color={theme.colors.primary} />
-                        <Text style={[styles.socialMediaButtonText, { color: theme.colors.text }]}>
-                          {item.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              );
-            })()}
-            {/* Mesaj Butonu - Kendi profiline mesaj göndermek mantıklı değil, bu yüzden kaldırıldı */}
-          </View>
-
-        <View style={[styles.quickActions, { backgroundColor: theme.colors.card }]}>
-          {quickActions.map((action) => {
-            const IconComponent = action.icon;
-            const isDisabled = action.disabled;
-            const toneColor =
-              action.tone === 'danger'
-                ? theme.colors.error
-                : action.tone === 'success'
-                ? theme.colors.success
-                : theme.colors.primary;
-            return (
-              <TouchableOpacity
-                key={action.id}
-                style={[styles.quickActionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, isDisabled && styles.quickActionCardDisabled]}
-                onPress={action.onPress}
-                disabled={isDisabled || !action.onPress}
-                activeOpacity={isDisabled ? 1 : 0.8}
-              >
-                <IconComponent size={18} color={toneColor} />
-                <Text
-                  style={[
-                    styles.quickActionLabel,
-                    { color: theme.colors.text },
-                    isDisabled && styles.quickActionLabelDisabled,
-                  ]}
+                <TouchableOpacity
+                  key={action.id}
+                  style={[styles.quickActionCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }, isDisabled && styles.quickActionCardDisabled]}
+                  onPress={action.onPress}
+                  disabled={isDisabled || !action.onPress}
+                  activeOpacity={isDisabled ? 1 : 0.8}
                 >
-                  {action.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        </View>
-
-        {/* Tab Navigation - Grid, Tagged */}
-        <View style={[styles.tabNavigation, { backgroundColor: theme.colors.card, borderTopColor: theme.colors.border }]}>
-          <TouchableOpacity style={[styles.tab, styles.tabActive]}>
-            <View style={[styles.tabIcon, { backgroundColor: theme.colors.primary }]} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.tab}>
-            <View style={[styles.tabIcon, styles.tabIconTagged, { backgroundColor: theme.colors.textLight }]} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Posts Grid - Resimdeki gibi boş durum */}
-        {postsLoading ? (
-          <View style={styles.loadingContainer}>
-            <Text style={[styles.loadingText, { color: theme.colors.text }]}>Yükleniyor...</Text>
+                  <IconComponent size={18} color={toneColor} />
+                  <Text
+                    style={[
+                      styles.quickActionLabel,
+                      { color: theme.colors.text },
+                      isDisabled && styles.quickActionLabelDisabled,
+                    ]}
+                  >
+                    {action.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
-        ) : postsData?.posts && postsData.posts.length > 0 ? (
+        </View>
+
+        {/* Posts Section - Adım 9: Post Grid */}
+        {postsData?.posts && postsData.posts.length > 0 ? (
           <View style={styles.postsGrid}>
-            {postsData.posts.map((post) => {
+            {postsData.posts.map((post: any) => {
               const firstMedia = post.media && post.media.length > 0 ? post.media[0] : null;
               return (
                 <PostGridItem
@@ -1060,60 +541,10 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* Geçmiş Maçlar Bölümü */}
-        {pastMatches.length > 0 && (
-          <View style={[styles.matchesSection, { backgroundColor: theme.colors.card, borderTopColor: theme.colors.border }]}>
-            <View style={[styles.sectionHeader, { borderBottomColor: theme.colors.border }]}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Geçmiş Maçlar</Text>
-            </View>
-            <View style={styles.matchesList}>
-              {pastMatches.map((match: any) => {
-                let matchDateTime: string | null = null;
-                if (match.match_date_time) {
-                  matchDateTime = match.match_date_time;
-                } else if (match.match_date && match.start_time) {
-                  matchDateTime = `${match.match_date}T${match.start_time}+03:00`;
-                }
-                
-                const formattedDate = matchDateTime 
-                  ? new Date(matchDateTime).toLocaleDateString('tr-TR', {
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric',
-                    })
-                  : 'Tarih bilgisi yok';
-                
-                const formattedTime = matchDateTime
-                  ? new Date(matchDateTime).toLocaleTimeString('tr-TR', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
-                  : '--:--';
-
-                return (
-                  <TouchableOpacity
-                    key={match.id}
-                    style={[styles.matchItem, { backgroundColor: theme.colors.surface }]}
-                    onPress={() => router.push(`/football/match/${match.id}` as any)}
-                  >
-                    <View style={styles.matchItemContent}>
-                      <Text style={[styles.matchItemField, { color: theme.colors.text }]}>{match.field?.name || 'Halı Saha'}</Text>
-                      <Text style={[styles.matchItemDate, { color: theme.colors.textLight }]}>{formattedDate}</Text>
-                      <Text style={[styles.matchItemTime, { color: theme.colors.primary }]}>{formattedTime}</Text>
-                      {match.district && (
-                        <Text style={[styles.matchItemDistrict, { color: theme.colors.textLight }]}>{match.district}</Text>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
         <Footer />
       </ScrollView>
 
+      {/* Menu Modal - Basit */}
       <Modal
         visible={menuVisible}
         transparent
@@ -1135,79 +566,93 @@ export default function ProfileScreen() {
                 <Text style={[styles.menuCloseText, { color: theme.colors.text }]}>✕</Text>
               </TouchableOpacity>
             </View>
-            {menuActions.map((action) => {
-              const IconComponent = action.icon;
-              const isDisabled = action.disabled;
-              const toneColor =
-                action.tone === 'danger'
-                  ? theme.colors.error
-                  : action.tone === 'success'
-                  ? theme.colors.success
-                  : theme.colors.text;
-              
-              return (
-                <TouchableOpacity
-                  key={action.id}
-                  style={[
-                    styles.menuOption,
-                    { borderTopColor: theme.colors.border },
-                    action.tone === 'danger' && styles.menuOptionDanger,
-                    isDisabled && styles.menuOptionDisabled
-                  ]}
-                  onPress={() => {
-                    if (!isDisabled && action.onPress) {
-                      action.onPress();
-                    }
-                  }}
-                  disabled={isDisabled || !action.onPress}
-                >
-                  <IconComponent size={18} color={toneColor} />
-                  <Text
-                    style={[
-                      styles.menuOptionText,
-                      { color: theme.colors.text },
-                      action.tone === 'danger' && { color: theme.colors.error },
-                      isDisabled && { color: theme.colors.textLight }
-                    ]}
-                  >
-                    {action.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+            <TouchableOpacity
+              style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
+              onPress={() => {
+                setMenuVisible(false);
+                handleNavigate('/profile/settings');
+              }}
+            >
+              <Settings size={18} color={theme.colors.text} />
+              <Text style={[styles.menuOptionText, { color: theme.colors.text }]}>Ayarlar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
+              onPress={() => {
+                setMenuVisible(false);
+                handleNavigate('/all-users');
+              }}
+            >
+              <Search size={18} color={theme.colors.text} />
+              <Text style={[styles.menuOptionText, { color: theme.colors.text }]}>Kullanıcı Ara</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
+              onPress={() => {
+                setMenuVisible(false);
+                handleNavigate('/profile/my-matches');
+              }}
+            >
+              <Trophy size={18} color={theme.colors.text} />
+              <Text style={[styles.menuOptionText, { color: theme.colors.text }]}>Paylaşılan Maçlar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
+              onPress={() => {
+                setMenuVisible(false);
+                handleNavigate('/ride/search');
+              }}
+            >
+              <Car size={18} color={theme.colors.text} />
+              <Text style={[styles.menuOptionText, { color: theme.colors.text }]}>Yolculuklarım</Text>
+            </TouchableOpacity>
+            {isAdmin && (
+              <TouchableOpacity
+                style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
+                onPress={() => {
+                  setMenuVisible(false);
+                  handleNavigate('/admin/dashboard');
+                }}
+              >
+                <Shield size={18} color={theme.colors.success} />
+                <Text style={[styles.menuOptionText, { color: theme.colors.success }]}>Admin Panel</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
+              onPress={() => {
+                setMenuVisible(false);
+                handleLogout();
+              }}
+            >
+              <LogOut size={18} color={theme.colors.error} />
+              <Text style={[styles.menuOptionText, { color: theme.colors.error }]}>Çıkış Yap</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      <SupportPanel visible={supportVisible} onClose={() => setSupportVisible(false)} />
-
-      {/* Takipçiler Bottom Sheet */}
-      <BottomSheetModal
-        visible={followersModalVisible}
-        onClose={() => setFollowersModalVisible(false)}
-        title="Takipçiler"
+      {/* Avatar Modal - Büyük Profil Resmi */}
+      <Modal
+        visible={avatarModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAvatarModalVisible(false)}
       >
-        {user?.id ? (
-          <FollowersList 
-            userId={user.id} 
-            onClose={() => setFollowersModalVisible(false)}
-          />
-        ) : null}
-      </BottomSheetModal>
+        <View style={styles.avatarModalOverlay}>
+          <TouchableWithoutFeedback onPress={() => setAvatarModalVisible(false)}>
+            <View style={styles.avatarModalBackdrop} />
+          </TouchableWithoutFeedback>
+          <View style={styles.avatarModalContent} pointerEvents="box-none">
+            <Image
+              source={{ uri: displayProfile.avatar_url || 'https://via.placeholder.com/400' }}
+              style={styles.avatarModalImage}
+              contentFit="contain"
+            />
+          </View>
+        </View>
+      </Modal>
 
-      {/* Takip Edilenler Bottom Sheet */}
-      <BottomSheetModal
-        visible={followingModalVisible}
-        onClose={() => setFollowingModalVisible(false)}
-        title="Takip Edilenler"
-      >
-        {user?.id ? (
-          <FollowingList 
-            userId={user.id} 
-            onClose={() => setFollowingModalVisible(false)}
-          />
-        ) : null}
-      </BottomSheetModal>
     </View>
   );
 }
@@ -1224,626 +669,200 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.lg,
     position: 'relative',
   },
-  profileTopRow: {
-    flexDirection: 'row',
+  menuButton: {
+    position: 'absolute',
+    top: SPACING.lg + SPACING.md,
+    right: SPACING.md,
+    padding: SPACING.sm,
+    minWidth: 36,
+    minHeight: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 18,
+  },
+  profileTopSection: {
+    alignItems: 'center',
     marginBottom: SPACING.md,
   },
-  profileLeft: {
-    marginRight: SPACING.lg,
-  },
   avatarContainer: {
-    position: 'relative',
+    marginBottom: SPACING.md,
+  },
+  avatarWrapper: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 2.5,
+    padding: 2.5,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
   },
   avatar: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    borderWidth: 2,
-    borderColor: COLORS.border,
-    overflow: 'hidden',
+    width: '100%',
+    height: '100%',
+    borderRadius: 47.5,
   },
-  storyAddButton: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.primary,
-    borderWidth: 2,
-    borderColor: COLORS.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  storyAddIcon: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '700',
-    lineHeight: 20,
-  },
-  profileRight: {
-    flex: 1,
-    justifyContent: 'center',
-    marginTop: SPACING.md, // 3 nokta menü butonundan aşağı al
-  },
-  statsRow: {
+  statsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    width: '100%',
+    paddingHorizontal: SPACING.md,
   },
-  statItem: {
+  statCard: {
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+    borderRadius: 10,
+    borderWidth: 1,
+    minHeight: 60,
   },
   statValue: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.lg,
     fontWeight: '700',
-    color: COLORS.text,
+    marginBottom: SPACING.xs / 2,
   },
   statLabel: {
     fontSize: FONT_SIZES.xs,
-    color: COLORS.textLight,
-    marginTop: 2,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   profileInfo: {
+    alignItems: 'center',
     marginBottom: SPACING.md,
-  },
-  quickActions: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    justifyContent: 'space-between',
-    marginTop: SPACING.md,
-  },
-  quickActionCard: {
-    width: '48%',
-    backgroundColor: COLORS.background,
-    borderRadius: 12,
-    paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  quickActionCardDisabled: {
-    opacity: 0.6,
-  },
-  quickActionLabel: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  quickActionLabelDisabled: {
-    color: COLORS.textLight,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: SPACING.xs,
     gap: SPACING.xs,
+    marginBottom: SPACING.xs / 2,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
   },
   name: {
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  username: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    color: COLORS.text,
+    marginBottom: SPACING.xs,
+    fontWeight: '500',
   },
   bio: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.text,
-    lineHeight: 16,
-    marginBottom: SPACING.xs,
+    fontSize: FONT_SIZES.md,
+    textAlign: 'center',
+    marginBottom: SPACING.sm,
   },
   locationRow: {
     marginTop: SPACING.xs,
   },
   locationText: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textLight,
+    fontSize: FONT_SIZES.sm,
   },
-  socialMediaContainer: {
+  quickActions: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: SPACING.sm,
     marginTop: SPACING.md,
   },
-  socialMediaButton: {
+  quickActionCard: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: 20,
+    borderRadius: 8,
     borderWidth: 1,
     gap: SPACING.xs,
   },
-  socialMediaButtonText: {
+  quickActionCardDisabled: {
+    opacity: 0.5,
+  },
+  quickActionLabel: {
     fontSize: FONT_SIZES.sm,
     fontWeight: '500',
   },
-  menuButton: {
-    position: 'absolute',
-    top: SPACING.lg + SPACING.md, // Aşağı kaydırıldı
-    right: SPACING.md,
-    padding: SPACING.sm,
-    minWidth: 36,
-    minHeight: 36,
-    borderRadius: 12,
-    backgroundColor: COLORS.background,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    zIndex: 10,
-    elevation: 3, // Android için
-    shadowColor: '#000', // iOS için
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-  },
-  tabNavigation: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.white,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  tab: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: 'transparent',
-  },
-  tabActive: {
-    borderBottomColor: COLORS.text,
-  },
-  tabIcon: {
-    width: 18,
-    height: 18,
-    borderWidth: 1.5,
-    borderColor: COLORS.text,
-  },
-  tabIconTagged: {
-    borderRadius: 12,
+  quickActionLabelDisabled: {
+    opacity: 0.5,
   },
   postsGrid: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    width: '100%',
-    backgroundColor: COLORS.white,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
   },
   postGridItem: {
     width: '33.333%',
     aspectRatio: 1,
-    borderWidth: 0.5,
-    borderColor: COLORS.border,
-    position: 'relative' as const,
-    overflow: 'hidden' as const,
+    position: 'relative',
   },
   postGridImage: {
     width: '100%',
     height: '100%',
+    overflow: 'hidden',
   },
   postGridPlaceholder: {
     backgroundColor: COLORS.background,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: SPACING.xs,
+    padding: SPACING.sm,
   },
   postGridText: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textLight,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
     textAlign: 'center',
   },
-  postGridBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  postGridBadgeText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '600',
-  },
   postGridOverlay: {
-    position: 'absolute' as const,
+    position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
     opacity: 0,
   },
   postGridOverlayVisible: {
     opacity: 1,
   },
   postGridStats: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: SPACING.xs,
   },
   postGridStatText: {
     color: COLORS.white,
     fontSize: FONT_SIZES.sm,
-    fontWeight: '700' as const,
-    marginLeft: 2,
-  },
-  emptyPostsContainer: {
-    backgroundColor: COLORS.white,
-    paddingVertical: SPACING.xxl * 2,
-    paddingHorizontal: SPACING.xl,
-    alignItems: 'center',
-    minHeight: 400,
-  },
-  emptyPostsIllustration: {
-    width: 120,
-    height: 120,
-    marginBottom: SPACING.lg,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyPostsEmoji: {
-    fontSize: 80,
-  },
-  emptyPostsTitle: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '700',
-    color: COLORS.text,
-    marginBottom: SPACING.sm,
-    textAlign: 'center',
-  },
-  emptyPostsSubtitle: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textLight,
-    textAlign: 'center',
-    marginBottom: SPACING.xl,
-  },
-  createPostButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.md,
-    borderRadius: 8,
-    minWidth: 120,
-  },
-  createPostButtonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  header: {
-    backgroundColor: COLORS.white,
-    alignItems: 'center' as const,
-    paddingVertical: SPACING.xl,
-    paddingHorizontal: SPACING.md,
-    marginBottom: SPACING.md,
-  },
-  username: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textLight,
-    marginBottom: SPACING.sm,
-  },
-  badgesRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    flexWrap: 'wrap' as const,
-    gap: SPACING.xs,
-    marginBottom: SPACING.md,
-  },
-  districtBadge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: 20,
-    gap: SPACING.xs,
-  },
-  supporterBadge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    backgroundColor: COLORS.primary + '20',
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: 20,
-    gap: SPACING.xs,
-  },
-  supporterBadgeText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.primary,
-    fontWeight: '700' as const,
-  },
-  districtEmoji: {
-    fontSize: FONT_SIZES.md,
-  },
-  districtText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.white,
-    fontWeight: '600' as const,
-  },
-  stats: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-around' as const,
-    width: '100%',
-    marginTop: SPACING.md,
-  },
-  postsSection: {
-    backgroundColor: COLORS.white,
-    marginBottom: SPACING.md,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.md,
-  },
-  postsSectionHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: SPACING.md,
-    marginBottom: SPACING.md,
-    gap: SPACING.sm,
-  },
-  postsSectionTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '700' as const,
-    color: COLORS.text,
-  },
-  postsCount: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textLight,
-  },
-  postsPreview: {
-    paddingHorizontal: SPACING.md,
-  },
-  postPreviewCard: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-    marginRight: SPACING.sm,
-    overflow: 'hidden' as const,
-    position: 'relative' as const,
-  },
-  postPreviewImage: {
-    width: '100%',
-    height: '100%',
-  },
-  postPreviewPlaceholder: {
-    backgroundColor: COLORS.background,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    padding: SPACING.xs,
-  },
-  postPreviewText: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textLight,
-    textAlign: 'center' as const,
-  },
-  postPreviewBadge: {
-    position: 'absolute' as const,
-    top: 4,
-    right: 4,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  postPreviewBadgeText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '600' as const,
-  },
-  viewAllText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.primary,
-    fontWeight: '600' as const,
-    textAlign: 'center' as const,
-    marginTop: SPACING.md,
-  },
-  loadingContainer: {
-    padding: SPACING.xl,
-    alignItems: 'center' as const,
-  },
-  loadingText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textLight,
-  },
-  menuOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  menuBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  menuContent: {
-    backgroundColor: COLORS.white,
-    padding: SPACING.lg,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    gap: SPACING.sm,
-    zIndex: 1,
-  },
-  menuHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: SPACING.sm,
-    borderBottomWidth: 1,
-  },
-  menuTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '700',
-    color: COLORS.text,
-  },
-  menuCloseButton: {
-    padding: SPACING.xs,
-  },
-  menuCloseText: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '700',
-  },
-  menuOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.sm,
-  },
-  menuOptionText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
     fontWeight: '600',
   },
-  menuOptionDanger: {
-    borderTopWidth: 1,
-    borderColor: COLORS.border,
-    marginTop: SPACING.sm,
-    paddingTop: SPACING.sm,
-  },
-  menuOptionDangerText: {
-    color: COLORS.error,
-  },
-  menuOptionDisabled: {
-    opacity: 0.5,
-  },
-  menuOptionTextDisabled: {
-    color: COLORS.textLight,
-  },
-  messageButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    backgroundColor: COLORS.primary,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: 20,
-    marginTop: SPACING.md,
-    gap: SPACING.xs,
-  },
-  messageButtonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600' as const,
-  },
-  followersModalContent: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: SPACING.lg,
-    maxHeight: '80%',
-  },
-  modalHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  modalCloseText: {
-    fontSize: FONT_SIZES.xl,
-    color: COLORS.textLight,
-    fontWeight: '300' as const,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  modalTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '700',
-    color: COLORS.text,
-  },
-  modalLoadingContainer: {
-    padding: SPACING.xl,
-    alignItems: 'center' as const,
-  },
-  modalListContent: {
-    padding: SPACING.md,
-  },
-  followerItem: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    gap: SPACING.md,
-  },
-  followerAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-  },
-  followerInfo: {
-    flex: 1,
-  },
-  followerName: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600' as const,
-    color: COLORS.text,
-    marginBottom: 2,
-  },
-  followerUsername: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textLight,
-  },
-  matchesSection: {
-    backgroundColor: COLORS.white,
-    marginTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  sectionHeader: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  sectionTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '700',
-    color: COLORS.text,
-  },
-  matchesList: {
-    padding: SPACING.md,
-  },
-  matchItem: {
-    backgroundColor: COLORS.background,
+  postGridBadge: {
+    position: 'absolute',
+    top: SPACING.xs,
+    right: SPACING.xs,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     borderRadius: 12,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: 2,
   },
-  matchItemContent: {
-    gap: SPACING.xs,
-  },
-  matchItemField: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  matchItemDate: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textLight,
-  },
-  matchItemTime: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  matchItemDistrict: {
+  postGridBadgeText: {
+    color: COLORS.white,
     fontSize: FONT_SIZES.xs,
-    color: COLORS.textLight,
+    fontWeight: '600',
   },
   videoBadge: {
-    position: 'absolute' as const,
-    top: SPACING.xs,
+    position: 'absolute',
+    bottom: SPACING.xs,
     left: SPACING.xs,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     borderRadius: 12,
     paddingHorizontal: SPACING.xs,
     paddingVertical: 2,
@@ -1851,105 +870,155 @@ const styles = StyleSheet.create({
   videoBadgeText: {
     color: COLORS.white,
     fontSize: FONT_SIZES.xs,
-    fontWeight: '600' as const,
+    fontWeight: '600',
   },
-  // Bottom Sheet Styles
-  bottomSheetOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  loadingContainer: {
+    padding: SPACING.xl,
+    alignItems: 'center',
   },
-  bottomSheetContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: -2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 10,
+  loadingText: {
+    fontSize: FONT_SIZES.md,
   },
-  bottomSheetHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: COLORS.border,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: SPACING.sm,
+  emptyPostsContainer: {
+    padding: SPACING.xl,
+    alignItems: 'center',
+    marginTop: SPACING.lg,
+  },
+  emptyPostsIllustration: {
     marginBottom: SPACING.md,
   },
-  bottomSheetHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.md,
+  emptyPostsEmoji: {
+    fontSize: 64,
+  },
+  emptyPostsTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600',
+    marginBottom: SPACING.xs,
+  },
+  emptyPostsSubtitle: {
+    fontSize: FONT_SIZES.md,
+    marginBottom: SPACING.lg,
+    textAlign: 'center',
+  },
+  createPostButton: {
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    borderRadius: 8,
+  },
+  createPostButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  menuBackdrop: {
+    flex: 1,
+  },
+  menuContent: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: SPACING.xl,
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
   },
-  bottomSheetTitle: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: '700' as const,
-    color: COLORS.text,
+  menuTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600',
   },
-  bottomSheetCloseButton: {
+  menuCloseButton: {
     padding: SPACING.xs,
   },
-  // List Container Styles
-  listContainer: {
-    flex: 1,
+  menuCloseText: {
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '600',
   },
-  searchContainer: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    backgroundColor: COLORS.background,
-    marginHorizontal: SPACING.lg,
-    marginVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: 12,
-    gap: SPACING.sm,
+  menuOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.md,
+    borderTopWidth: 1,
+    gap: SPACING.md,
   },
-  searchInput: {
-    flex: 1,
+  menuOptionDanger: {
+    borderTopColor: COLORS.error + '20',
+  },
+  menuOptionDisabled: {
+    opacity: 0.5,
+  },
+  menuOptionText: {
     fontSize: FONT_SIZES.md,
-    color: COLORS.text,
-    padding: 0,
   },
   emptyContainer: {
-    flex: 1,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    paddingVertical: SPACING.xl * 2,
-    paddingHorizontal: SPACING.lg,
+    padding: SPACING.xl,
+    alignItems: 'center',
   },
   emptyText: {
     fontSize: FONT_SIZES.lg,
-    fontWeight: '600' as const,
-    color: COLORS.text,
+    fontWeight: 'bold',
     marginTop: SPACING.md,
-    textAlign: 'center' as const,
+    color: COLORS.text,
   },
   emptySubtext: {
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
+    textAlign: 'center',
     marginTop: SPACING.sm,
-    textAlign: 'center' as const,
+    paddingHorizontal: SPACING.lg,
   },
-  addButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: COLORS.background,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+  socialMediaContainer: {
+    flexDirection: 'row',
+    gap: SPACING.xs,
+    marginTop: SPACING.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  socialMediaButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  avatarModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarModalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  avatarModalContent: {
+    width: '90%',
+    height: '90%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarModalImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 0,
   },
 });

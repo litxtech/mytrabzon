@@ -79,6 +79,19 @@ export default function NotificationsScreen() {
       router.push(`/chat/${notification.data.room_id}` as any);
     } else if (notification.type === 'RESERVATION' && notification.data?.match_id) {
       router.push(`/football/match/${notification.data.match_id}` as any);
+    } else if (notification.data?.type === 'PROXIMITY' && notification.data?.pair_id) {
+      // Yakındaki kişi bildirimi - proximity modal'ı gösterilecek
+      // ProximityManager component'i bunu handle edecek
+    } else if (notification.data?.type === 'KYC_REQUEST' && notification.data?.kyc_id) {
+      // Admin için KYC başvurusu bildirimi
+      router.push('/admin/kyc' as any);
+    } else if (notification.data?.type === 'KYC_APPROVED' || notification.data?.type === 'KYC_REJECTED') {
+      // KYC onay/red bildirimi - profil sayfasına yönlendir
+      router.push('/(tabs)/profile' as any);
+    } else if (notification.data?.type === 'LIKE' && notification.data?.post_id) {
+      router.push(`/post/${notification.data.post_id}` as any);
+    } else if (notification.data?.type === 'COMMENT' && notification.data?.post_id) {
+      router.push(`/post/${notification.data.post_id}` as any);
     }
   };
 
@@ -120,7 +133,20 @@ export default function NotificationsScreen() {
     );
   };
 
-  const getNotificationIcon = (type: string) => {
+  const getNotificationIcon = (type: string, data?: any) => {
+    // Data içindeki type'a göre ikon belirle
+    if (data?.type === 'PROXIMITY') {
+      return '📍';
+    } else if (data?.type === 'KYC_REQUEST' || data?.type === 'KYC_APPROVED' || data?.type === 'KYC_REJECTED') {
+      return '🆔';
+    } else if (data?.type === 'LIKE') {
+      return '❤️';
+    } else if (data?.type === 'COMMENT') {
+      return '💬';
+    } else if (data?.type === 'FOLLOW') {
+      return '👥';
+    }
+    
     switch (type) {
       case 'EVENT':
         return '🔔';
@@ -130,6 +156,9 @@ export default function NotificationsScreen() {
         return '📅';
       case 'FOOTBALL':
         return '⚽';
+      case 'SYSTEM':
+        // Admin bildirimleri için özel ikon
+        return '👤';
       default:
         return '📢';
     }
@@ -219,7 +248,7 @@ export default function NotificationsScreen() {
               onLongPress={() => handleDelete(item.id)}
             >
               <View style={styles.notificationIcon}>
-                <Text style={styles.iconEmoji}>{getNotificationIcon(item.type)}</Text>
+                <Text style={styles.iconEmoji}>{getNotificationIcon(item.type, item.data)}</Text>
                 {item.event?.severity && (
                   <View style={[styles.severityDot, { backgroundColor: getSeverityColor(item.event.severity) }]} />
                 )}
@@ -231,7 +260,7 @@ export default function NotificationsScreen() {
                     { color: theme.colors.text },
                     !item.read_at && { color: theme.colors.text, fontWeight: '700' },
                   ]}>
-                    {item.title}
+                    {item.data?.sender === 'mytrabzonteam' ? 'MyTrabzonTeam' : item.title}
                   </Text>
                   {!item.read_at && <View style={[styles.unreadDot, { backgroundColor: theme.colors.primary }]} />}
                   {item.read_at && <Check size={16} color={theme.colors.primary} style={styles.readCheck} />}

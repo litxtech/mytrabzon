@@ -19,7 +19,7 @@ export const getAllUsersProcedure = protectedProcedure
 
     let query = supabase
       .from('profiles')
-      .select('id, full_name, avatar_url, bio, city, district, created_at, verified, gender, public_id', { count: 'exact' })
+      .select('id, full_name, avatar_url, bio, city, district, created_at, verified, gender, public_id, username', { count: 'exact' })
       .eq('show_in_directory', true)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);

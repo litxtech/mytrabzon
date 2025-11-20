@@ -59,7 +59,7 @@
           ]
         }
       ],
-      "softwareKeyboardLayoutMode": "pan"
+      "softwareKeyboardLayoutMode": "resize"
     },
     "ios": {
       "supportsTablet": false,

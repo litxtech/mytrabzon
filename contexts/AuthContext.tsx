@@ -12,7 +12,6 @@ export const [AuthContext, useAuth] = createContextHook(() => {
   const [loading, setLoading] = useState(true);
 
   const loadProfile = useCallback(async (userId: string): Promise<UserProfile> => {
-    console.log('Loading profile via Supabase', { userId });
 
     const { data, error } = await supabase
       .from('profiles')
@@ -70,7 +69,6 @@ export const [AuthContext, useAuth] = createContextHook(() => {
       return newProfile as UserProfile;
     }
 
-    console.log('Profile loaded via Supabase successfully', { userId });
     return data as UserProfile;
   }, []);
 
@@ -133,7 +131,6 @@ export const [AuthContext, useAuth] = createContextHook(() => {
   useEffect(() => {
     if (!user) return;
 
-    console.log('Setting up real-time subscription for user:', user.id);
     const subscription = supabase
       // Optimize: Profile changes için minimal subscription
       .channel(`profile_changes_${user.id}`, {
@@ -150,14 +147,14 @@ export const [AuthContext, useAuth] = createContextHook(() => {
           filter: `id=eq.${user.id}`,
         },
         (payload) => {
-          console.log('Profile updated via real-time:', payload.new);
+          // Profile updated via real-time
           setProfile(payload.new as UserProfile);
         }
       )
       .subscribe();
 
     return () => {
-      console.log('Unsubscribing from profile changes');
+      // Unsubscribing from profile changes
       subscription.unsubscribe();
     };
   }, [user]);
@@ -172,7 +169,7 @@ export const [AuthContext, useAuth] = createContextHook(() => {
       return;
     }
 
-    console.log('Manually refreshing profile');
+    // Manually refreshing profile
     setLoading(true);
     try {
       const profileData = await loadProfile(user.id);
@@ -189,9 +186,6 @@ export const [AuthContext, useAuth] = createContextHook(() => {
       console.error('❌ Cannot update profile: No user logged in');
       throw new Error('Kullanıcı oturumu bulunamadı');
     }
-
-    console.log('🔄 Updating profile with:', JSON.stringify(updates, null, 2));
-    console.log('🔑 User ID:', user.id);
 
     const { data, error } = await supabase
       .from('profiles')
@@ -215,14 +209,11 @@ export const [AuthContext, useAuth] = createContextHook(() => {
       throw new Error('Profil güncellenemedi, veri dönmedi');
     }
 
-    console.log('✅ Profile updated successfully in database');
     setProfile(data as UserProfile);
 
     try {
-      console.log('🔄 Refreshing profile to ensure consistency...');
       const refreshedProfile = await loadProfile(user.id);
       setProfile(refreshedProfile);
-      console.log('✅ Profile refreshed successfully');
       return refreshedProfile;
     } catch (refreshError: any) {
       console.error('⚠️ Error reloading profile after update:', refreshError);

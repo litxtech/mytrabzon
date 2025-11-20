@@ -429,20 +429,37 @@ export default function PostDetailScreen() {
                   setMenuVisibleCommentId(null);
                 }}
               >
-                <Image
-                  source={{
-                    uri: comment.user?.avatar_url || 'https://via.placeholder.com/32',
+                <TouchableOpacity
+                  onPress={() => {
+                    if (comment.user?.id) {
+                      router.push(`/profile/${comment.user.id}` as any);
+                    }
                   }}
-                  style={styles.commentAvatar}
-                />
+                  activeOpacity={0.7}
+                >
+                  <Image
+                    source={{
+                      uri: comment.user?.avatar_url || 'https://via.placeholder.com/32',
+                    }}
+                    style={styles.commentAvatar}
+                  />
+                </TouchableOpacity>
                 <View style={styles.commentContent}>
                   <View style={styles.commentAuthorContainer}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (comment.user?.id) {
+                          router.push(`/profile/${comment.user.id}` as any);
+                        }
+                      }}
+                      activeOpacity={0.7}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                    >
                       <Text style={styles.commentAuthor}>
-                        {comment.user?.full_name}
+                        {comment.user?.full_name || 'İsimsiz'}
                       </Text>
                       {comment.user?.verified && <VerifiedBadgeIcon size={14} />}
-                    </View>
+                    </TouchableOpacity>
                     {isOwner && !isEditing && (
                       <TouchableOpacity
                         style={styles.commentMenuButton}

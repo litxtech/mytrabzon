@@ -49,6 +49,7 @@ import { getFollowingProcedure } from "./routes/user/get-following/route";
 import { getFollowStatsProcedure } from "./routes/user/get-follow-stats/route";
 import { reportUserProcedure } from "./routes/user/report-user/route";
 import { getRequiredPoliciesProcedure } from "./routes/user/get-required-policies/route";
+import { consentToPoliciesProcedure } from "./routes/user/consent-to-policies/route";
 import { checkAdminProcedure } from "./routes/admin/check-admin/route";
 import { getUsersProcedure } from "./routes/admin/get-users/route";
 import { deleteUsersProcedure } from "./routes/admin/delete-users/route";
@@ -126,6 +127,7 @@ export const appRouter = createTRPCRouter({
     getFollowStats: getFollowStatsProcedure,
     reportUser: reportUserProcedure,
     getRequiredPolicies: getRequiredPoliciesProcedure,
+    consentToPolicies: consentToPoliciesProcedure,
   }),
   chat: createTRPCRouter({
     getRooms: getRoomsProcedure,

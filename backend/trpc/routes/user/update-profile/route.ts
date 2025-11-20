@@ -39,10 +39,15 @@ export const updateProfileProcedure = protectedProcedure
       show_in_directory: z.boolean().optional(),
       email: z.string().optional(),
       avatar_url: z.string().nullable().optional(),
+      location_opt_in: z.boolean().optional(),
     })
   )
   .mutation(async ({ ctx, input }) => {
     const { supabase, user } = ctx;
+
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
 
     const updateData: Record<string, unknown> = {};
 
@@ -66,6 +71,8 @@ export const updateProfileProcedure = protectedProcedure
       updateData.email = input.email;
     if (input.avatar_url !== undefined)
       updateData.avatar_url = input.avatar_url;
+    if (input.location_opt_in !== undefined)
+      updateData.location_opt_in = input.location_opt_in;
 
     updateData.updated_at = new Date().toISOString();
 

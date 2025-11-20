@@ -69,6 +69,12 @@ export const giveBlueTickProcedure = protectedProcedure
       
       if (error) throw new Error(error.message);
       
+      // Profiles tablosundaki verified alanını güncelle
+      await supabase
+        .from("profiles")
+        .update({ verified: true })
+        .eq("id", input.userId);
+      
       // Admin log
       await supabase.from("admin_logs").insert({
         admin_id: adminUser.id,
@@ -94,6 +100,12 @@ export const giveBlueTickProcedure = protectedProcedure
       .single();
     
     if (error) throw new Error(error.message);
+    
+    // Profiles tablosundaki verified alanını güncelle
+    await supabase
+      .from("profiles")
+      .update({ verified: true })
+      .eq("id", input.userId);
     
     // Admin log
     await supabase.from("admin_logs").insert({

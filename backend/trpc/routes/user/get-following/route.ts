@@ -13,53 +13,84 @@ export const getFollowingProcedure = publicProcedure
   .query(async ({ ctx, input }) => {
     const { supabase } = ctx;
 
-    // Takip edilenleri getir
-    const { data: following, error } = await supabase
-      .from("follows")
-      .select(
-        `
-        following_id,
-        following:profiles!follows_following_id_fkey(
-          id,
-          full_name,
-          username,
-          avatar_url,
-          verified,
-          supporter_badge,
-          supporter_badge_color
-        )
-      `
-      )
-      .eq("follower_id", input.user_id)
-      .order("created_at", { ascending: false })
-      .range(input.offset, input.offset + input.limit - 1);
+    try {
+      // Önce takip edilen ID'lerini al
+      const { data: followsData, error: followsError } = await supabase
+        .from("follows")
+        .select("following_id")
+        .eq("follower_id", input.user_id)
+        .order("created_at", { ascending: false })
+        .range(input.offset, input.offset + input.limit - 1);
 
-    if (error) {
+      if (followsError) {
+        console.error("Get following error:", followsError);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Takip edilenler yüklenirken hata oluştu: ${followsError.message}`,
+        });
+      }
+
+      // Eğer takip edilen yoksa boş dizi döndür
+      if (!followsData || followsData.length === 0) {
+        const { count } = await supabase
+          .from("follows")
+          .select("*", { count: "exact", head: true })
+          .eq("follower_id", input.user_id);
+
+        return {
+          following: [],
+          total: count || 0,
+        };
+      }
+
+      // Takip edilen ID'lerini al
+      const followingIds = followsData.map((f: any) => f.following_id);
+
+      // Profil detaylarını al
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, full_name, username, avatar_url, verified, supporter_badge, supporter_badge_color, supporter_badge_visible")
+        .in("id", followingIds);
+
+      if (profilesError) {
+        console.error("Get profiles error:", profilesError);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Profil bilgileri yüklenirken hata oluştu: ${profilesError.message}`,
+        });
+      }
+
+      // Profilleri ID'ye göre map'le
+      const profilesMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+
+      // Toplam takip sayısı
+      const { count } = await supabase
+        .from("follows")
+        .select("*", { count: "exact", head: true })
+        .eq("follower_id", input.user_id);
+
+      return {
+        following: followingIds.map((id: string) => {
+          const profile = profilesMap.get(id);
+          return {
+            id,
+            full_name: profile?.full_name || '',
+            username: profile?.username || null,
+            avatar_url: profile?.avatar_url || null,
+            verified: profile?.verified || false,
+            supporter_badge: profile?.supporter_badge || false,
+            supporter_badge_color: profile?.supporter_badge_color || null,
+            supporter_badge_visible: profile?.supporter_badge_visible || false,
+          };
+        }),
+        total: count || 0,
+      };
+    } catch (error: any) {
       console.error("Get following error:", error);
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
-        message: "Takip edilenler alınamadı",
+        message: `Takip edilenler yüklenirken hata oluştu: ${error.message || error}`,
       });
     }
-
-    // Toplam takip sayısı
-    const { count } = await supabase
-      .from("follows")
-      .select("*", { count: "exact", head: true })
-      .eq("follower_id", input.user_id);
-
-    return {
-      following: following?.map((f: any) => ({
-        id: f.following_id,
-        full_name: f.following?.full_name || '',
-        username: f.following?.username || null,
-        avatar_url: f.following?.avatar_url || null,
-        verified: f.following?.verified || false,
-        supporter_badge: f.following?.supporter_badge || false,
-        supporter_badge_color: f.following?.supporter_badge_color || null,
-        supporter_badge_visible: f.following?.supporter_badge_visible || false,
-      })) || [],
-      total: count || 0,
-    };
   });
 

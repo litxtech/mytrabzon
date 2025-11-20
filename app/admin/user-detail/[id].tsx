@@ -55,11 +55,14 @@ export default function AdminUserDetailScreen() {
       // Tüm ilgili cache'leri invalidate et
       await Promise.all([
         (utils.user.getProfile as any).invalidate({ userId: variables.userId }),
+        utils.user.getAllUsers.invalidate(),
         utils.user.getFollowers.invalidate({ user_id: variables.userId }),
         utils.user.getFollowing.invalidate({ user_id: variables.userId }),
         utils.post.getComments.invalidate(),
-        (utils.event as any).getEventComments.invalidate(),
         utils.post.getPosts.invalidate(),
+        (utils.post.getPostDetail as any)?.invalidate(),
+        (utils.chat.getRooms as any)?.invalidate(),
+        (utils.event as any).getEventComments.invalidate(),
         utils.event.getEvents.invalidate(),
       ]);
       refetch();
@@ -75,11 +78,14 @@ export default function AdminUserDetailScreen() {
       // Tüm ilgili cache'leri invalidate et
       await Promise.all([
         (utils.user.getProfile as any).invalidate({ userId: variables.userId }),
+        utils.user.getAllUsers.invalidate(),
         utils.user.getFollowers.invalidate({ user_id: variables.userId }),
         utils.user.getFollowing.invalidate({ user_id: variables.userId }),
         utils.post.getComments.invalidate(),
-        (utils.event as any).getEventComments.invalidate(),
         utils.post.getPosts.invalidate(),
+        (utils.post.getPostDetail as any)?.invalidate(),
+        (utils.chat.getRooms as any)?.invalidate(),
+        (utils.event as any).getEventComments.invalidate(),
         utils.event.getEvents.invalidate(),
       ]);
       refetch();
