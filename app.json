@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "scheme": "mytrabzon",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "platforms": [
       "ios",
       "android"
@@ -66,12 +66,18 @@
       "buildNumber": "53",
       "icon": "./assets/images/icon.png",
       "appStoreUrl": "https://apps.apple.com/app/mytrabzon/id1234567890",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photos",
-        "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to access your camera",
-        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to access your microphone",
-        "NSLocationWhenInUseUsageDescription": "Allow $(PRODUCT_NAME) to access your location to show nearby events and matches",
-        "NSLocationAlwaysUsageDescription": "Allow $(PRODUCT_NAME) to access your location for better recommendations",
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "MyTrabzon needs access to your photo library to let you share photos and videos with your friends and create posts.",
+        "NSPhotoLibraryAddUsageDescription": "MyTrabzon needs permission to save photos and videos to your photo library.",
+        "NSCameraUsageDescription": "MyTrabzon needs access to your camera to let you take photos and videos to share with your friends and create posts.",
+        "NSMicrophoneUsageDescription": "MyTrabzon needs access to your microphone for voice and video calls, and to record videos with audio.",
+        "NSLocationWhenInUseUsageDescription": "MyTrabzon uses your location to show nearby users, events, matches, and help you discover local activities in Trabzon. Location is only used when the app is active and you have enabled location sharing in settings.",
+        "NSLocationAlwaysUsageDescription": "MyTrabzon does not use location in the background. This permission is not required.",
+        "NSUserTrackingUsageDescription": "MyTrabzon does not track users across apps or websites. This permission is not used.",
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
@@ -80,9 +86,6 @@
             ]
           }
         ]
-      },
-      "config": {
-        "usesNonExemptEncryption": false
       },
       "associatedDomains": [
         "applinks:mytrabzon.app",
@@ -117,7 +120,16 @@
             "package": "com.litxtech.mytrabzon"
           }
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          }
+        }
+      ],
+      "./plugins/withFollyFix.js"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -144,6 +156,9 @@
     "primaryColor": "#DC2626",
     "privacyPolicy": "https://www.litxtech.com/privacy-policy",
     "termsOfService": "https://www.litxtech.com/terms-of-service",
+    "supportUrl": "https://www.litxtech.com/support",
+    "childSafetyPolicy": "https://www.litxtech.com/child-safety-policy",
+    "communityPolicy": "https://www.litxtech.com/community-policy",
     "icon": "./assets/images/icon.png",
     "owner": "mytrabzon"
   }
