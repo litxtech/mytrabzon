@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "scheme": "mytrabzon",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "platforms": [
       "ios",
       "android"
