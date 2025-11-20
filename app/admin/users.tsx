@@ -398,7 +398,9 @@ export default function AdminUsersScreen() {
                       </View>
                     )}
                   </View>
-                  <Text style={styles.userEmail}>{user.email || 'Email yok'}</Text>
+                  {user.email && <Text style={styles.userEmail}>📧 {user.email}</Text>}
+                  {user.phone && <Text style={styles.userPhone}>📱 {user.phone}</Text>}
+                  {!user.email && !user.phone && <Text style={styles.userEmail}>Email/Telefon yok</Text>}
                   <Text style={styles.userDistrict}>{user.district || 'İlçe belirtilmemiş'}</Text>
                   <Text style={styles.userDate}>
                     Kayıt: {new Date(user.created_at).toLocaleDateString('tr-TR')}
@@ -625,6 +627,11 @@ const styles = StyleSheet.create({
     marginLeft: SPACING.xs,
   },
   userEmail: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+    marginBottom: SPACING.xs,
+  },
+  userPhone: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
     marginBottom: SPACING.xs,

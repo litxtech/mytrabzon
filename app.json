@@ -1,16 +1,15 @@
 {
   "expo": {
     "name": "MyTrabzon",
-    "slug": "MyTrabzon",
-    "version": "1.0.51",
+    "slug": "mytrabzon-",
+    "version": "1.0.52",
     "orientation": "portrait",
     "scheme": "mytrabzon",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "platforms": [
       "ios",
-      "android",
-      "web"
+      "android"
     ],
     "runtimeVersion": {
       "policy": "sdkVersion"
@@ -26,7 +25,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.litxtech.mytrabzon",
-      "versionCode": 50,
+      "versionCode": 51,
       "playStoreUrl": "https://play.google.com/store/apps/details?id=com.litxtech.mytrabzon",
       "permissions": [
         "CAMERA",
@@ -59,12 +58,12 @@
           ]
         }
       ],
-      "softwareKeyboardLayoutMode": "resize"
+      "softwareKeyboardLayoutMode": "pan"
     },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.litxtech.mytrabzon",
-      "buildNumber": "50",
+      "buildNumber": "51",
       "icon": "./assets/images/icon.png",
       "appStoreUrl": "https://apps.apple.com/app/mytrabzon/id1234567890",
       "infoPlist": {
@@ -84,20 +83,15 @@
       },
       "config": {
         "usesNonExemptEncryption": false
-      }
-    },
-    "web": {
-      "bundler": "metro"
+      },
+      "associatedDomains": [
+        "applinks:mytrabzon.app",
+        "applinks:www.litxtech.com"
+      ]
     },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "origin": "https://rork.com/"
-        }
-      ],
+      "expo-router",
       "expo-font",
-      "expo-web-browser",
       [
         "expo-image-picker",
         {
@@ -115,6 +109,14 @@
         {
           "appleTeamId": "9W6CR7KXM7"
         }
+      ],
+      [
+        "expo-dev-client",
+        {
+          "android": {
+            "package": "com.litxtech.mytrabzon"
+          }
+        }
       ]
     ],
     "experiments": {
@@ -122,9 +124,6 @@
       "tsconfigPaths": true
     },
     "extra": {
-      "router": {
-        "origin": "https://rork.com/"
-      },
       "eas": {
         "projectId": "368ac56e-da84-480e-b163-f04077df7fa6"
       },

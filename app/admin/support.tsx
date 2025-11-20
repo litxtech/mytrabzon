@@ -8,8 +8,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
-  TextInput,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, MessageSquare, CheckCircle2, XCircle, Clock, User } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -22,11 +22,17 @@ export default function AdminSupportScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<'open' | 'in_progress' | 'resolved' | 'closed' | undefined>(undefined);
 
-  const { data, isLoading, refetch } = trpc.admin.getSupportTickets.useQuery({
-    status: selectedStatus,
-    limit: 50,
-    offset: 0,
-  });
+  const { data, isLoading, refetch } = trpc.admin.getSupportTickets.useQuery(
+    {
+      status: selectedStatus,
+      limit: 100,
+      offset: 0,
+    },
+    {
+      refetchOnMount: true,
+      refetchOnWindowFocus: true,
+    }
+  );
 
   const updateTicketMutation = trpc.admin.updateSupportTicket.useMutation({
     onSuccess: () => {
@@ -91,7 +97,7 @@ export default function AdminSupportScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <ArrowLeft size={24} color={COLORS.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Destek Ticket'ları</Text>
+        <Text style={styles.headerTitle}>Destek Ticket&apos;ları</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -142,6 +148,27 @@ export default function AdminSupportScreen() {
 
               <Text style={styles.ticketSubject}>{ticket.subject}</Text>
               <Text style={styles.ticketMessage}>{ticket.message}</Text>
+
+              {/* Medya Görüntüleri */}
+              {(ticket.media_urls && Array.isArray(ticket.media_urls) && ticket.media_urls.length > 0) && (
+                <View style={styles.mediaContainer}>
+                  <Text style={styles.mediaLabel}>Eklenen Medya:</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mediaScroll}>
+                    {ticket.media_urls.map((url: string, index: number) => (
+                      <TouchableOpacity
+                        key={index}
+                        style={styles.mediaItem}
+                        onPress={() => {
+                          // Medya görüntüleme modal'ı açılabilir
+                          Alert.alert('Medya', `Medya URL: ${url}`);
+                        }}
+                      >
+                        <ExpoImage source={{ uri: url }} style={styles.mediaImage} contentFit="cover" />
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
 
               {ticket.admin_response && (
                 <View style={styles.adminResponseContainer}>
@@ -380,6 +407,28 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
+  },
+  mediaContainer: {
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  mediaLabel: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
+  },
+  mediaScroll: {
+    flexDirection: 'row',
+  },
+  mediaItem: {
+    marginRight: SPACING.sm,
+  },
+  mediaImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    backgroundColor: COLORS.border,
   },
 });
 

@@ -679,8 +679,35 @@ export default function FeedScreen() {
 
       {(feedError || eventsError) && !isLoading && !eventsLoading && (
         <View style={styles.errorContainer}>
+          <AlertCircle size={48} color={theme.colors.error} />
           <Text style={[styles.errorText, { color: theme.colors.error }]}>
-            {(feedError || eventsError)?.message || 'Veriler yüklenirken bir hata oluştu'}
+            {(() => {
+              const error = feedError || eventsError;
+              const errorMessage = error?.message || '';
+              
+              // Network hatalarını yakala
+              if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('Network') || errorMessage.includes('Failed to fetch')) {
+                return 'İnternet bağlantınızı kontrol edin';
+              }
+              
+              // Supabase hatalarını yakala
+              if (errorMessage.includes('Supabase') || errorMessage.includes('supabase') || errorMessage.includes('functions')) {
+                return 'Sunucu bağlantı hatası. Lütfen daha sonra tekrar deneyin.';
+              }
+              
+              // Auth hatalarını yakala
+              if (errorMessage.includes('auth') || errorMessage.includes('unauthorized') || errorMessage.includes('token') || errorMessage.includes('401')) {
+                return 'Oturum süreniz dolmuş olabilir. Lütfen tekrar giriş yapın.';
+              }
+              
+              // NOT_FOUND hatalarını yakala
+              if (errorMessage.includes('NOT_FOUND') || errorMessage.includes('bulunamadı') || errorMessage.includes('not found')) {
+                return 'Veri bulunamadı. Lütfen sayfayı yenileyin.';
+              }
+              
+              // Genel hata mesajı
+              return errorMessage || 'Veriler yüklenirken bir hata oluştu';
+            })()}
           </Text>
           <TouchableOpacity
             style={[styles.retryButton, { backgroundColor: theme.colors.primary }]}
@@ -696,6 +723,19 @@ export default function FeedScreen() {
       {isLoading || eventsLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={[styles.loadingText, { color: theme.colors.textLight }]}>Yükleniyor...</Text>
+        </View>
+      ) : combinedFeedData.length === 0 && !feedError && !eventsError ? (
+        <View style={styles.emptyContainer}>
+          <Text style={[styles.emptyText, { color: theme.colors.text }]}>Henüz gönderi yok</Text>
+          <Text style={[styles.emptySubtext, { color: theme.colors.textLight }]}>İlk gönderiyi sen oluştur!</Text>
+          <TouchableOpacity
+            style={[styles.createButton, { backgroundColor: theme.colors.primary }]}
+            onPress={() => router.push('/create-post')}
+          >
+            <Plus size={20} color={COLORS.white} />
+            <Text style={[styles.createButtonText, { color: COLORS.white }]}>Gönderi Oluştur</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
@@ -1103,39 +1143,67 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
+    padding: SPACING.xl,
+  },
+  loadingText: {
+    marginTop: SPACING.md,
+    fontSize: FONT_SIZES.md,
   },
   emptyContainer: {
-    padding: SPACING.xxl,
+    flex: 1,
+    justifyContent: 'center' as const,
     alignItems: 'center' as const,
+    padding: SPACING.xxl,
+    minHeight: 400,
   },
   emptyText: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '600' as const,
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '700' as const,
     marginBottom: SPACING.sm,
+    textAlign: 'center' as const,
   },
   emptySubtext: {
     fontSize: FONT_SIZES.md,
     textAlign: 'center' as const,
+    marginBottom: SPACING.xl,
+    opacity: 0.7,
+  },
+  createButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderRadius: 12,
+  },
+  createButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600' as const,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
     padding: SPACING.xl,
+    minHeight: 400,
   },
   errorText: {
     fontSize: FONT_SIZES.md,
     textAlign: 'center' as const,
-    marginBottom: SPACING.md,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.lg,
+    lineHeight: 22,
   },
   retryButton: {
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.md,
-    borderRadius: 8,
+    borderRadius: 12,
+    minWidth: 120,
   },
   retryButtonText: {
     fontSize: FONT_SIZES.md,
     fontWeight: '600' as const,
+    color: COLORS.white,
   },
   fab: {
     position: 'absolute' as const,

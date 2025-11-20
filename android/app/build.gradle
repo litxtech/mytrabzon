@@ -96,6 +96,16 @@ android {
         versionName "1.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
+        
+        // Multi-architecture desteği: ARM64 ve x86_64
+        ndk {
+            abiFilters "arm64-v8a", "x86_64"
+        }
+        
+        // Test için optimizasyonlar
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // Test cihazlarına yükleme için
+        multiDexEnabled true
     }
     signingConfigs {
         debug {
@@ -108,6 +118,15 @@ android {
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+            // Debug build için optimizasyonlar
+            debuggable true
+            minifyEnabled false
+            shrinkResources false
+            // Test için daha fazla bilgi
+            buildConfigField "boolean", "IS_DEBUG", "true"
+            // Test cihazlarına yükleme için
+            applicationIdSuffix ""
+            versionNameSuffix "-debug"
         }
         release {
             // Caution! In production, you need to generate your own keystore file.
@@ -119,6 +138,7 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
             def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
             crunchPngs enablePngCrunchInRelease.toBoolean()
+            buildConfigField "boolean", "IS_DEBUG", "false"
         }
     }
     packagingOptions {

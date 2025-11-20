@@ -5270,23 +5270,175 @@ const appRouter = createTRPCRouter({
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
         }
 
-        // Bildirim gönder
+        // Get team info
+        const { data: applyingTeam } = await supabase
+          .from('teams')
+          .select('name, captain_id')
+          .eq('id', input.team_id)
+          .single();
+
+        // Get request owner
         const { data: requestOwner } = await supabase
           .from('opponent_requests')
-          .select('posted_by')
+          .select('posted_by, match_date, start_time')
           .eq('id', input.request_id)
           .single();
 
-        if (requestOwner) {
-          await supabase
-            .from('football_notifications')
+        if (requestOwner && applyingTeam) {
+          // Create notification in notifications table (not football_notifications)
+          const { data: notification } = await supabase
+            .from('notifications')
             .insert({
               user_id: requestOwner.posted_by,
-              type: 'opponent_found',
-              title: 'Yeni rakip başvurusu!',
-              message: 'Rakip bulma ilanınıza bir takım başvurdu.',
-              data: { request_id: input.request_id, team_id: input.team_id },
-            });
+              type: 'RESERVATION',
+              title: 'Yeni Rakip Başvurusu',
+              body: `${applyingTeam.name} takımı rakip bulma ilanınıza başvurdu`,
+              message: `${applyingTeam.name} takımı rakip bulma ilanınıza başvurdu`,
+              data: {
+                type: 'OPPONENT_APPLICATION',
+                request_id: input.request_id,
+                application_id: data.id,
+                team_id: input.team_id,
+                team_name: applyingTeam.name,
+                match_date: requestOwner.match_date,
+                start_time: requestOwner.start_time,
+                status: 'pending',
+              },
+              push_sent: false,
+              is_deleted: false,
+            })
+            .select()
+            .single();
+
+          // Send push notification
+          if (notification) {
+            const { data: ownerProfile } = await supabase
+              .from('profiles')
+              .select('push_token')
+              .eq('id', requestOwner.posted_by)
+              .maybeSingle();
+
+            if (ownerProfile?.push_token) {
+              try {
+                const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+                await fetch(expoPushUrl, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'Accept-Encoding': 'gzip, deflate',
+                  },
+                  body: JSON.stringify({
+                    to: ownerProfile.push_token,
+                    sound: 'default',
+                    title: 'Yeni Rakip Başvurusu',
+                    body: `${applyingTeam.name} takımı rakip bulma ilanınıza başvurdu`,
+                    data: {
+                      type: 'RESERVATION',
+                      application_id: data.id,
+                      request_id: input.request_id,
+                    },
+                    badge: 1,
+                  }),
+                });
+
+                await supabase
+                  .from('notifications')
+                  .update({ push_sent: true })
+                  .eq('id', notification.id);
+              } catch (pushError) {
+                console.error('Push notification error:', pushError);
+              }
+            }
+          }
+
+          // Create or get direct chat room between team captains
+          try {
+            const { data: applyingTeamCaptain } = await supabase
+              .from('teams')
+              .select('captain_id')
+              .eq('id', input.team_id)
+              .single();
+
+            if (applyingTeamCaptain) {
+              // Check if direct chat room exists
+              const { data: existingRooms } = await supabase
+                .from('chat_members')
+                .select('room_id, chat_rooms!inner(*)')
+                .eq('user_id', requestOwner.posted_by)
+                .eq('chat_rooms.type', 'direct');
+
+              let roomId: string | null = null;
+
+              if (existingRooms) {
+                for (const room of existingRooms) {
+                  const { data: members } = await supabase
+                    .from('chat_members')
+                    .select('user_id')
+                    .eq('room_id', room.room_id);
+
+                  const memberUserIds = (members || []).map((m: any) => m.user_id);
+                  if (
+                    memberUserIds.length === 2 &&
+                    memberUserIds.includes(requestOwner.posted_by) &&
+                    memberUserIds.includes(applyingTeamCaptain.captain_id)
+                  ) {
+                    roomId = room.room_id;
+                    break;
+                  }
+                }
+              }
+
+              // Create new room if doesn't exist
+              if (!roomId) {
+                const { data: newRoom, error: roomError } = await supabase
+                  .from('chat_rooms')
+                  .insert({
+                    type: 'direct',
+                    created_by: applyingTeamCaptain.captain_id,
+                  })
+                  .select('id')
+                  .single();
+
+                if (!roomError && newRoom) {
+                  roomId = newRoom.id;
+                  await supabase.from('chat_members').insert([
+                    { room_id: roomId, user_id: requestOwner.posted_by, role: 'member' },
+                    { room_id: roomId, user_id: applyingTeamCaptain.captain_id, role: 'member' },
+                  ]);
+                }
+              }
+
+              // Send application message if room exists
+              if (roomId) {
+                const matchDate = new Date(requestOwner.match_date).toLocaleDateString('tr-TR');
+                const messageContent = `Merhaba! ${applyingTeam.name} takımı olarak rakip bulma ilanınıza başvurduk.${input.message ? ` Mesaj: ${input.message}` : ''}`;
+
+                await supabase.from('messages').insert({
+                  room_id: roomId,
+                  user_id: applyingTeamCaptain.captain_id,
+                  content: messageContent,
+                  data: {
+                    type: 'OPPONENT_APPLICATION',
+                    application_id: data.id,
+                    request_id: input.request_id,
+                    team_id: input.team_id,
+                    team_name: applyingTeam.name,
+                    match_date: requestOwner.match_date,
+                    start_time: requestOwner.start_time,
+                    status: 'pending',
+                  },
+                });
+
+                await supabase
+                  .from('chat_rooms')
+                  .update({ last_message_at: new Date().toISOString() })
+                  .eq('id', roomId);
+              }
+            }
+          } catch (chatError) {
+            console.error('Chat creation error:', chatError);
+          }
         }
 
         return data;
@@ -5362,23 +5514,158 @@ const appRouter = createTRPCRouter({
           .select()
           .single();
 
-        // Bildirim gönder
+        // Get team info
         const { data: acceptedTeam } = await supabase
           .from('teams')
-          .select('captain_id')
+          .select('name, captain_id')
           .eq('id', application.team_id)
           .single();
 
+        const { data: requestTeam } = await supabase
+          .from('teams')
+          .select('name')
+          .eq('id', application.request.team_id)
+          .single();
+
+        // Create notification for accepted team captain
         if (acceptedTeam) {
-          await supabase
-            .from('football_notifications')
+          const { data: notification } = await supabase
+            .from('notifications')
             .insert({
               user_id: acceptedTeam.captain_id,
-              type: 'opponent_found',
-              title: 'Başvurunuz kabul edildi!',
-              message: 'Rakip bulma başvurunuz kabul edildi. Maç oluşturuldu.',
-              data: { match_id: match?.id, request_id: application.request.id },
-            });
+              type: 'RESERVATION',
+              title: 'Başvurunuz Kabul Edildi',
+              body: `${requestTeam?.name || 'Takım'} rakip bulma başvurunuzu kabul etti. Maç oluşturuldu.`,
+              message: `${requestTeam?.name || 'Takım'} rakip bulma başvurunuzu kabul etti. Maç oluşturuldu.`,
+              data: {
+                type: 'OPPONENT_APPLICATION_ACCEPTED',
+                application_id: input.application_id,
+                request_id: application.request.id,
+                match_id: match?.id,
+                team_id: application.request.team_id,
+                team_name: requestTeam?.name,
+                status: 'accepted',
+              },
+              push_sent: false,
+              is_deleted: false,
+            })
+            .select()
+            .single();
+
+          // Send push notification
+          if (notification) {
+            const { data: captainProfile } = await supabase
+              .from('profiles')
+              .select('push_token')
+              .eq('id', acceptedTeam.captain_id)
+              .maybeSingle();
+
+            if (captainProfile?.push_token) {
+              try {
+                const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+                await fetch(expoPushUrl, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'Accept-Encoding': 'gzip, deflate',
+                  },
+                  body: JSON.stringify({
+                    to: captainProfile.push_token,
+                    sound: 'default',
+                    title: 'Başvurunuz Kabul Edildi',
+                    body: `${requestTeam?.name || 'Takım'} rakip bulma başvurunuzu kabul etti`,
+                    data: {
+                      type: 'RESERVATION',
+                      application_id: input.application_id,
+                      match_id: match?.id,
+                    },
+                    badge: 1,
+                  }),
+                });
+
+                await supabase
+                  .from('notifications')
+                  .update({ push_sent: true })
+                  .eq('id', notification.id);
+              } catch (pushError) {
+                console.error('Push notification error:', pushError);
+              }
+            }
+          }
+
+          // Send message to accepted team captain
+          try {
+            // Find or create direct chat room
+            const { data: existingRooms } = await supabase
+              .from('chat_members')
+              .select('room_id, chat_rooms!inner(*)')
+              .eq('user_id', user.id)
+              .eq('chat_rooms.type', 'direct');
+
+            let roomId: string | null = null;
+
+            if (existingRooms) {
+              for (const room of existingRooms) {
+                const { data: members } = await supabase
+                  .from('chat_members')
+                  .select('user_id')
+                  .eq('room_id', room.room_id);
+
+                const memberUserIds = (members || []).map((m: any) => m.user_id);
+                if (
+                  memberUserIds.length === 2 &&
+                  memberUserIds.includes(user.id) &&
+                  memberUserIds.includes(acceptedTeam.captain_id)
+                ) {
+                  roomId = room.room_id;
+                  break;
+                }
+              }
+            }
+
+            if (!roomId) {
+              const { data: newRoom, error: roomError } = await supabase
+                .from('chat_rooms')
+                .insert({
+                  type: 'direct',
+                  created_by: user.id,
+                })
+                .select('id')
+                .single();
+
+              if (!roomError && newRoom) {
+                roomId = newRoom.id;
+                await supabase.from('chat_members').insert([
+                  { room_id: roomId, user_id: user.id, role: 'member' },
+                  { room_id: roomId, user_id: acceptedTeam.captain_id, role: 'member' },
+                ]);
+              }
+            }
+
+            if (roomId && match) {
+              const matchDate = new Date(application.request.match_date).toLocaleDateString('tr-TR');
+              await supabase.from('messages').insert({
+                room_id: roomId,
+                user_id: user.id,
+                content: `Başvurunuzu kabul ettim! Maç oluşturuldu. ${matchDate} tarihinde görüşmek üzere.`,
+                data: {
+                  type: 'OPPONENT_APPLICATION_ACCEPTED',
+                  application_id: input.application_id,
+                  request_id: application.request.id,
+                  match_id: match.id,
+                  status: 'accepted',
+                },
+              });
+
+              await supabase
+                .from('chat_rooms')
+                .update({ last_message_at: new Date().toISOString() })
+                .eq('id', roomId);
+            }
+          } catch (chatError) {
+            console.error('Chat message error:', chatError);
+          }
         }
 
         return { success: true, match };
@@ -6886,6 +7173,15 @@ const appRouter = createTRPCRouter({
           .select("*", { count: "exact", head: true })
           .eq("status", "pending");
         
+        // Okunmamış profil değişiklikleri (son 24 saatte)
+        const yesterday = new Date();
+        yesterday.setHours(yesterday.getHours() - 24);
+        const { count: unreadProfileChanges } = await supabase
+          .from("profile_change_logs")
+          .select("*", { count: "exact", head: true })
+          .gte("changed_at", yesterday.toISOString())
+          .is("admin_viewed_at", null);
+        
         return {
           todayRegistrations: todayRegistrations || 0,
           todayReports: todayReports || 0,
@@ -6895,6 +7191,7 @@ const appRouter = createTRPCRouter({
           blueTickUsers: blueTickUsers || 0,
           pendingTickets: pendingTickets || 0,
           pendingReports: pendingReports || 0,
+          unreadProfileChanges: unreadProfileChanges || 0,
         };
       }),
 
@@ -6959,6 +7256,87 @@ const appRouter = createTRPCRouter({
           bookings_count: ride.bookings?.length || 0,
           created_at: ride.created_at,
         }));
+      }),
+
+    getSupportTickets: protectedProcedure
+      .input(
+        z.object({
+          status: z.enum(['open', 'in_progress', 'resolved', 'closed']).optional(),
+          limit: z.number().min(1).max(100).default(50),
+          offset: z.number().min(0).default(0),
+        }).optional()
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        await ensureAdminAccess(supabase, user.id);
+
+        let query = supabase
+          .from('support_tickets')
+          .select(`
+            *,
+            user:profiles!support_tickets_user_id_fkey(id, full_name, username, avatar_url)
+          `, { count: 'exact' })
+          .order('created_at', { ascending: false });
+
+        if (input?.status) {
+          query = query.eq('status', input.status);
+        }
+
+        query = query.range(input?.offset || 0, (input?.offset || 0) + (input?.limit || 50) - 1);
+
+        const { data, error, count } = await query;
+
+        if (error) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        }
+
+        return {
+          tickets: data || [],
+          total: count || 0,
+        };
+      }),
+
+    updateSupportTicket: protectedProcedure
+      .input(
+        z.object({
+          ticketId: z.string().uuid(),
+          status: z.enum(['open', 'in_progress', 'resolved', 'closed']).optional(),
+          adminResponse: z.string().optional(),
+          assignedTo: z.string().uuid().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        await ensureAdminAccess(supabase, user.id);
+
+        const updateData: any = {};
+
+        if (input.status !== undefined) {
+          updateData.status = input.status;
+          if (input.status === 'resolved') {
+            updateData.resolved_at = new Date().toISOString();
+          }
+        }
+
+        if (input.adminResponse !== undefined) updateData.admin_response = input.adminResponse;
+        if (input.assignedTo !== undefined) updateData.assigned_to = input.assignedTo;
+
+        const { data, error } = await supabase
+          .from('support_tickets')
+          .update(updateData)
+          .eq('id', input.ticketId)
+          .select()
+          .single();
+
+        if (error) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        }
+
+        return data;
       }),
 
     getRideDetail: protectedProcedure
@@ -7973,8 +8351,7 @@ const appRouter = createTRPCRouter({
           .from("posts")
           .select(`
             *,
-            author:profiles!posts_author_id_fkey(id, full_name, avatar_url, username),
-            post_media(*)
+            author:profiles!posts_author_id_fkey(id, full_name, avatar_url, username)
           `, { count: "exact" })
           .eq("is_deleted", false);
         
@@ -8212,10 +8589,13 @@ const appRouter = createTRPCRouter({
           type: input.type,
           title: adminTitle,
           body: bodyText, // notifications tablosunda body kolonu var
+          message: bodyText, // Eski kod uyumluluğu için message kolonu da ekleniyor
           data: {
             ...notificationData,
             sender: 'mytrabzonteam',
             sender_name: 'MyTrabzonTeam',
+            is_admin: true,
+            verified: true, // Admin bildirimleri için verified flag'i
           },
           push_sent: false,
           is_deleted: false,
@@ -8305,6 +8685,188 @@ const appRouter = createTRPCRouter({
           success: true,
           sentCount: targetUserIds.length,
           pushSentCount: pushTokens.length,
+        };
+      }),
+
+    // Kullanıcı iletişim bilgilerini getir
+    getUserContacts: protectedProcedure
+      .input(
+        z.object({
+          search: z.string().optional().nullable(),
+          limit: z.number().min(1).max(100).default(100),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        if (user.id !== SPECIAL_ADMIN_ID) {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("role, id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+        }
+        
+        let query = supabase
+          .from('profiles')
+          .select('id, full_name, email, phone, username, created_at')
+          .order('created_at', { ascending: false })
+          .range(input.offset, input.offset + input.limit - 1);
+        
+        if (input.search && input.search.trim()) {
+          const searchTerm = `%${input.search.trim()}%`;
+          query = query.or(`full_name.ilike.${searchTerm},email.ilike.${searchTerm},phone.ilike.${searchTerm},username.ilike.${searchTerm}`);
+        }
+        
+        const { data, error } = await query;
+        
+        if (error) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: error.message,
+          });
+        }
+        
+        return {
+          contacts: data || [],
+          total: data?.length || 0,
+        };
+      }),
+
+    // Son profil değişikliklerini getir
+    getRecentProfileChanges: protectedProcedure
+      .input(
+        z.object({
+          limit: z.number().min(1).max(100).default(20),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        if (user.id !== SPECIAL_ADMIN_ID) {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("role, id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+        }
+        
+        // Son 24 saatte güncellenen profilleri getir
+        const yesterday = new Date();
+        yesterday.setHours(yesterday.getHours() - 24);
+        
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, phone, username, updated_at, created_at')
+          .gte('updated_at', yesterday.toISOString())
+          .order('updated_at', { ascending: false })
+          .limit(input.limit);
+        
+        if (error) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: error.message,
+          });
+        }
+        
+        return {
+          changes: data || [],
+          total: data?.length || 0,
+        };
+      }),
+
+    // SMS gönder
+    sendSMS: protectedProcedure
+      .input(
+        z.object({
+          phone: z.string().min(1),
+          message: z.string().min(1).max(500),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        if (user.id !== SPECIAL_ADMIN_ID) {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("role, id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+        }
+        
+        // SMS gönderme işlemi burada yapılacak
+        // Şimdilik sadece başarı mesajı döndürüyoruz
+        // Gerçek SMS servisi entegrasyonu için Twilio veya benzeri bir servis gerekli
+        
+        return {
+          success: true,
+          message: 'SMS gönderimi başarılı (simüle edildi)',
+        };
+      }),
+
+    // Email gönder
+    sendEmail: protectedProcedure
+      .input(
+        z.object({
+          email: z.string().email(),
+          subject: z.string().min(1).max(200),
+          body: z.string().min(1).max(5000),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+        
+        // Admin kontrolü
+        const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+        if (user.id !== SPECIAL_ADMIN_ID) {
+          const { data: adminUser } = await supabase
+            .from("admin_users")
+            .select("role, id")
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .single();
+          
+          if (!adminUser) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized: Admin access required' });
+          }
+        }
+        
+        // Email gönderme işlemi burada yapılacak
+        // Supabase'in kendi email servisi veya Resend gibi bir servis kullanılabilir
+        
+        return {
+          success: true,
+          message: 'Email gönderimi başarılı (simüle edildi)',
         };
       }),
   }),
@@ -8766,8 +9328,30 @@ const appRouter = createTRPCRouter({
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
         }
 
+        // Gönderen kişilerin verified durumlarını ekle
+        const notificationsWithSenderInfo = await Promise.all(
+          (data || []).map(async (notification: any) => {
+            // Eğer data içinde sender_id varsa, o kullanıcının verified durumunu kontrol et
+            if (notification.data?.sender_id) {
+              const { data: senderProfile } = await supabase
+                .from('profiles')
+                .select('verified')
+                .eq('id', notification.data.sender_id)
+                .single();
+
+              if (senderProfile) {
+                notification.data = {
+                  ...notification.data,
+                  sender_verified: senderProfile.verified || false,
+                };
+              }
+            }
+            return notification;
+          })
+        );
+
         return {
-          notifications: data || [],
+          notifications: notificationsWithSenderInfo || [],
           total: count || 0,
           hasMore: count ? input.offset + input.limit < count : false,
         };
@@ -8894,7 +9478,7 @@ const appRouter = createTRPCRouter({
           stops: z.array(z.string()).default([]),
           departure_time: z.string().datetime(),
           total_seats: z.number().int().min(1).max(10),
-          price_per_seat: z.number().int().min(10).max(5000),
+          price_per_seat: z.number().int().min(0).max(5000).nullable().optional(),
           notes: z.string().optional().nullable(),
           allow_pets: z.boolean().default(false),
           allow_smoking: z.boolean().default(false),
@@ -8935,7 +9519,7 @@ const appRouter = createTRPCRouter({
             departure_time: departureTime.toISOString(),
             total_seats: input.total_seats,
             available_seats: input.total_seats,
-            price_per_seat: input.price_per_seat,
+            price_per_seat: input.price_per_seat && input.price_per_seat > 0 ? input.price_per_seat : null,
             currency: 'TL',
             notes: input.notes || null,
             allow_pets: input.allow_pets,
@@ -9691,6 +10275,9 @@ const appRouter = createTRPCRouter({
           `, { count: 'exact' })
           .order('created_at', { ascending: false });
 
+        // Medya eklerini getir (eğer tablo varsa)
+        // Not: Bu join çalışmazsa, attachments'ları ayrı query ile çekebiliriz
+
         if (input?.status) {
           query = query.eq('status', input.status);
         }
@@ -9747,144 +10334,6 @@ const appRouter = createTRPCRouter({
         }
 
         return data;
-      }),
-
-    // Telefon ve Email Yönetimi
-    getUserContacts: protectedProcedure
-      .input(
-        z.object({
-          search: z.string().optional(),
-          limit: z.number().min(1).max(1000).default(100),
-          offset: z.number().min(0).default(0),
-        })
-      )
-      .query(async ({ ctx, input }) => {
-        const { supabase, user } = ctx;
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-        await ensureAdminAccess(supabase, user.id);
-
-        // Tüm kullanıcıları getir (email/telefon olsun veya olmasın)
-        let query = supabase
-          .from('profiles')
-          .select('id, full_name, email, phone, created_at, updated_at', { count: 'exact' })
-          .order('updated_at', { ascending: false });
-
-        if (input.search) {
-          query = query.or(`full_name.ilike.%${input.search}%,email.ilike.%${input.search}%,phone.ilike.%${input.search}%`);
-        }
-
-        query = query.range(input.offset, input.offset + input.limit - 1);
-
-        const { data, error, count } = await query;
-
-        if (error) {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-        }
-
-        return {
-          contacts: data || [],
-          total: count || 0,
-        };
-      }),
-
-    sendSMS: protectedProcedure
-      .input(
-        z.object({
-          phone: z.string().min(10).max(20),
-          message: z.string().min(1).max(1000),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const { supabase, user } = ctx;
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-        await ensureAdminAccess(supabase, user.id);
-
-        // SMS gönderme işlemi burada yapılacak
-        // Şimdilik log olarak kaydediyoruz
-        const { error } = await supabase
-          .from('admin_messages')
-          .insert({
-            admin_id: user.id,
-            recipient_phone: input.phone,
-            recipient_email: null,
-            message: input.message,
-            message_type: 'sms',
-            status: 'sent',
-          });
-
-        if (error) {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-        }
-
-        return { success: true, message: 'SMS gönderildi' };
-      }),
-
-    sendEmail: protectedProcedure
-      .input(
-        z.object({
-          email: z.string().email(),
-          subject: z.string().min(1).max(200),
-          message: z.string().min(1).max(5000),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const { supabase, user } = ctx;
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-        await ensureAdminAccess(supabase, user.id);
-
-        // Email gönderme işlemi burada yapılacak
-        // Şimdilik log olarak kaydediyoruz
-        const { error } = await supabase
-          .from('admin_messages')
-          .insert({
-            admin_id: user.id,
-            recipient_phone: null,
-            recipient_email: input.email,
-            message: input.message,
-            subject: input.subject,
-            message_type: 'email',
-            status: 'sent',
-          });
-
-        if (error) {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-        }
-
-        return { success: true, message: 'Email gönderildi' };
-      }),
-
-    getRecentProfileChanges: protectedProcedure
-      .input(
-        z.object({
-          limit: z.number().min(1).max(100).default(50),
-        })
-      )
-      .query(async ({ ctx, input }) => {
-        const { supabase, user } = ctx;
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-        await ensureAdminAccess(supabase, user.id);
-
-        const { data, error } = await supabase
-          .from('profile_change_logs')
-          .select(`
-            *,
-            user:profiles!profile_change_logs_user_id_fkey(id, full_name, email, phone)
-          `)
-          .in('field_name', ['email', 'phone'])
-          .order('changed_at', { ascending: false })
-          .limit(input.limit);
-
-        if (error) {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-        }
-
-        return {
-          changes: data || [],
-        };
       }),
 
     // Yolculuk PDF Oluşturma
@@ -9962,29 +10411,136 @@ const appRouter = createTRPCRouter({
         z.object({
           subject: z.string().min(1).max(200),
           message: z.string().min(1).max(2000),
+          media_urls: z.array(z.string().url()).optional(), // Medya URL'leri
         })
       )
       .mutation(async ({ ctx, input }) => {
         const { supabase, user } = ctx;
         if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
 
+        const ticketData: any = {
+          user_id: user.id,
+          subject: input.subject,
+          message: input.message,
+          status: 'open',
+        };
+
+        // Medya URL'leri varsa ekle (eğer tabloda media_urls kolonu varsa)
+        if (input.media_urls && input.media_urls.length > 0) {
+          ticketData.media_urls = input.media_urls;
+        }
+
         const { data, error } = await supabase
           .from('support_tickets')
-          .insert({
-            user_id: user.id,
-            subject: input.subject,
-            message: input.message,
-            status: 'open',
-          })
+          .insert(ticketData)
           .select()
           .single();
 
         if (error) {
           console.error('Support ticket creation error:', error);
+          // Eğer media_urls kolonu yoksa, tekrar dene (medya olmadan)
+          if (error.message?.includes('media_urls')) {
+            delete ticketData.media_urls;
+            const { data: retryData, error: retryError } = await supabase
+              .from('support_tickets')
+              .insert(ticketData)
+              .select()
+              .single();
+            
+            if (retryError) {
+              throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: retryError.message });
+            }
+            
+            // Medya URL'lerini ayrı bir tabloya kaydet (eğer varsa)
+            if (input.media_urls && input.media_urls.length > 0 && retryData) {
+              try {
+                const attachments = input.media_urls.map((url) => ({
+                  ticket_id: retryData.id,
+                  media_url: url,
+                  created_at: new Date().toISOString(),
+                }));
+                
+                await supabase.from('support_ticket_attachments').insert(attachments);
+              } catch (attachError) {
+                console.warn('Media attachment save failed (table may not exist):', attachError);
+              }
+            }
+            
+            return retryData;
+          }
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
         }
 
+        // Medya URL'lerini ayrı bir tabloya kaydet (eğer media_urls kolonu yoksa)
+        if (input.media_urls && input.media_urls.length > 0 && data) {
+          try {
+            const attachments = input.media_urls.map((url) => ({
+              ticket_id: data.id,
+              media_url: url,
+              created_at: new Date().toISOString(),
+            }));
+            
+            await supabase.from('support_ticket_attachments').insert(attachments);
+          } catch (attachError) {
+            console.warn('Media attachment save failed (table may not exist):', attachError);
+          }
+        }
+
+        // Adminlere bildirim gönder (yeni ticket için)
+        try {
+          const { data: adminUsers } = await supabase
+            .from('admin_users')
+            .select('user_id')
+            .eq('is_active', true);
+
+          const adminUserIds = adminUsers?.map((a) => a.user_id) || [];
+          
+          // Özel admin ID'yi de ekle
+          const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+          if (!adminUserIds.includes(SPECIAL_ADMIN_ID)) {
+            adminUserIds.push(SPECIAL_ADMIN_ID);
+          }
+
+          if (adminUserIds.length > 0) {
+            const notifications = adminUserIds.map((adminId) => ({
+              user_id: adminId,
+              type: 'SYSTEM',
+              title: 'Yeni Destek Talebi',
+              body: `${user.email || 'Bir kullanıcı'} yeni bir destek talebi oluşturdu: ${input.subject}`,
+              data: {
+                ticket_id: data.id,
+                sender: 'system',
+              },
+              push_sent: false,
+              is_deleted: false,
+            }));
+
+            await supabase.from('notifications').insert(notifications);
+          }
+        } catch (notifError) {
+          console.warn('Admin notification failed:', notifError);
+        }
+
         return data;
+      }),
+
+    // Kullanıcının kendi ticket'larını getir
+    getMyTickets: protectedProcedure
+      .query(async ({ ctx }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const { data, error } = await supabase
+          .from('support_tickets')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        }
+
+        return { tickets: data || [] };
       }),
   }),
 });

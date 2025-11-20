@@ -5,7 +5,7 @@ import { Video, ResizeMode, Audio } from 'expo-av';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { LogOut, Settings, Edit3, Heart, MoreVertical, MessageCircle, Instagram, Twitter, Facebook, Linkedin, Youtube, Shield, Car, Trophy, Search } from 'lucide-react-native';
+import { LogOut, Settings, Edit3, Heart, MoreVertical, MessageCircle, Instagram, Twitter, Facebook, Linkedin, Youtube, Shield, Car, Trophy, Search, HelpCircle, Target } from 'lucide-react-native';
 import { DISTRICT_BADGES } from '../../constants/districts';
 import { useRouter } from 'expo-router';
 import { Footer } from '../../components/Footer';
@@ -313,7 +313,12 @@ export default function ProfileScreen() {
 
   const quickActions: QuickAction[] = [
     { id: 'edit', label: 'Profili Düzenle', icon: Edit3, onPress: () => handleNavigate('/profile/edit') },
+    { id: 'myskor', label: 'Karma Skorum', icon: Target, onPress: () => {
+      // Karma Skorum sayfasına yönlendirme - henüz sayfa yoksa alert göster
+      Alert.alert('Karma Skorum', 'Karma Skorum özelliği yakında eklenecek!');
+    } },
     { id: 'donate', label: 'Destekle', icon: Heart, onPress: () => handleNavigate('/support/donate') },
+    { id: 'support', label: 'Destek Talebi', icon: HelpCircle, onPress: () => handleNavigate('/support/create') },
   ];
 
   return (
@@ -472,7 +477,7 @@ export default function ProfileScreen() {
             )}
           </View>
 
-          {/* Quick Actions */}
+          {/* Quick Actions - Kompakt ve Estetik */}
           <View style={[styles.quickActions, { backgroundColor: theme.colors.card }]}>
             {quickActions.map((action) => {
               const IconComponent = action.icon;
@@ -486,18 +491,29 @@ export default function ProfileScreen() {
               return (
                 <TouchableOpacity
                   key={action.id}
-                  style={[styles.quickActionCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }, isDisabled && styles.quickActionCardDisabled]}
+                  style={[
+                    styles.quickActionCardCompact, 
+                    { 
+                      backgroundColor: theme.colors.background, 
+                      borderColor: theme.colors.border,
+                      shadowColor: theme.colors.text,
+                    }, 
+                    isDisabled && styles.quickActionCardDisabled
+                  ]}
                   onPress={action.onPress}
                   disabled={isDisabled || !action.onPress}
-                  activeOpacity={isDisabled ? 1 : 0.8}
+                  activeOpacity={isDisabled ? 1 : 0.7}
                 >
-                  <IconComponent size={18} color={toneColor} />
+                  <View style={[styles.quickActionIconContainer, { backgroundColor: toneColor + '15' }]}>
+                    <IconComponent size={14} color={toneColor} />
+                  </View>
                   <Text
                     style={[
-                      styles.quickActionLabel,
+                      styles.quickActionLabelCompact,
                       { color: theme.colors.text },
                       isDisabled && styles.quickActionLabelDisabled,
                     ]}
+                    numberOfLines={2}
                   >
                     {action.label}
                   </Text>
@@ -771,8 +787,9 @@ const styles = StyleSheet.create({
   },
   quickActions: {
     flexDirection: 'row',
-    gap: SPACING.sm,
+    gap: SPACING.xs,
     marginTop: SPACING.md,
+    paddingHorizontal: SPACING.xs,
   },
   quickActionCard: {
     flex: 1,
@@ -785,12 +802,44 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: SPACING.xs,
   },
+  quickActionCardCompact: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.xs + 2,
+    paddingHorizontal: SPACING.xs / 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 4,
+    minHeight: 64,
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  quickActionIconContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   quickActionCardDisabled: {
     opacity: 0.5,
   },
   quickActionLabel: {
     fontSize: FONT_SIZES.sm,
     fontWeight: '500',
+  },
+  quickActionLabelCompact: {
+    fontSize: 10,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 12,
   },
   quickActionLabelDisabled: {
     opacity: 0.5,

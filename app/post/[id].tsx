@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  FlatList,
   TouchableOpacity,
   Image,
   TextInput,
@@ -12,6 +13,8 @@ import {
   Platform,
   Alert,
   Keyboard,
+  Share,
+  Dimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,22 +33,23 @@ import {
   Trash2,
   Edit3,
 } from 'lucide-react-native';
-import { Footer } from '@/components/Footer';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 import { OptimizedImage } from '@/components/OptimizedImage';
+import { VideoPlayer } from '@/components/VideoPlayer';
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user, profile } = useAuth();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const utils = trpc.useUtils();
-  const insets = useSafeAreaInsets();
   const [commentText, setCommentText] = useState('');
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentText, setEditingCommentText] = useState('');
   const [menuVisibleCommentId, setMenuVisibleCommentId] = useState<string | null>(null);
   const commentInputRef = useRef<TextInput>(null);
+  const flatListRef = useRef<FlatList>(null);
 
   const formatCount = (count: number | null | undefined): string => {
     if (!count) return '0';
@@ -230,14 +234,21 @@ export default function PostDetailScreen() {
     // Klavyeyi kapat ve input'u blur et
     Keyboard.dismiss();
     commentInputRef.current?.blur();
+    const commentContent = commentText.trim();
+    setCommentText('');
     try {
       await addCommentMutation.mutateAsync({
         post_id: id!,
-        content: commentText.trim(),
+        content: commentContent,
       });
+      // Yorum eklendikten sonra FlatList'i en alta kaydır
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
     } catch (error) {
       console.error('Comment error:', error);
       Alert.alert('Hata', 'Yorum eklenirken bir hata oluştu');
+      setCommentText(commentContent); // Hata durumunda metni geri yükle
     }
   };
 
@@ -283,12 +294,259 @@ export default function PostDetailScreen() {
     );
   }
 
+  const firstMedia = post.media && post.media.length > 0 ? post.media[0] : null;
+  const isVideo = firstMedia?.type === 'video' || firstMedia?.path?.match(/\.(mp4|mov|avi|webm)$/i);
+
+  // Yorum render fonksiyonu
+  const renderComment = ({ item: comment }: { item: any }) => {
+    const isEditing = editingCommentId === comment.id;
+    const isOwner = comment.user_id === user?.id;
+    
+    return (
+      <TouchableOpacity 
+        style={styles.commentCard}
+        activeOpacity={0.9}
+        onPress={() => {
+          Keyboard.dismiss();
+          setMenuVisibleCommentId(null);
+        }}
+      >
+        <TouchableOpacity
+          onPress={() => {
+            if (comment.user?.id) {
+              router.push(`/profile/${comment.user.id}` as any);
+            }
+          }}
+          activeOpacity={0.7}
+        >
+          <Image
+            source={{
+              uri: comment.user?.avatar_url || 'https://via.placeholder.com/32',
+            }}
+            style={styles.commentAvatar}
+          />
+        </TouchableOpacity>
+        <View style={styles.commentContent}>
+          <View style={styles.commentAuthorContainer}>
+            <TouchableOpacity
+              onPress={() => {
+                if (comment.user?.id) {
+                  router.push(`/profile/${comment.user.id}` as any);
+                }
+              }}
+              activeOpacity={0.7}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+            >
+              <Text style={styles.commentAuthor}>
+                {comment.user?.full_name || 'İsimsiz'}
+              </Text>
+              {comment.user?.verified && <VerifiedBadgeIcon size={14} />}
+            </TouchableOpacity>
+            {isOwner && !isEditing && (
+              <TouchableOpacity
+                style={styles.commentMenuButton}
+                onPress={() => setMenuVisibleCommentId(menuVisibleCommentId === comment.id ? null : comment.id)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <MoreVertical size={16} color={COLORS.textLight} />
+              </TouchableOpacity>
+            )}
+          </View>
+          {comment.user?.username && (
+            <View style={styles.commentUsernameContainer}>
+              <Text style={styles.commentUsername}>
+                @{comment.user.username}
+              </Text>
+            </View>
+          )}
+          {isEditing ? (
+            <View style={styles.editContainer}>
+              <TextInput
+                style={styles.editInput}
+                value={editingCommentText}
+                onChangeText={setEditingCommentText}
+                multiline
+                maxLength={1000}
+                autoFocus
+                textAlignVertical="top"
+              />
+              <View style={styles.editActions}>
+                <TouchableOpacity
+                  style={[styles.editButton, styles.cancelButton]}
+                  onPress={handleCancelEdit}
+                >
+                  <Text style={styles.editButtonText}>İptal</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.editButton, styles.saveButton]}
+                  onPress={handleSaveEdit}
+                  disabled={!editingCommentText.trim() || updateCommentMutation.isPending}
+                >
+                  {updateCommentMutation.isPending ? (
+                    <ActivityIndicator size="small" color={COLORS.white} />
+                  ) : (
+                    <Text style={[styles.editButtonText, { color: COLORS.white }]}>Kaydet</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <>
+              <View style={styles.commentTextContainer}>
+                <Text style={styles.commentText}>
+                  {comment.content}
+                </Text>
+              </View>
+              <Text style={styles.commentTime}>
+                {new Date(comment.created_at).toLocaleDateString('tr-TR', {
+                  day: 'numeric',
+                  month: 'short',
+                })}
+              </Text>
+            </>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  // List header (post içeriği)
+  const renderListHeader = () => (
+    <>
+      <View style={styles.postCard}>
+        <View style={styles.postHeader}>
+          <TouchableOpacity
+            onPress={() => post.author_id && router.push(`/profile/${post.author_id}` as any)}
+            activeOpacity={0.7}
+          >
+            <Image
+              source={{
+                uri: (Array.isArray(post.author) ? (post.author as any)[0]?.avatar_url : (post.author as any)?.avatar_url) || 'https://via.placeholder.com/40',
+              }}
+              style={styles.avatar}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.postHeaderInfo}
+            onPress={() => post.author_id && router.push(`/profile/${post.author_id}` as any)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.postAuthorContainer}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={styles.postAuthor}>
+                  {Array.isArray(post.author) ? (post.author as any)[0]?.full_name : (post.author as any)?.full_name}
+                </Text>
+                {(Array.isArray(post.author) ? (post.author as any)[0]?.verified : (post.author as any)?.verified) && <VerifiedBadgeIcon size={16} />}
+              </View>
+            </View>
+            {(Array.isArray(post.author) ? (post.author as any)[0]?.username : (post.author as any)?.username) && (
+              <View style={styles.postUsernameContainer}>
+                <Text style={styles.postUsername}>
+                  @{Array.isArray(post.author) ? (post.author as any)[0]?.username : (post.author as any)?.username}
+                </Text>
+              </View>
+            )}
+            <View style={styles.postMeta}>
+              <View style={styles.postDistrictContainer}>
+                <Text style={styles.postDistrict}>
+                  {DISTRICT_BADGES[post.district as keyof typeof DISTRICT_BADGES] || '📍'} {post.district}
+                </Text>
+              </View>
+              <View style={styles.postTimeContainer}>
+                <Text style={styles.postTime}>
+                  {' • '}
+                  {new Date(post.created_at).toLocaleDateString('tr-TR', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  })}
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+          {post.author_id === user?.id && (
+            <TouchableOpacity 
+              onPress={handleDeletePost}
+              disabled={deletePostMutation.isPending}
+              style={styles.deleteButton}
+            >
+              <Trash2 size={20} color={COLORS.error} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {post.content && post.content.trim() !== '' && (
+          <View style={styles.postContentContainer}>
+            <Text style={styles.postContent}>{post.content}</Text>
+          </View>
+        )}
+
+        {/* Video değilse medya göster */}
+        {post.media && post.media.length > 0 && !isVideo && (
+          <View style={styles.mediaContainer}>
+            {post.media.length === 1 ? (
+              <OptimizedImage
+                source={post.media[0].path}
+                thumbnail={post.media[0].thumbnail}
+                isThumbnail={false}
+                style={styles.postImage}
+              />
+            ) : (
+              <ScrollView 
+                horizontal 
+                pagingEnabled 
+                showsHorizontalScrollIndicator={false} 
+                style={styles.mediaScrollView}
+                contentContainerStyle={styles.mediaScrollContent}
+              >
+                {post.media.map((mediaItem: any, index: number) => (
+                  <OptimizedImage
+                    key={index}
+                    source={mediaItem.path}
+                    thumbnail={mediaItem.thumbnail}
+                    isThumbnail={false}
+                    style={styles.postImage}
+                  />
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        )}
+
+        <View style={styles.postActions}>
+          <TouchableOpacity style={styles.actionButton} onPress={handleLike}>
+            <Heart
+              size={24}
+              color={post.is_liked ? COLORS.error : COLORS.textLight}
+              fill={post.is_liked ? COLORS.error : 'transparent'}
+            />
+            <Text style={styles.actionText}>{formatCount(post.like_count)}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionButton}>
+            <MessageCircle size={24} color={COLORS.textLight} />
+            <Text style={styles.actionText}>{formatCount(post.comment_count)}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionButton}>
+            <Share2 size={24} color={COLORS.textLight} />
+            <Text style={styles.actionText}>{formatCount(post.share_count)}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.commentsSection}>
+        <Text style={styles.commentsTitle}>
+          Yorumlar ({commentsData?.total || 0})
+        </Text>
+      </View>
+    </>
+  );
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
-      enabled={true}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      enabled={Platform.OS === 'ios'}
     >
       <Stack.Screen
         options={{
@@ -302,311 +560,136 @@ export default function PostDetailScreen() {
         }}
       />
 
-      <ScrollView 
-        style={styles.content} 
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={true}
-        nestedScrollEnabled={true}
-      >
-        <View style={styles.postCard}>
-          <View style={styles.postHeader}>
-            <TouchableOpacity
-              onPress={() => post.author_id && router.push(`/profile/${post.author_id}` as any)}
-              activeOpacity={0.7}
-            >
-              <Image
-                source={{
-                  uri: (Array.isArray(post.author) ? (post.author as any)[0]?.avatar_url : (post.author as any)?.avatar_url) || 'https://via.placeholder.com/40',
-                }}
-                style={styles.avatar}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.postHeaderInfo}
-              onPress={() => post.author_id && router.push(`/profile/${post.author_id}` as any)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.postAuthorContainer}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={styles.postAuthor}>
-                    {Array.isArray(post.author) ? (post.author as any)[0]?.full_name : (post.author as any)?.full_name}
-                  </Text>
-                  {(Array.isArray(post.author) ? (post.author as any)[0]?.verified : (post.author as any)?.verified) && <VerifiedBadgeIcon size={16} />}
-                </View>
-              </View>
-              {(Array.isArray(post.author) ? (post.author as any)[0]?.username : (post.author as any)?.username) && (
-                <View style={styles.postUsernameContainer}>
-                  <Text style={styles.postUsername}>
-                    @{Array.isArray(post.author) ? (post.author as any)[0]?.username : (post.author as any)?.username}
-                  </Text>
-                </View>
-              )}
-              <View style={styles.postMeta}>
-                <View style={styles.postDistrictContainer}>
-                  <Text style={styles.postDistrict}>
-                    {DISTRICT_BADGES[post.district as keyof typeof DISTRICT_BADGES] || '📍'} {post.district}
-                  </Text>
-                </View>
-                <View style={styles.postTimeContainer}>
-                  <Text style={styles.postTime}>
-                    {' • '}
-                    {new Date(post.created_at).toLocaleDateString('tr-TR', {
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric',
-                    })}
-                  </Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-            {post.author_id === user?.id && (
-              <TouchableOpacity 
-                onPress={handleDeletePost}
-                disabled={deletePostMutation.isPending}
-                style={styles.deleteButton}
-              >
-                <Trash2 size={20} color={COLORS.error} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <View style={styles.postContentContainer}>
-            <Text style={styles.postContent}>{post.content}</Text>
-          </View>
-
-          {post.media && post.media.length > 0 && (
-            <ScrollView horizontal pagingEnabled style={styles.mediaContainer}>
-              {post.media.map((mediaItem: any, index: number) => (
-                <OptimizedImage
-                  key={index}
-                  source={mediaItem.path}
-                  thumbnail={mediaItem.thumbnail}
-                  isThumbnail={false}
-                  style={styles.postImage}
-                />
-              ))}
-            </ScrollView>
-          )}
-
-          <View style={styles.postActions}>
-            <TouchableOpacity style={styles.actionButton} onPress={handleLike}>
-              <Heart
-                size={24}
-                color={post.is_liked ? COLORS.error : COLORS.textLight}
-                fill={post.is_liked ? COLORS.error : 'transparent'}
-              />
-              <Text style={styles.actionText}>{formatCount(post.like_count)}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton}>
-              <MessageCircle size={24} color={COLORS.textLight} />
-              <Text style={styles.actionText}>{formatCount(post.comment_count)}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton}>
-              <Share2 size={24} color={COLORS.textLight} />
-              <Text style={styles.actionText}>{formatCount(post.share_count)}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.commentsSection}>
-          <Text style={styles.commentsTitle}>
-            Yorumlar ({commentsData?.total || 0})
-          </Text>
-
-          {commentsData?.comments.map((comment) => {
-            const isEditing = editingCommentId === comment.id;
-            const isOwner = comment.user_id === user?.id;
-            
-            return (
-              <TouchableOpacity 
-                key={comment.id} 
-                style={styles.commentCard}
-                activeOpacity={0.9}
-                onPress={() => {
-                  // Yorum kartına tıklanınca klavye kapansın
-                  Keyboard.dismiss();
-                  setMenuVisibleCommentId(null);
-                }}
-              >
-                <TouchableOpacity
-                  onPress={() => {
-                    if (comment.user?.id) {
-                      router.push(`/profile/${comment.user.id}` as any);
-                    }
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Image
-                    source={{
-                      uri: comment.user?.avatar_url || 'https://via.placeholder.com/32',
-                    }}
-                    style={styles.commentAvatar}
-                  />
-                </TouchableOpacity>
-                <View style={styles.commentContent}>
-                  <View style={styles.commentAuthorContainer}>
-                    <TouchableOpacity
-                      onPress={() => {
-                        if (comment.user?.id) {
-                          router.push(`/profile/${comment.user.id}` as any);
-                        }
-                      }}
-                      activeOpacity={0.7}
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-                    >
-                      <Text style={styles.commentAuthor}>
-                        {comment.user?.full_name || 'İsimsiz'}
-                      </Text>
-                      {comment.user?.verified && <VerifiedBadgeIcon size={14} />}
-                    </TouchableOpacity>
-                    {isOwner && !isEditing && (
-                      <TouchableOpacity
-                        style={styles.commentMenuButton}
-                        onPress={() => setMenuVisibleCommentId(menuVisibleCommentId === comment.id ? null : comment.id)}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      >
-                        <MoreVertical size={16} color={COLORS.textLight} />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                  {comment.user?.username && (
-                    <View style={styles.commentUsernameContainer}>
-                      <Text style={styles.commentUsername}>
-                        @{comment.user.username}
-                      </Text>
-                    </View>
-                  )}
-                  {isEditing ? (
-                    <View style={styles.editContainer}>
-                      <TextInput
-                        style={styles.editInput}
-                        value={editingCommentText}
-                        onChangeText={setEditingCommentText}
-                        multiline
-                        maxLength={1000}
-                        autoFocus
-                        textAlignVertical="top"
-                      />
-                      <View style={styles.editActions}>
-                        <TouchableOpacity
-                          style={[styles.editButton, styles.cancelButton]}
-                          onPress={handleCancelEdit}
-                        >
-                          <Text style={styles.editButtonText}>İptal</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.editButton, styles.saveButton]}
-                          onPress={handleSaveEdit}
-                          disabled={!editingCommentText.trim() || updateCommentMutation.isPending}
-                        >
-                          {updateCommentMutation.isPending ? (
-                            <ActivityIndicator size="small" color={COLORS.white} />
-                          ) : (
-                            <Text style={[styles.editButtonText, { color: COLORS.white }]}>Kaydet</Text>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ) : (
-                    <>
-                      <View style={styles.commentTextContainer}>
-                        <Text style={styles.commentText}>
-                          {comment.content}
-                        </Text>
-                      </View>
-                      <Text style={styles.commentTime}>
-                        {new Date(comment.created_at).toLocaleDateString('tr-TR', {
-                          day: 'numeric',
-                          month: 'short',
-                        })}
-                      </Text>
-                    </>
-                  )}
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        
-        <Footer />
-      </ScrollView>
-
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-      >
-        <View style={[styles.commentInputContainer, { paddingBottom: Math.max(insets.bottom, SPACING.sm) }]}>
-          <Image
-            source={{
-              uri: profile?.avatar_url || user?.user_metadata?.avatar_url || 'https://via.placeholder.com/32',
+      {/* Küçük Video Preview - En Üstte Sabit */}
+      {isVideo && firstMedia?.path && (
+        <View style={styles.videoPreviewContainer}>
+          <VideoPlayer
+            videoUrl={firstMedia.path.trim()}
+            postId={post.id}
+            isLiked={post.is_liked}
+            isSaved={false}
+            likeCount={post.like_count}
+            commentCount={post.comment_count}
+            shareCount={post.share_count}
+            onLike={handleLike}
+            onComment={() => {
+              commentInputRef.current?.focus();
             }}
-            style={styles.commentInputAvatar}
+            onShare={async () => {
+              try {
+                await Share.share({
+                  message: `${post.content || 'Gönderi'}`,
+                  url: firstMedia.path,
+                });
+              } catch (error) {
+                console.error('Share error:', error);
+              }
+            }}
+            onTag={() => {
+              router.push(`/post/${post.id}` as any);
+            }}
+            onSave={() => {
+              Alert.alert('Bilgi', 'Kaydetme özelliği yakında eklenecek');
+            }}
+            autoPlay={true}
+            previewMode={true}
+            onFullScreen={() => {
+              router.push(`/video-feed?postId=${post.id}` as any);
+            }}
+            containerStyle={styles.videoPreviewPlayer}
           />
-          <TextInput
-            ref={commentInputRef}
-            style={styles.commentInput}
-            placeholder="Yorum yaz..."
-            placeholderTextColor={COLORS.textLight}
-            value={commentText}
-            onChangeText={setCommentText}
-            multiline
-            maxLength={1000}
-            textAlignVertical="top"
-            blurOnSubmit={true}
-            returnKeyType="send"
-            onSubmitEditing={handleAddComment}
-          />
-        <TouchableOpacity
-          style={[
-            styles.sendButton,
-            !commentText.trim() && styles.sendButtonDisabled,
-          ]}
-          onPress={handleAddComment}
-          disabled={!commentText.trim() || addCommentMutation.isPending}
-        >
-          {addCommentMutation.isPending ? (
-            <ActivityIndicator size="small" color={COLORS.white} />
-          ) : (
-            <Send size={20} color={COLORS.white} />
-          )}
-          </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+      )}
 
-        {/* Yorum Menü Modal */}
-        {menuVisibleCommentId && (
-          <View style={styles.menuOverlay} onTouchEnd={() => setMenuVisibleCommentId(null)}>
-            <View style={styles.menuContainer}>
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => {
-                  const comment = commentsData?.comments.find((c) => c.id === menuVisibleCommentId);
-                  if (comment) {
-                    handleEditComment(comment.id, comment.content);
-                  }
-                }}
-              >
-                <Edit3 size={18} color={COLORS.text} />
-                <Text style={styles.menuItemText}>Düzenle</Text>
-              </TouchableOpacity>
-              <View style={styles.menuDivider} />
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => {
-                  if (menuVisibleCommentId) {
-                    handleDeleteComment(menuVisibleCommentId);
-                  }
-                }}
-              >
-                <Trash2 size={18} color={COLORS.error} />
-                <Text style={[styles.menuItemText, { color: COLORS.error }]}>Sil</Text>
-              </TouchableOpacity>
-            </View>
+      {/* Ana İçerik Container */}
+      <View style={styles.contentWrapper}>
+        {/* FlatList - Yorumlar */}
+        <FlatList
+          ref={flatListRef}
+          data={commentsData?.comments || []}
+          renderItem={renderComment}
+          keyExtractor={(item) => item.id}
+          ListHeaderComponent={renderListHeader}
+          contentContainerStyle={{ paddingBottom: 120 }} // Input için boşluk
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          showsVerticalScrollIndicator={true}
+          style={{ flex: 1 }}
+        />
+
+        {/* Yorum Input - Klavyenin Üstünde Sabit */}
+        <View style={[styles.commentInputWrapper, { paddingBottom: Math.max(insets.bottom, SPACING.sm) }]}>
+          <View style={styles.commentInputContainer}>
+            <Image
+              source={{
+                uri: profile?.avatar_url || user?.user_metadata?.avatar_url || 'https://via.placeholder.com/32',
+              }}
+              style={styles.commentInputAvatar}
+            />
+            <TextInput
+              ref={commentInputRef}
+              style={styles.commentInput}
+              placeholder="Yorum yaz..."
+              placeholderTextColor={COLORS.textLight}
+              value={commentText}
+              onChangeText={setCommentText}
+              multiline
+              maxLength={1000}
+              textAlignVertical="top"
+              blurOnSubmit={false}
+              returnKeyType="default"
+            />
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                !commentText.trim() && styles.sendButtonDisabled,
+              ]}
+              onPress={handleAddComment}
+              disabled={!commentText.trim() || addCommentMutation.isPending}
+            >
+              {addCommentMutation.isPending ? (
+                <ActivityIndicator size="small" color={COLORS.white} />
+              ) : (
+                <Send size={20} color={COLORS.white} />
+              )}
+            </TouchableOpacity>
           </View>
-        )}
-      </KeyboardAvoidingView>
-    );
+        </View>
+      </View>
+
+      {/* Yorum Menü Modal */}
+      {menuVisibleCommentId && (
+        <View style={styles.menuOverlay} onTouchEnd={() => setMenuVisibleCommentId(null)}>
+          <View style={styles.menuContainer}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                const comment = commentsData?.comments.find((c) => c.id === menuVisibleCommentId);
+                if (comment) {
+                  handleEditComment(comment.id, comment.content);
+                }
+              }}
+            >
+              <Edit3 size={18} color={COLORS.text} />
+              <Text style={styles.menuItemText}>Düzenle</Text>
+            </TouchableOpacity>
+            <View style={styles.menuDivider} />
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                if (menuVisibleCommentId) {
+                  handleDeleteComment(menuVisibleCommentId);
+                }
+              }}
+            >
+              <Trash2 size={18} color={COLORS.error} />
+              <Text style={[styles.menuItemText, { color: COLORS.error }]}>Sil</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+    </KeyboardAvoidingView>
+  );
   }
 
 const styles = StyleSheet.create({
@@ -614,25 +697,45 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
+  contentWrapper: {
+    flex: 1,
+  },
+  videoPreviewContainer: {
+    width: '100%',
+    height: 200,
+    backgroundColor: '#000',
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    overflow: 'hidden' as const,
+  },
+  videoPreviewPlayer: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 0,
+    aspectRatio: undefined,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
   },
-  content: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: SPACING.xl,
-  },
+  // scrollViewWrapper ve scrollContent kaldırıldı - FlatList kullanıyoruz
   postCard: {
     backgroundColor: COLORS.white,
-    marginBottom: SPACING.sm,
+    marginHorizontal: 0,
+    marginVertical: 0,
+    borderRadius: 0,
+    width: '100%',
+    overflow: 'hidden' as const,
+    borderWidth: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
   postHeader: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     padding: SPACING.md,
+    width: '100%',
   },
   avatar: {
     width: 48,
@@ -689,6 +792,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.md,
+    width: '100%',
   },
   postContent: {
     fontSize: FONT_SIZES.md,
@@ -696,13 +800,37 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   mediaContainer: {
-    maxHeight: 400,
+    width: '100%',
+    marginHorizontal: 0,
+    paddingHorizontal: 0,
+    marginTop: 0,
+    marginBottom: 0,
+    alignSelf: 'stretch' as const,
+  },
+  mediaScrollView: {
+    width: '100%',
+    marginHorizontal: 0,
+    paddingHorizontal: 0,
+  },
+  mediaScrollContent: {
+    alignItems: 'center' as const,
+  },
+  videoContainer: {
+    width: '100%',
+    marginHorizontal: 0,
+    paddingHorizontal: 0,
+    marginTop: 0,
+    marginBottom: 0,
   },
   postImage: {
     width: '100%',
-    aspectRatio: 16 / 9, // Responsive aspect ratio
-    maxHeight: 400,
-    minHeight: 200,
+    height: undefined,
+    aspectRatio: 1,
+    maxHeight: Dimensions.get('window').height * 0.7,
+    marginHorizontal: 0,
+    paddingHorizontal: 0,
+    marginTop: 0,
+    marginBottom: 0,
   },
   postActions: {
     flexDirection: 'row' as const,
@@ -710,7 +838,8 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
-    gap: SPACING.xl,
+    gap: SPACING.lg,
+    width: '100%',
   },
   actionButton: {
     flexDirection: 'row' as const,
@@ -785,15 +914,10 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
   },
-  commentInputContainer: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
+  commentInputWrapper: {
     backgroundColor: COLORS.white,
-    paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.sm,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
-    gap: SPACING.sm,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -802,6 +926,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 5,
+  },
+  commentInputContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: SPACING.sm,
   },
   commentInputAvatar: {
     width: 32,

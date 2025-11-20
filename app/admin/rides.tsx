@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Calendar, Car, Download, Phone, RefreshCcw, FileText, Eye } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';

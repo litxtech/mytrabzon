@@ -42,8 +42,7 @@ export const getAllPostsProcedure = protectedProcedure
       .from("posts")
       .select(`
         *,
-        author:profiles!posts_author_id_fkey(id, full_name, avatar_url, username),
-        post_media(*)
+        author:profiles!posts_author_id_fkey(id, full_name, avatar_url, username)
       `, { count: "exact" })
       .eq("is_deleted", false);
     

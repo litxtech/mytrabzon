@@ -13,21 +13,21 @@ import {
   Alert,
   Modal,
   Linking,
-  SafeAreaView,
   Keyboard,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { Swipeable } from 'react-native-gesture-handler';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
 import { trpc } from '@/lib/trpc';
-import { Send, Paperclip, Smile, MoreVertical, ImageIcon, Plus, Heart, MessageCircle, Share2, Phone, Video as VideoIcon, Users, Search, Check, X, UserMinus, Trash2, LogOut, Edit3 } from 'lucide-react-native';
+import { Send, Paperclip, Smile, MoreVertical, ImageIcon, Plus, Heart, MessageCircle, Share2, Phone, Video as VideoIcon, Users, Search, Check, X, UserMinus, Trash2, LogOut, Edit3, XCircle } from 'lucide-react-native';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Video as ExpoVideo } from 'expo-av';
-import { Message, Post } from '@/types/database';
+import { Message, Post, UserProfile } from '@/types/database';
 import { DISTRICT_BADGES } from '@/constants/districts';
 import { Footer } from '@/components/Footer';
 
@@ -38,6 +38,7 @@ export default function ChatRoomScreen() {
   const { roomId } = useLocalSearchParams<{ roomId: string }>();
   const router = useRouter();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const { messages, loadMessages, subscribeToRoom, unsubscribeFromRoom, sendTypingIndicator, typingIndicators } = useChat();
   const [messageText, setMessageText] = useState('');
   const [replyTo, setReplyTo] = useState<Message | null>(null);
@@ -91,6 +92,17 @@ export default function ChatRoomScreen() {
   const otherUser = room?.type === 'direct' 
     ? ((room as any).other_user || room.members?.find((m: any) => m.user_id !== user?.id)?.user) 
     : null;
+  
+  const markAsReadMutation = trpc.chat.markAsRead.useMutation();
+  
+  // startCallMutation - hook'u direkt çağır
+  const startCallMutation = (trpc.chat as any).startCall?.useMutation({
+    onSuccess: () => {},
+    onError: (error: any) => {
+      Alert.alert('Hata', error?.message || 'Arama başlatılamadı');
+    },
+  }) || { mutateAsync: async () => ({ sessionId: '' }), isPending: false };
+  
   const handleStartCall = useCallback(async (type: 'audio' | 'video') => {
     if (!room || !otherUser) {
       Alert.alert('Hata', 'Arama başlatmak için sohbet bilgisi bulunamadı');
@@ -127,13 +139,14 @@ export default function ChatRoomScreen() {
     } finally {
       setPendingCallType(null);
     }
-  }, [otherUser, room, router, startCallMutation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [otherUser, room, router]);
 
   // Grup post'larını al (sadece grup ise)
   const isGroup = room?.type === 'group';
   const currentUserId = user?.id;
   const groupMembers = room?.members || [];
-  const isGroupOwner = isGroup && room?.created_by === currentUserId;
+  const isGroupOwner = isGroup && (room as any)?.created_by === currentUserId;
   const { data: groupPostsData, refetch: refetchGroupPosts } = trpc.post.getPosts.useQuery(
     { author_id: undefined, limit: 50, offset: 0 },
     { enabled: !!roomId && isGroup }
@@ -146,33 +159,125 @@ export default function ChatRoomScreen() {
   });
 
   const sendMessageMutation = trpc.chat.sendMessage.useMutation({
-    onSuccess: () => {
+    onMutate: async (newMessage) => {
+      // Optimistic update: Mesajı hemen ekle
+      if (!roomId || !user) return;
+      
+      const optimisticMessage: Message = {
+        id: `temp-${Date.now()}`,
+        room_id: roomId,
+        user_id: user.id,
+        content: newMessage.content,
+        media_url: newMessage.mediaUrl || null,
+        media_type: newMessage.mediaType || null,
+        reply_to: newMessage.replyTo || null,
+        is_edited: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        user: {
+          id: user.id,
+          email: user.email || '',
+          full_name: user.user_metadata?.full_name || 'Sen',
+          username: user.user_metadata?.username || null,
+          avatar_url: user.user_metadata?.avatar_url || null,
+          bio: null,
+          district: 'Ortahisar' as const,
+          city: null,
+          age: null,
+          gender: null,
+          phone: null,
+          address: null,
+          height: null,
+          weight: null,
+          social_media: {},
+          privacy_settings: {
+            show_age: false,
+            show_gender: false,
+            show_phone: false,
+            show_email: false,
+            show_address: false,
+            show_height: false,
+            show_weight: false,
+            show_social_media: false,
+          },
+          show_address: false,
+          show_in_directory: false,
+          verified: user.user_metadata?.verified || false,
+          selfie_verified: false,
+          points: 0,
+          deletion_requested_at: null,
+          deletion_scheduled_at: null,
+          supporter_badge: false,
+          supporter_badge_color: null,
+          supporter_badge_visible: false,
+          supporter_badge_expires_at: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as UserProfile,
+      };
+
+      // ChatContext'e optimistic mesajı ekle
+      const currentMessages = messages[roomId] || [];
+      const updatedMessages = [...currentMessages, optimisticMessage].sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      loadMessages(roomId, updatedMessages);
+      
       setMessageText('');
       setReplyTo(null);
       flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+      
+      return { previousMessages: currentMessages };
     },
-    onError: (error) => {
+    onError: (error, variables, context) => {
+      // Hata durumunda geri al
+      if (context?.previousMessages && roomId) {
+        loadMessages(roomId, context.previousMessages);
+      }
       Alert.alert('Hata', 'Mesaj gönderilemedi: ' + error.message);
     },
+    onSettled: () => {
+      // Cache'i invalidate et, ama optimistic update'i koru
+      utils.chat.getMessages.invalidate({ roomId });
+      utils.chat.getRooms.invalidate();
+    },
   });
-
-  const markAsReadMutation = trpc.chat.markAsRead.useMutation();
-  const startCallMutation = trpc.chat.startCall.useMutation();
 
   const { data: allUsersData } = trpc.user.getAllUsers.useQuery({
     search: addMembersSearch || undefined,
   });
 
   const deleteMessageMutation = trpc.chat.deleteMessage.useMutation({
+    onMutate: async ({ messageId }) => {
+      // Optimistic update: Mesajı hemen sil
+      if (!roomId) return;
+      
+      const currentMessages = messages[roomId] || [];
+      const previousMessages = [...currentMessages];
+      
+      const filteredMessages = currentMessages.filter((m: Message) => m.id !== messageId);
+      const sortedMessages = filteredMessages.sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      loadMessages(roomId, sortedMessages);
+      
+      setShowMessageActions(false);
+      setSelectedMessage(null);
+      
+      return { previousMessages };
+    },
+    onError: (error, variables, context) => {
+      // Hata durumunda geri al
+      if (context?.previousMessages && roomId) {
+        loadMessages(roomId, context.previousMessages);
+      }
+      Alert.alert('Hata', error.message || 'Mesaj silinemedi');
+    },
     onSuccess: () => {
+      // Gerçek veriyi yükle
       if (roomId) {
         loadMessages(roomId);
       }
-      setShowMessageActions(false);
-      setSelectedMessage(null);
-    },
-    onError: (error) => {
-      Alert.alert('Hata', error.message || 'Mesaj silinemedi');
     },
   });
 
@@ -247,6 +352,30 @@ export default function ChatRoomScreen() {
     },
     onError: (error) => {
       Alert.alert('Hata', error.message || 'Grup silinemedi');
+    },
+  });
+
+  const approveBookingMutation = trpc.ride.approveBooking.useMutation({
+    onSuccess: () => {
+      if (roomId) {
+        loadMessages(roomId);
+      }
+      Alert.alert('Başarılı', 'Rezervasyon onaylandı');
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Rezervasyon onaylanamadı');
+    },
+  });
+
+  const rejectBookingMutation = trpc.ride.rejectBooking.useMutation({
+    onSuccess: () => {
+      if (roomId) {
+        loadMessages(roomId);
+      }
+      Alert.alert('Başarılı', 'Rezervasyon reddedildi');
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Rezervasyon reddedilemedi');
     },
   });
 
@@ -584,14 +713,55 @@ export default function ChatRoomScreen() {
               {message.content}
             </Text>
 
+            {/* Rezervasyon onay/red butonları */}
+            {!isOwn && (message as any).data?.type === 'RIDE_BOOKING' && (message as any).data?.status === 'pending' && (
+              <View style={styles.reservationActions}>
+                <TouchableOpacity
+                  style={[styles.approveButton, { backgroundColor: COLORS.success }]}
+                  onPress={() => {
+                    if ((message as any).data?.booking_id) {
+                      approveBookingMutation.mutate({ booking_id: (message as any).data.booking_id });
+                    }
+                  }}
+                  disabled={approveBookingMutation.isPending || rejectBookingMutation.isPending}
+                >
+                  {approveBookingMutation.isPending ? (
+                    <ActivityIndicator size="small" color={COLORS.white} />
+                  ) : (
+                    <>
+                      <Check size={16} color={COLORS.white} />
+                      <Text style={styles.actionButtonText}>Onayla</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.rejectButton, { backgroundColor: COLORS.error }]}
+                  onPress={() => {
+                    if ((message as any).data?.booking_id) {
+                      rejectBookingMutation.mutate({ booking_id: (message as any).data.booking_id });
+                    }
+                  }}
+                  disabled={approveBookingMutation.isPending || rejectBookingMutation.isPending}
+                >
+                  {rejectBookingMutation.isPending ? (
+                    <ActivityIndicator size="small" color={COLORS.white} />
+                  ) : (
+                    <>
+                      <XCircle size={16} color={COLORS.white} />
+                      <Text style={styles.actionButtonText}>Reddet</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
             {message.media_url && message.media_type === 'image' && (
               <TouchableOpacity
                 onPress={() => Linking.openURL(message.media_url!)}
                 activeOpacity={0.9}
               >
-                <OptimizedImage
-                  source={message.media_url}
-                  isThumbnail={true}
+                        <Image
+                  source={{ uri: message.media_url }}
                   style={styles.messageImage}
                 />
               </TouchableOpacity>
@@ -761,25 +931,31 @@ export default function ChatRoomScreen() {
               {room?.type === 'direct' && otherUser && (
                 <>
                   <TouchableOpacity
-                    style={styles.headerButton}
+                    style={styles.headerButtonWithText}
                     onPress={() => handleStartCall('audio')}
                     disabled={startCallMutation.isPending}
                   >
                     {startCallMutation.isPending && pendingCallType === 'audio' ? (
                       <ActivityIndicator size="small" color={COLORS.primary} />
                     ) : (
-                      <Phone size={22} color={COLORS.primary} />
+                      <>
+                        <Phone size={18} color={COLORS.primary} />
+                        <Text style={styles.headerButtonText}>Sesli</Text>
+                      </>
                     )}
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.headerButton}
+                    style={styles.headerButtonWithText}
                     onPress={() => handleStartCall('video')}
                     disabled={startCallMutation.isPending}
                   >
                     {startCallMutation.isPending && pendingCallType === 'video' ? (
                       <ActivityIndicator size="small" color={COLORS.primary} />
                     ) : (
-                      <VideoIcon size={22} color={COLORS.primary} />
+                      <>
+                        <VideoIcon size={18} color={COLORS.primary} />
+                        <Text style={styles.headerButtonText}>Görüntülü</Text>
+                      </>
                     )}
                   </TouchableOpacity>
                 </>
@@ -803,8 +979,9 @@ export default function ChatRoomScreen() {
 
       <KeyboardAvoidingView
         style={styles.keyboardAvoidingView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 80 : 0}
+        enabled={Platform.OS === 'ios'}
       >
         <View style={styles.contentContainer}>
           {/* Tab Bar - Sadece grup ise göster */}
@@ -852,7 +1029,7 @@ export default function ChatRoomScreen() {
             />
           ) : (
             <FlatList
-              data={groupPostsData?.posts || []}
+              data={((groupPostsData?.posts || []) as unknown) as Post[]}
               renderItem={renderGroupPost}
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.postsList}
@@ -882,7 +1059,7 @@ export default function ChatRoomScreen() {
 
           {/* Input Container - En altta sabit, klavyenin üstünde */}
           {activeTab === 'messages' && (
-            <View style={styles.inputContainer}>
+            <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, SPACING.md) }]}>
               <TouchableOpacity 
                 style={styles.attachButton}
                 onPress={handlePickDocument}
@@ -1252,7 +1429,7 @@ export default function ChatRoomScreen() {
               data={groupMembers}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => {
-                const isOwner = item.user_id === room?.created_by;
+                const isOwner = item.user_id === (room as any)?.created_by;
                 const user = (item as any).user || {};
                 return (
                   <View style={styles.memberManageItem}>
@@ -1325,11 +1502,23 @@ const styles = StyleSheet.create({
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: SPACING.xs,
     paddingRight: SPACING.sm,
   },
   headerButton: {
     padding: SPACING.sm,
+  },
+  headerButtonWithText: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs / 2,
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: SPACING.xs,
+  },
+  headerButtonText: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.primary,
+    fontWeight: '600',
   },
   messagesList: {
     paddingHorizontal: SPACING.md,
@@ -1498,13 +1687,15 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     flexDirection: 'row' as const,
-    alignItems: 'center' as const,
+    alignItems: 'flex-end' as const,
     backgroundColor: COLORS.white,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.md,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
     gap: SPACING.sm,
+    minHeight: 60,
   },
   attachButton: {
     padding: SPACING.xs,
@@ -1518,6 +1709,7 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.text,
     maxHeight: 100,
+    minHeight: 40,
     textAlignVertical: 'top' as const,
   },
   emojiButton: {
@@ -1852,6 +2044,36 @@ const styles = StyleSheet.create({
   modalPrimaryText: {
     color: COLORS.white,
     fontWeight: '700',
+  },
+  reservationActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  approveButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 8,
+  },
+  rejectButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 8,
+  },
+  actionButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
   },
   optionButton: {
     flexDirection: 'row',

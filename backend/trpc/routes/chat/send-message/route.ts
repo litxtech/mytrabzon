@@ -71,7 +71,7 @@ export const sendMessageProcedure = protectedProcedure
           const targetUserId = members[0].user_id;
           const { data: senderProfile } = await ctx.supabase
             .from('profiles')
-            .select('full_name')
+            .select('full_name, verified')
             .eq('id', userId)
             .single();
 
@@ -88,6 +88,7 @@ export const sendMessageProcedure = protectedProcedure
                 room_id: input.roomId,
                 sender_id: userId,
                 sender_name: senderName,
+                sender_verified: senderProfile?.verified || false,
               },
               push_sent: false,
             })

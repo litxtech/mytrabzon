@@ -9,17 +9,20 @@ import {
   RefreshControl,
   Alert,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bell, Trash2, Check, X, Filter } from 'lucide-react-native';
+import { Bell, X, Filter, MoreVertical, Check, XCircle } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
 import { useRouter } from 'expo-router';
 import { formatTimeAgo } from '@/lib/time-utils';
 import { Footer } from '@/components/Footer';
 import { Video, ResizeMode } from 'expo-av';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
+import { RideReviewModal } from '@/components/RideReviewModal';
 
 type NotificationType = 'EVENT' | 'SYSTEM' | 'MESSAGE' | 'RESERVATION' | 'FOOTBALL' | 'all';
 
@@ -28,6 +31,12 @@ export default function NotificationsScreen() {
   const { theme } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const [filterType, setFilterType] = useState<NotificationType>('all');
+  const [selectedNotification, setSelectedNotification] = useState<any>(null);
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [menuVisible, setMenuVisible] = useState<string | null>(null);
+  const [reviewModalVisible, setReviewModalVisible] = useState(false);
+  const [reviewBookingId, setReviewBookingId] = useState<string | null>(null);
+  const [reviewedUserName, setReviewedUserName] = useState<string>('');
 
   const { data: notificationsData, isLoading, refetch } = trpc.notification.getNotifications.useQuery(
     { type: filterType !== 'all' ? filterType : undefined },
@@ -60,6 +69,26 @@ export default function NotificationsScreen() {
     },
   });
 
+  const approveBookingMutation = trpc.ride.approveBooking.useMutation({
+    onSuccess: () => {
+      refetch();
+      Alert.alert('Başarılı', 'Rezervasyon onaylandı');
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Rezervasyon onaylanamadı');
+    },
+  });
+
+  const rejectBookingMutation = trpc.ride.rejectBooking.useMutation({
+    onSuccess: () => {
+      refetch();
+      Alert.alert('Başarılı', 'Rezervasyon reddedildi');
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Rezervasyon reddedilemedi');
+    },
+  });
+
   const onRefresh = async () => {
     setRefreshing(true);
     await refetch();
@@ -72,11 +101,29 @@ export default function NotificationsScreen() {
       markAsReadMutation.mutate({ notification_id: notification.id });
     }
 
+    // Admin bildirimleri (SYSTEM tipi ve sender mytrabzonteam) için detay modal'ı göster
+    if (notification.type === 'SYSTEM' && notification.data?.sender === 'mytrabzonteam') {
+      setSelectedNotification(notification);
+      setDetailModalVisible(true);
+      return;
+    }
+
     // Bildirim tipine göre yönlendir
     if (notification.type === 'EVENT' && notification.event_id) {
       router.push(`/event/${notification.event_id}` as any);
     } else if (notification.type === 'MESSAGE' && notification.data?.room_id) {
       router.push(`/chat/${notification.data.room_id}` as any);
+    } else if (notification.type === 'RESERVATION' && notification.data?.match_id) {
+      router.push(`/football/match/${notification.data.match_id}` as any);
+    } else if (notification.type === 'RESERVATION' && notification.data?.type === 'RIDE_COMPLETED') {
+      // Yolculuk tamamlandı bildirimi - rating modalını göster
+      if (notification.data?.booking_id) {
+        setReviewBookingId(notification.data.booking_id);
+        setReviewedUserName(notification.data?.driver_name || 'Sürücü');
+        setReviewModalVisible(true);
+      } else {
+        router.push(`/ride/${notification.data?.ride_offer_id}` as any);
+      }
     } else if (notification.type === 'RESERVATION' && notification.data?.match_id) {
       router.push(`/football/match/${notification.data.match_id}` as any);
     } else if (notification.data?.type === 'PROXIMITY' && notification.data?.pair_id) {
@@ -158,7 +205,7 @@ export default function NotificationsScreen() {
         return '⚽';
       case 'SYSTEM':
         // Admin bildirimleri için özel ikon
-        return '👤';
+        return '✅';
       default:
         return '📢';
     }
@@ -209,22 +256,29 @@ export default function NotificationsScreen() {
           </TouchableOpacity>
           
           {notifications.length > 0 && (
-            <>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={handleMarkAllAsRead}
-                disabled={markAllAsReadMutation.isPending}
-              >
-                <Check size={18} color={theme.colors.primary} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={handleDeleteAll}
-                disabled={deleteAllNotificationsMutation.isPending}
-              >
-                <Trash2 size={18} color={theme.colors.error} />
-              </TouchableOpacity>
-            </>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => {
+                Alert.alert(
+                  'İşlemler',
+                  'Ne yapmak istersiniz?',
+                  [
+                    {
+                      text: 'Tümünü Okundu İşaretle',
+                      onPress: handleMarkAllAsRead,
+                    },
+                    {
+                      text: 'Tümünü Sil',
+                      style: 'destructive',
+                      onPress: handleDeleteAll,
+                    },
+                    { text: 'İptal', style: 'cancel' },
+                  ]
+                );
+              }}
+            >
+              <MoreVertical size={18} color={theme.colors.primary} />
+            </TouchableOpacity>
           )}
         </View>
       </View>
@@ -255,19 +309,72 @@ export default function NotificationsScreen() {
               </View>
               <View style={styles.notificationContent}>
                 <View style={styles.notificationHeader}>
-                  <Text style={[
-                    styles.notificationTitle,
-                    { color: theme.colors.text },
-                    !item.read_at && { color: theme.colors.text, fontWeight: '700' },
-                  ]}>
-                    {item.data?.sender === 'mytrabzonteam' ? 'MyTrabzonTeam' : item.title}
-                  </Text>
+                  <View style={styles.titleRow}>
+                    <Text style={[
+                      styles.notificationTitle,
+                      { color: theme.colors.text },
+                      !item.read_at && { color: theme.colors.text, fontWeight: '700' },
+                    ]}>
+                      {item.data?.sender === 'mytrabzonteam' 
+                        ? 'MyTrabzonTeam' 
+                        : item.data?.sender_name || item.title}
+                    </Text>
+                    {/* Admin bildirimleri için mavi tik */}
+                    {item.type === 'SYSTEM' && item.data?.sender === 'mytrabzonteam' && (
+                      <VerifiedBadgeIcon size={16} style={styles.adminVerifiedBadge} />
+                    )}
+                    {/* Diğer bildirimlerde gönderen kişinin verified durumu */}
+                    {item.data?.sender !== 'mytrabzonteam' && item.data?.sender_verified && (
+                      <VerifiedBadgeIcon size={16} style={styles.adminVerifiedBadge} />
+                    )}
+                  </View>
                   {!item.read_at && <View style={[styles.unreadDot, { backgroundColor: theme.colors.primary }]} />}
-                  {item.read_at && <Check size={16} color={theme.colors.primary} style={styles.readCheck} />}
                 </View>
                 <Text style={[styles.notificationMessage, { color: theme.colors.textLight }]} numberOfLines={3}>
                   {item.body || item.message}
                 </Text>
+                
+                {/* Rezervasyon onay/red butonları */}
+                {item.type === 'RESERVATION' && item.data?.type === 'RIDE_BOOKING' && item.data?.status === 'pending' && (
+                  <View style={styles.reservationActions}>
+                    <TouchableOpacity
+                      style={[styles.approveButton, { backgroundColor: COLORS.success }]}
+                      onPress={() => {
+                        if (item.data?.booking_id) {
+                          approveBookingMutation.mutate({ booking_id: item.data.booking_id });
+                        }
+                      }}
+                      disabled={approveBookingMutation.isPending || rejectBookingMutation.isPending}
+                    >
+                      {approveBookingMutation.isPending ? (
+                        <ActivityIndicator size="small" color={COLORS.white} />
+                      ) : (
+                        <>
+                          <Check size={16} color={COLORS.white} />
+                          <Text style={styles.actionButtonText}>Onayla</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.rejectButton, { backgroundColor: COLORS.error }]}
+                      onPress={() => {
+                        if (item.data?.booking_id) {
+                          rejectBookingMutation.mutate({ booking_id: item.data.booking_id });
+                        }
+                      }}
+                      disabled={approveBookingMutation.isPending || rejectBookingMutation.isPending}
+                    >
+                      {rejectBookingMutation.isPending ? (
+                        <ActivityIndicator size="small" color={COLORS.white} />
+                      ) : (
+                        <>
+                          <XCircle size={16} color={COLORS.white} />
+                          <Text style={styles.actionButtonText}>Reddet</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
                 
                 {/* Event medya önizlemesi */}
                 {item.type === 'EVENT' && item.event?.media_urls && item.event.media_urls.length > 0 && (
@@ -343,11 +450,41 @@ export default function NotificationsScreen() {
                 </View>
               </View>
               <TouchableOpacity
-                style={styles.deleteButton}
-                onPress={() => handleDelete(item.id)}
+                style={styles.menuButton}
+                onPress={() => {
+                  if (menuVisible === item.id) {
+                    setMenuVisible(null);
+                  } else {
+                    setMenuVisible(item.id);
+                    Alert.alert(
+                      'Bildirim İşlemleri',
+                      'Ne yapmak istersiniz?',
+                      [
+                        {
+                          text: item.read_at ? 'Okunmadı İşaretle' : 'Okundu İşaretle',
+                          onPress: () => {
+                            if (!item.read_at) {
+                              markAsReadMutation.mutate({ notification_id: item.id });
+                            }
+                            setMenuVisible(null);
+                          },
+                        },
+                        {
+                          text: 'Sil',
+                          style: 'destructive',
+                          onPress: () => {
+                            handleDelete(item.id);
+                            setMenuVisible(null);
+                          },
+                        },
+                        { text: 'İptal', style: 'cancel', onPress: () => setMenuVisible(null) },
+                      ]
+                    );
+                  }
+                }}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <X size={16} color={theme.colors.textLight} />
+                <MoreVertical size={18} color={theme.colors.textLight} />
               </TouchableOpacity>
             </TouchableOpacity>
           )}
@@ -370,6 +507,90 @@ export default function NotificationsScreen() {
       <ScrollView>
         <Footer />
       </ScrollView>
+
+      {/* Admin Bildirim Detay Modal */}
+      <Modal
+        visible={detailModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setDetailModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.card }]}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleRow}>
+                <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
+                  {selectedNotification?.data?.sender === 'mytrabzonteam' 
+                    ? 'MyTrabzonTeam' 
+                    : selectedNotification?.data?.sender_name || selectedNotification?.title}
+                </Text>
+                {/* Admin bildirimleri için mavi tik */}
+                {selectedNotification?.type === 'SYSTEM' && selectedNotification?.data?.sender === 'mytrabzonteam' && (
+                  <VerifiedBadgeIcon size={20} style={styles.modalVerifiedBadge} />
+                )}
+                {/* Diğer bildirimlerde gönderen kişinin verified durumu */}
+                {selectedNotification?.data?.sender !== 'mytrabzonteam' && selectedNotification?.data?.sender_verified && (
+                  <VerifiedBadgeIcon size={20} style={styles.modalVerifiedBadge} />
+                )}
+              </View>
+              <TouchableOpacity
+                onPress={() => setDetailModalVisible(false)}
+                style={styles.modalCloseButton}
+              >
+                <X size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <Text style={[styles.modalSubtitle, { color: theme.colors.text }]}>
+                {selectedNotification?.title}
+              </Text>
+              
+              <Text style={[styles.modalMessage, { color: theme.colors.textLight }]}>
+                {selectedNotification?.body || selectedNotification?.message}
+              </Text>
+
+              {selectedNotification?.data?.mediaUrl && (
+                <View style={styles.modalMediaContainer}>
+                  <Image
+                    source={{ uri: selectedNotification.data.mediaUrl }}
+                    style={styles.modalMediaImage}
+                    contentFit="cover"
+                  />
+                </View>
+              )}
+
+              <View style={styles.modalFooter}>
+                <Text style={[styles.modalTime, { color: theme.colors.textLight }]}>
+                  {selectedNotification?.created_at && formatTimeAgo(selectedNotification.created_at)}
+                </Text>
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.modalCloseButtonBottom, { backgroundColor: theme.colors.primary }]}
+              onPress={() => setDetailModalVisible(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>Kapat</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Rating Modal */}
+      <RideReviewModal
+        visible={reviewModalVisible}
+        onClose={() => {
+          setReviewModalVisible(false);
+          setReviewBookingId(null);
+          setReviewedUserName('');
+        }}
+        bookingId={reviewBookingId || ''}
+        reviewedUserName={reviewedUserName}
+        onSuccess={() => {
+          refetch();
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -540,7 +761,7 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
   },
-  deleteButton: {
+  menuButton: {
     padding: SPACING.xs,
     marginLeft: SPACING.sm,
   },
@@ -560,5 +781,129 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
     textAlign: 'center',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  adminVerifiedBadge: {
+    marginLeft: SPACING.xs,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '90%',
+    paddingBottom: SPACING.lg,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  modalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  modalVerifiedBadge: {
+    marginLeft: SPACING.xs,
+  },
+  modalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  modalCloseButton: {
+    padding: SPACING.xs,
+  },
+  modalBody: {
+    padding: SPACING.md,
+    maxHeight: 500,
+  },
+  modalSubtitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: SPACING.md,
+  },
+  modalMessage: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textLight,
+    lineHeight: 24,
+    marginBottom: SPACING.md,
+  },
+  modalMediaContainer: {
+    marginTop: SPACING.md,
+    marginBottom: SPACING.md,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  modalMediaImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+  },
+  modalFooter: {
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  modalTime: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+  },
+  modalCloseButtonBottom: {
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCloseButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+  },
+  reservationActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  approveButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 8,
+  },
+  rejectButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 8,
+  },
+  actionButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
   },
 });

@@ -10,7 +10,6 @@ import {
   Alert,
   FlatList,
   Modal,
-  Linking,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Video, ResizeMode } from 'expo-av';
@@ -28,12 +27,7 @@ import {
   MapPin,
   Users,
   Star,
-  Instagram,
-  Twitter,
-  Facebook,
-  Linkedin,
-  Youtube,
-  Music,
+  Target,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CallButtons } from '@/components/CallButtons';
@@ -369,11 +363,7 @@ export default function UserProfileScreen() {
 
           <View style={styles.nameRow}>
             <Text style={styles.name}>{profile.full_name || 'İsimsiz'}</Text>
-            {(() => {
-              const privacySettings = profile.privacy_settings as any;
-              // GenderIcon component removed
-              return null;
-            })()}
+            {/* GenderIcon component removed */}
             {profile.verified && <VerifiedBadgeIcon size={20} />}
             {profile.supporter_badge && profile.supporter_badge_visible && (
               <SupporterBadge 
@@ -410,7 +400,7 @@ export default function UserProfileScreen() {
             </View>
             <TouchableOpacity
               style={styles.statItem}
-              onPress={() => setFollowersModalVisible(true)}
+              onPress={() => router.push(`/profile/followers?id=${id}` as any)}
               activeOpacity={0.7}
             >
               <Text style={styles.statNumber}>{followersCount}</Text>
@@ -418,7 +408,7 @@ export default function UserProfileScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.statItem}
-              onPress={() => setFollowingModalVisible(true)}
+              onPress={() => router.push(`/profile/following?id=${id}` as any)}
               activeOpacity={0.7}
             >
               <Text style={styles.statNumber}>{followingCount}</Text>
@@ -459,6 +449,21 @@ export default function UserProfileScreen() {
                 targetUserAvatar={profile.avatar_url}
                 variant="compact"
               />
+              <TouchableOpacity
+                style={styles.skorumButton}
+                onPress={() => {
+                  // Skorum bilgisini göster
+                  const karmaScore = profile.karma_score || 50;
+                  const karmaLevel = profile.karma_level || 'neutral';
+                  Alert.alert(
+                    'Skorum',
+                    `${profile.full_name || 'Kullanıcı'} karma skoru: ${karmaScore}\nSeviye: ${karmaLevel === 'noble' ? 'Asil' : karmaLevel === 'good' ? 'İyi' : karmaLevel === 'neutral' ? 'Nötr' : karmaLevel === 'bad' ? 'Kötü' : 'Yasaklı'}`
+                  );
+                }}
+                activeOpacity={0.7}
+              >
+                <Target size={18} color={COLORS.white} />
+              </TouchableOpacity>
             </View>
           )}
 
@@ -626,10 +631,8 @@ export default function UserProfileScreen() {
                           useNativeControls={false}
                         />
                       ) : (
-                        <OptimizedImage
-                          source={firstMedia.path}
-                          thumbnail={firstMedia.thumbnail}
-                          isThumbnail={true}
+                        <Image
+                          source={{ uri: firstMedia.path }}
                           style={styles.postImage}
                         />
                       )
@@ -645,9 +648,9 @@ export default function UserProfileScreen() {
                     <View style={styles.postOverlay}>
                       <View style={styles.postStats}>
                         <Heart size={16} color={COLORS.white} />
-                        <Text style={styles.postStatText}>{item.likes_count || 0}</Text>
+                        <Text style={styles.postStatText}>{item.like_count || 0}</Text>
                         <MessageCircle size={16} color={COLORS.white} style={styles.postStatIcon} />
-                        <Text style={styles.postStatText}>{item.comments_count || 0}</Text>
+                        <Text style={styles.postStatText}>{item.comment_count || 0}</Text>
                       </View>
                     </View>
                     {isVideo && (
@@ -1086,6 +1089,14 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     backgroundColor: COLORS.primary,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  skorumButton: {
+    width: 44,
+    height: 44,
+    backgroundColor: COLORS.secondary,
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',

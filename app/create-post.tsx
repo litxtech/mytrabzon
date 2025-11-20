@@ -18,7 +18,7 @@ import { DISTRICT_BADGES } from '@/constants/districts';
 import { District } from '@/types/database';
 import { X, Image as ImageIcon, Camera, MapPin, Video as VideoIcon } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import { Footer } from '@/components/Footer';
 import { Video, ResizeMode } from 'expo-av';
 import { compressImage } from '@/lib/image-compression';

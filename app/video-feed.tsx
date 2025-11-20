@@ -38,6 +38,7 @@ export default function VideoFeedScreen() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [eventsOffset, setEventsOffset] = useState(0);
+  const [commentsOpenMap, setCommentsOpenMap] = useState<Record<number, boolean>>({});
 
   // postId ile açılan videoyu fetch et
   const { data: singlePostData } = trpc.post.getPostDetail.useQuery(
@@ -218,6 +219,13 @@ export default function VideoFeedScreen() {
     minimumViewTime: 100, // Minimum görünür kalma süresi (ms)
   };
 
+  const handleCommentsChange = useCallback((index: number, isOpen: boolean) => {
+    setCommentsOpenMap((prev) => ({
+      ...prev,
+      [index]: isOpen,
+    }));
+  }, []);
+
   const renderItem = useCallback(
     ({ item, index }: { item: any; index: number }) => {
       const isViewable = viewableItems.some((vi) => vi.index === index);
@@ -227,10 +235,11 @@ export default function VideoFeedScreen() {
           isActive={isViewable && currentIndex === index}
           isViewable={isViewable}
           index={index}
+          onCommentsChange={(isOpen) => handleCommentsChange(index, isOpen)}
         />
       );
     },
-    [viewableItems, currentIndex]
+    [viewableItems, currentIndex, handleCommentsChange]
   );
 
   const onEndReached = useCallback(() => {
@@ -287,7 +296,7 @@ export default function VideoFeedScreen() {
             flatListRef.current?.scrollToIndex({ index: info.index, animated: false });
           });
         }}
-        scrollEnabled={true}
+        scrollEnabled={!Object.values(commentsOpenMap).some((isOpen) => isOpen)}
         nestedScrollEnabled={true}
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={16}

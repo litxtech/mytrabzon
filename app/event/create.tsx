@@ -20,7 +20,7 @@ import { ArrowLeft, AlertCircle, ChevronDown, Camera, Image as ImageIcon, X, Vid
 import { getDistrictsByCity } from '@/constants/districts';
 import { Footer } from '@/components/Footer';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import { useAuth } from '@/contexts/AuthContext';
 
 const EVENT_CATEGORIES = [

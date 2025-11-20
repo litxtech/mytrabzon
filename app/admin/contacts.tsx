@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,13 +13,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Phone, Mail, Send, X } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { trpc } from '../../lib/trpc';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function AdminContactsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sendModalVisible, setSendModalVisible] = useState(false);
@@ -38,6 +40,40 @@ export default function AdminContactsScreen() {
   const { data: recentChangesData } = (trpc as any).admin.getRecentProfileChanges.useQuery({
     limit: 20,
   });
+
+  const utils = trpc.useUtils();
+
+  // Profil değişikliklerini okundu olarak işaretle
+  const markProfileChangesAsRead = useCallback(async () => {
+    if (!user?.id) return;
+    
+    try {
+      const { supabase } = await import('../../lib/supabase');
+      const yesterday = new Date();
+      yesterday.setHours(yesterday.getHours() - 24);
+      
+      // Son 24 saatteki okunmamış değişiklikleri okundu olarak işaretle
+      await supabase
+        .from('profile_change_logs')
+        .update({ admin_viewed_at: new Date().toISOString() })
+        .gte('changed_at', yesterday.toISOString())
+        .is('admin_viewed_at', null);
+      
+      // Stats'ı yenile
+      await utils.admin.getStats.invalidate();
+    } catch (error) {
+      console.error('Error marking profile changes as read:', error);
+    }
+  }, [user?.id, utils]);
+
+  // Sayfa açıldığında profil değişikliklerini okundu olarak işaretle
+  useFocusEffect(
+    useCallback(() => {
+      if (user?.id && recentChangesData?.changes && recentChangesData.changes.length > 0) {
+        markProfileChangesAsRead();
+      }
+    }, [user?.id, recentChangesData, markProfileChangesAsRead])
+  );
 
   const sendSMSMutation = (trpc as any).admin.sendSMS.useMutation({
     onSuccess: () => {

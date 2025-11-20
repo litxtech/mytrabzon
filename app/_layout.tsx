@@ -3,6 +3,9 @@ import { Stack, useRouter } from "expo-router";
 import React, { useEffect, useRef, useCallback } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { trpc, trpcClient } from "@/lib/trpc";
+
+// Expo Go için BottomSheetModalProvider gerekmez (CommentSheetExpoGo Modal kullanıyor)
+const BottomSheetModalProvider = ({ children }: { children: React.ReactNode }) => <>{children}</>;
 import { AuthContext } from "@/contexts/AuthContext";
 import { ChatContext } from "@/contexts/ChatContext";
 import { StyleSheet, Linking, Alert } from "react-native";
@@ -633,8 +636,10 @@ export default function RootLayout() {
           <ChatContext>
             <ThemeProvider>
               <GestureHandlerRootView style={styles.container}>
-                <RootLayoutNav />
-                <ProximityManager />
+                <BottomSheetModalProvider>
+                  <RootLayoutNav />
+                  <ProximityManager />
+                </BottomSheetModalProvider>
               </GestureHandlerRootView>
             </ThemeProvider>
           </ChatContext>

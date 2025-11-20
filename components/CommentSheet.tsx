@@ -1,25 +1,30 @@
 /**
- * Comment Sheet Component
- * - Yorumları listele
- * - Yorum yazma input'u
- * - Videodan çıkmadan yorum okuma/yazma
+ * Comment Sheet Component - TikTok Tarzı Bottom Sheet
+ * - @gorhom/bottom-sheet kullanarak
+ * - BottomSheetFlatList ile kaydırılabilir yorumlar
+ * - Reels videoları gibi çalışır
  */
 
-import React, { useState, useRef } from 'react';
+import React, { forwardRef, useCallback, useMemo, useState, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
   Keyboard,
 } from 'react-native';
+import {
+  BottomSheetModal,
+  BottomSheetBackdrop,
+  BottomSheetFlatList,
+  BottomSheetView,
+  BottomSheetFooter,
+} from '@gorhom/bottom-sheet';
 import { Image } from 'expo-image';
 import { Send, MoreVertical, Trash2, Edit3 } from 'lucide-react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
@@ -28,193 +33,308 @@ import { formatTimeAgo } from '@/lib/time-utils';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 import { useRouter } from 'expo-router';
 
+// Expo Go için fallback type
+export type CommentSheetRef = BottomSheetModal | { present: () => void; dismiss: () => void };
+
 interface CommentSheetProps {
   postId: string;
+  initialCount?: number;
+  onClose?: () => void;
 }
 
-export function CommentSheet({ postId }: CommentSheetProps) {
-  const router = useRouter();
-  const { theme } = useTheme();
-  const { user, profile } = useAuth();
-  const insets = useSafeAreaInsets();
-  const [commentText, setCommentText] = useState('');
-  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
-  const [editingCommentText, setEditingCommentText] = useState('');
-  const [menuVisibleCommentId, setMenuVisibleCommentId] = useState<string | null>(null);
-  const commentInputRef = useRef<TextInput>(null);
+export const CommentSheet = forwardRef<CommentSheetRef, CommentSheetProps>(
+  ({ postId, initialCount = 0, onClose }, ref) => {
+    const router = useRouter();
+    const { theme } = useTheme();
+    const { user, profile } = useAuth();
+    const [commentText, setCommentText] = useState('');
+    const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+    const [editingCommentText, setEditingCommentText] = useState('');
+    const [menuVisibleCommentId, setMenuVisibleCommentId] = useState<string | null>(null);
+    const commentInputRef = useRef<TextInput>(null);
+    const utils = trpc.useUtils();
 
-  const { data: commentsData, refetch } = trpc.post.getComments.useQuery(
-    { post_id: postId, limit: 50, offset: 0 },
-    { enabled: !!postId }
-  );
+    // Sheet yükseklikleri (TikTok gibi)
+    const snapPoints = useMemo(() => ['45%', '90%'], []);
 
-  const createCommentMutation = trpc.post.addComment.useMutation({
-    onSuccess: () => {
-      setCommentText('');
-      Keyboard.dismiss(); // Klavyeyi kapat
-      commentInputRef.current?.blur(); // Input'u blur et
-      refetch();
-    },
-    onError: (error) => {
-      Alert.alert('Hata', error.message || 'Yorum gönderilemedi. Lütfen tekrar deneyin.');
-    },
-  });
+    const { data: commentsData } = trpc.post.getComments.useQuery(
+      { post_id: postId, limit: 50, offset: 0 },
+      { enabled: !!postId }
+    );
 
-  const deleteCommentMutation = trpc.post.deleteComment.useMutation({
-    onSuccess: () => {
-      Keyboard.dismiss(); // Klavyeyi kapat
+    const createCommentMutation = trpc.post.addComment.useMutation({
+      onMutate: async (newComment) => {
+        // Optimistic update: Yorumu hemen ekle
+        await utils.post.getComments.cancel({ post_id: postId });
+        const previousComments = utils.post.getComments.getData({ post_id: postId });
+        
+        const optimisticComment = {
+          id: `temp-${Date.now()}`,
+          post_id: postId,
+          user_id: user?.id || '',
+          content: newComment.content,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          user: profile ? {
+            id: profile.id,
+            full_name: profile.full_name,
+            username: profile.username,
+            avatar_url: profile.avatar_url,
+            verified: profile.verified || false,
+            supporter_badge: profile.supporter_badge,
+            supporter_badge_visible: profile.supporter_badge_visible,
+            supporter_badge_color: profile.supporter_badge_color,
+          } : null,
+          is_liked: false,
+        };
+
+        utils.post.getComments.setData(
+          { post_id: postId },
+          (old: any) => {
+            if (!old) return { comments: [optimisticComment], total: 1 };
+            return {
+              comments: [...(old.comments || []), optimisticComment],
+              total: (old.total || 0) + 1,
+            };
+          }
+        );
+
+        return { previousComments };
+      },
+      onError: (err, newComment, context) => {
+        // Hata durumunda geri al
+        if (context?.previousComments) {
+          utils.post.getComments.setData({ post_id: postId }, context.previousComments);
+        }
+        Alert.alert('Hata', err.message || 'Yorum gönderilemedi. Lütfen tekrar deneyin.');
+      },
+      onSuccess: () => {
+        setCommentText('');
+        Keyboard.dismiss();
+        commentInputRef.current?.blur();
+        // Cache'i invalidate et (gerçek veriyi çek)
+        utils.post.getComments.invalidate({ post_id: postId });
+      },
+    });
+
+    const deleteCommentMutation = trpc.post.deleteComment.useMutation({
+      onMutate: async ({ commentId }) => {
+        // Optimistic update: Yorumu hemen sil
+        await utils.post.getComments.cancel({ post_id: postId });
+        const previousComments = utils.post.getComments.getData({ post_id: postId });
+
+        utils.post.getComments.setData(
+          { post_id: postId },
+          (old: any) => {
+            if (!old) return old;
+            return {
+              comments: (old.comments || []).filter((c: any) => c.id !== commentId),
+              total: Math.max(0, (old.total || 0) - 1),
+            };
+          }
+        );
+
+        return { previousComments };
+      },
+      onError: (err, variables, context) => {
+        // Hata durumunda geri al
+        if (context?.previousComments) {
+          utils.post.getComments.setData({ post_id: postId }, context.previousComments);
+        }
+        Alert.alert('Hata', err.message || 'Yorum silinemedi. Lütfen tekrar deneyin.');
+      },
+      onSuccess: () => {
+        Keyboard.dismiss();
+        setMenuVisibleCommentId(null);
+        // Cache'i invalidate et
+        utils.post.getComments.invalidate({ post_id: postId });
+      },
+    });
+
+    const updateCommentMutation = (trpc.post as any).updateComment.useMutation({
+      onMutate: async ({ commentId, content }: { commentId: string; content: string }) => {
+        // Optimistic update: Yorumu hemen güncelle
+        await utils.post.getComments.cancel({ post_id: postId });
+        const previousComments = utils.post.getComments.getData({ post_id: postId });
+
+        utils.post.getComments.setData(
+          { post_id: postId },
+          (old: any) => {
+            if (!old) return old;
+            return {
+              ...old,
+              comments: (old.comments || []).map((c: any) =>
+                c.id === commentId ? { ...c, content, updated_at: new Date().toISOString() } : c
+              ),
+            };
+          }
+        );
+
+        return { previousComments };
+      },
+      onError: (err: any, variables: any, context: any) => {
+        // Hata durumunda geri al
+        if (context?.previousComments) {
+          utils.post.getComments.setData({ post_id: postId }, context.previousComments);
+        }
+        Alert.alert('Hata', err.message || 'Yorum güncellenemedi. Lütfen tekrar deneyin.');
+      },
+      onSuccess: () => {
+        setEditingCommentId(null);
+        setEditingCommentText('');
+        setMenuVisibleCommentId(null);
+        // Cache'i invalidate et
+        utils.post.getComments.invalidate({ post_id: postId });
+      },
+    });
+
+    const handleSendComment = useCallback(() => {
+      if (!commentText.trim() || !postId) return;
+      
+      const actualPostId = postId.startsWith('event_') ? postId.replace('event_', '') : postId;
+      
+      createCommentMutation.mutate({
+        post_id: actualPostId,
+        content: commentText.trim(),
+      });
+    }, [commentText, postId, createCommentMutation]);
+
+    const handleDeleteComment = (commentId: string) => {
+      Alert.alert(
+        'Yorumu Sil',
+        'Bu yorumu silmek istediğinize emin misiniz?',
+        [
+          { text: 'Vazgeç', style: 'cancel' },
+          {
+            text: 'Sil',
+            style: 'destructive',
+            onPress: () => deleteCommentMutation.mutate({ commentId }),
+          },
+        ]
+      );
+    };
+
+    const handleEditComment = (commentId: string, currentContent: string) => {
+      setEditingCommentId(commentId);
+      setEditingCommentText(currentContent);
       setMenuVisibleCommentId(null);
-      refetch();
-    },
-    onError: (error) => {
-      Alert.alert('Hata', error.message || 'Yorum silinemedi. Lütfen tekrar deneyin.');
-    },
-  });
+    };
 
-  const updateCommentMutation = (trpc.post as any).updateComment.useMutation({
-    onSuccess: () => {
+    const handleSaveEdit = () => {
+      if (!editingCommentId || !editingCommentText.trim()) return;
+      updateCommentMutation.mutate({
+        commentId: editingCommentId,
+        content: editingCommentText.trim(),
+      });
+    };
+
+    const handleCancelEdit = () => {
       setEditingCommentId(null);
       setEditingCommentText('');
-      setMenuVisibleCommentId(null);
-      refetch();
-    },
-    onError: (error: any) => {
-      Alert.alert('Hata', error.message || 'Yorum güncellenemedi. Lütfen tekrar deneyin.');
-    },
-  });
+    };
 
-  const handleSendComment = () => {
-    if (!commentText.trim() || !postId) return;
-    
-    // Event'ler için postId'yi düzelt (event_ prefix'ini kaldır)
-    const actualPostId = postId.startsWith('event_') ? postId.replace('event_', '') : postId;
-    
-    // Event'ler için event comment mutation kullanılmalı, şimdilik post comment kullanıyoruz
-    // TODO: Event'ler için ayrı mutation eklenebilir
-    createCommentMutation.mutate({
-      post_id: actualPostId,
-      content: commentText.trim(),
-    });
-  };
-
-  const handleDeleteComment = (commentId: string) => {
-    Alert.alert(
-      'Yorumu Sil',
-      'Bu yorumu silmek istediğinize emin misiniz?',
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'Sil',
-          style: 'destructive',
-          onPress: () => deleteCommentMutation.mutate({ commentId }),
-        },
-      ]
+    // Sheet açıldığında/kapandığında
+    const handleSheetChange = useCallback(
+      (index: number) => {
+        if (index === -1 && onClose) {
+          onClose();
+        }
+      },
+      [onClose]
     );
-  };
 
-  const handleEditComment = (commentId: string, currentContent: string) => {
-    setEditingCommentId(commentId);
-    setEditingCommentText(currentContent);
-    setMenuVisibleCommentId(null);
-  };
-
-  const handleSaveEdit = () => {
-    if (!editingCommentId || !editingCommentText.trim()) return;
-    updateCommentMutation.mutate({
-      commentId: editingCommentId,
-      content: editingCommentText.trim(),
-    });
-  };
-
-  const handleCancelEdit = () => {
-    setEditingCommentId(null);
-    setEditingCommentText('');
-  };
-
-  const comments = commentsData?.comments || [];
-
-  return (
-    <View style={styles.container}>
-      {/* Yorum Input - En üstte sabit, klavyenin üstünde */}
-      <View
-        style={[
-          styles.inputContainer,
-          {
-            backgroundColor: 'rgba(0, 0, 0, 0.6)',
-            borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-          },
-          { paddingBottom: Math.max(insets.bottom, SPACING.md) },
-        ]}
-      >
-        <Image
-          source={{ uri: profile?.avatar_url || 'https://via.placeholder.com/32' }}
-          style={styles.inputAvatar}
-          contentFit="cover"
+    // Backdrop
+    const renderBackdrop = useCallback(
+      (props: any) => (
+        <BottomSheetBackdrop
+          {...props}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          pressBehavior="close"
         />
-        <TextInput
-          ref={commentInputRef}
-          style={[
-            styles.input,
-            { backgroundColor: 'rgba(255, 255, 255, 0.15)', color: COLORS.white },
-          ]}
-          placeholder="Yorum yaz..."
-          placeholderTextColor="rgba(255, 255, 255, 0.6)"
-          value={commentText}
-          onChangeText={setCommentText}
-          multiline={false}
-          maxLength={500}
-          blurOnSubmit={true}
-          returnKeyType="send"
-          onSubmitEditing={handleSendComment}
-        />
-        <TouchableOpacity
-          style={[
-            styles.sendButton,
-            { backgroundColor: theme.colors.primary },
-            (!commentText.trim() || createCommentMutation.isPending) && styles.sendButtonDisabled,
-          ]}
-          onPress={() => {
-            handleSendComment();
-            Keyboard.dismiss(); // Gönder butonuna tıklayınca klavyeyi kapat
-          }}
-          disabled={!commentText.trim() || createCommentMutation.isPending}
-        >
-          {createCommentMutation.isPending ? (
-            <ActivityIndicator size="small" color={COLORS.white} />
-          ) : (
-            <Send size={20} color={COLORS.white} />
-          )}
-        </TouchableOpacity>
-      </View>
+      ),
+      []
+    );
 
-      {/* Yorumlar Listesi - Aşağıda scroll edilebilir */}
-      <FlatList
-        data={comments}
-        keyExtractor={(item) => item.id}
-        style={styles.commentsList}
-        contentContainerStyle={[
-          styles.listContent,
-          comments.length === 0 && styles.listContentEmpty,
-        ]}
-        keyboardShouldPersistTaps="handled"
-        onScrollBeginDrag={Keyboard.dismiss}
-        showsVerticalScrollIndicator={true}
-        inverted={false}
-        nestedScrollEnabled={true}
-        renderItem={({ item }) => {
-          const isEditing = editingCommentId === item.id;
-          const isOwner = item.user_id === user?.id;
-          
-          return (
-            <TouchableOpacity 
-              style={[styles.commentItem, { borderBottomColor: 'rgba(255, 255, 255, 0.1)' }]}
-              activeOpacity={0.9}
+    // Footer component - klavye ile birlikte yukarı çıkar
+    const renderFooter = useCallback(
+      (props: any) => (
+        <BottomSheetFooter {...props}>
+          <View style={styles.inputContainer}>
+            <Image
+              source={{ uri: profile?.avatar_url || 'https://via.placeholder.com/32' }}
+              style={styles.inputAvatar}
+              contentFit="cover"
+            />
+            <TextInput
+              ref={commentInputRef}
+              style={styles.input}
+              placeholder="Yorum yaz..."
+              placeholderTextColor="rgba(255, 255, 255, 0.6)"
+              value={commentText}
+              onChangeText={setCommentText}
+              multiline={false}
+              maxLength={500}
+              blurOnSubmit={false}
+              returnKeyType="send"
+              onSubmitEditing={handleSendComment}
+            />
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                { backgroundColor: theme.colors.primary },
+                (!commentText.trim() || createCommentMutation.isPending) && styles.sendButtonDisabled,
+              ]}
               onPress={() => {
-                // Yorum kartına tıklanınca klavye kapansın
+                handleSendComment();
                 Keyboard.dismiss();
-                setMenuVisibleCommentId(null);
               }}
+              disabled={!commentText.trim() || createCommentMutation.isPending}
             >
+              {createCommentMutation.isPending ? (
+                <ActivityIndicator size="small" color={COLORS.white} />
+              ) : (
+                <Send size={20} color={COLORS.white} />
+              )}
+            </TouchableOpacity>
+          </View>
+        </BottomSheetFooter>
+      ),
+      [commentText, createCommentMutation.isPending, profile?.avatar_url, theme.colors.primary, handleSendComment]
+    );
+
+    // Yorumları ters sırala (en yeni en üstte)
+    const comments = [...(commentsData?.comments || [])].reverse();
+    const commentsCount = comments.length || initialCount;
+
+    const renderComment = ({ item }: { item: { id: string; user_id: string; user?: { id: string; full_name?: string; avatar_url?: string; verified?: boolean }; content: string; created_at: string } }) => {
+      const isEditing = editingCommentId === item.id;
+      const isOwner = item.user_id === user?.id;
+      
+      return (
+        <TouchableOpacity 
+          style={styles.commentItem}
+          activeOpacity={0.9}
+          onPress={() => {
+            setMenuVisibleCommentId(null);
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => {
+              if (item.user?.id) {
+                router.push(`/profile/${item.user.id}` as any);
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Image
+              source={{ uri: item.user?.avatar_url || 'https://via.placeholder.com/32' }}
+              style={styles.commentAvatar}
+              contentFit="cover"
+            />
+          </TouchableOpacity>
+          <View style={styles.commentContent}>
+            <View style={styles.commentHeader}>
               <TouchableOpacity
                 onPress={() => {
                   if (item.user?.id) {
@@ -222,156 +342,232 @@ export function CommentSheet({ postId }: CommentSheetProps) {
                   }
                 }}
                 activeOpacity={0.7}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
               >
-                <Image
-                  source={{ uri: item.user?.avatar_url || 'https://via.placeholder.com/32' }}
-                  style={styles.commentAvatar}
-                  contentFit="cover"
-                />
+                <Text style={[styles.commentAuthor, { color: COLORS.white }]}>
+                  {item.user?.full_name || 'İsimsiz'}
+                </Text>
+                {item.user?.verified && <VerifiedBadgeIcon size={14} />}
               </TouchableOpacity>
-              <View style={styles.commentContent}>
-                <View style={styles.commentHeader}>
+              <Text style={[styles.commentTime, { color: 'rgba(255, 255, 255, 0.6)' }]}>
+                {formatTimeAgo(item.created_at)}
+              </Text>
+            </View>
+            {isEditing ? (
+              <View style={styles.editContainer}>
+                <TextInput
+                  style={[styles.editInput, { color: COLORS.white, backgroundColor: 'rgba(255, 255, 255, 0.15)' }]}
+                  value={editingCommentText}
+                  onChangeText={setEditingCommentText}
+                  multiline
+                  maxLength={500}
+                  autoFocus
+                  textAlignVertical="top"
+                />
+                <View style={styles.editActions}>
                   <TouchableOpacity
-                    onPress={() => {
-                      if (item.user?.id) {
-                        router.push(`/profile/${item.user.id}` as any);
-                      }
-                    }}
-                    activeOpacity={0.7}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                    style={[styles.editButton, styles.cancelButton]}
+                    onPress={handleCancelEdit}
                   >
-                    <Text style={[styles.commentAuthor, { color: COLORS.white }]}>
-                      {item.user?.full_name || 'İsimsiz'}
-                    </Text>
-                    {item.user?.verified && <VerifiedBadgeIcon size={14} />}
+                    <Text style={styles.editButtonText}>İptal</Text>
                   </TouchableOpacity>
-                  <Text style={[styles.commentTime, { color: 'rgba(255, 255, 255, 0.6)' }]}>
-                    {formatTimeAgo(item.created_at)}
+                  <TouchableOpacity
+                    style={[styles.editButton, styles.saveButton, { backgroundColor: theme.colors.primary }]}
+                    onPress={handleSaveEdit}
+                    disabled={!editingCommentText.trim() || updateCommentMutation.isPending}
+                  >
+                    {updateCommentMutation.isPending ? (
+                      <ActivityIndicator size="small" color={COLORS.white} />
+                    ) : (
+                      <Text style={[styles.editButtonText, { color: COLORS.white }]}>Kaydet</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <>
+                <Text style={[styles.commentText, { color: COLORS.white }]}>
+                  {item.content}
+                </Text>
+                {isOwner && (
+                  <TouchableOpacity
+                    style={styles.menuButton}
+                    onPress={() => setMenuVisibleCommentId(menuVisibleCommentId === item.id ? null : item.id)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <MoreVertical size={16} color="rgba(255, 255, 255, 0.6)" />
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
+          </View>
+        </TouchableOpacity>
+      );
+    };
+
+    return (
+      <>
+        <BottomSheetModal
+          ref={ref}
+          snapPoints={snapPoints}
+          onChange={handleSheetChange}
+          backdropComponent={renderBackdrop}
+          footerComponent={renderFooter}
+          enablePanDownToClose
+          handleStyle={styles.handle}
+          handleIndicatorStyle={styles.handleIndicator}
+          backgroundStyle={{ backgroundColor: 'rgba(0, 0, 0, 0.95)' }}
+          keyboardBehavior="extend"
+          keyboardBlurBehavior="restore"
+          android_keyboardInputMode="adjustResize"
+        >
+          <BottomSheetView style={styles.sheetContainer}>
+            {/* Üst Header */}
+            <View style={styles.header}>
+              <Text style={[styles.headerTitle, { color: COLORS.white }]}>
+                Yorumlar
+              </Text>
+              <Text style={[styles.headerCount, { color: 'rgba(255, 255, 255, 0.6)' }]}>
+                {commentsCount}
+              </Text>
+            </View>
+
+            {/* Yorumlar Listesi - BottomSheetFlatList ile kaydırılabilir */}
+            <BottomSheetFlatList
+              data={comments}
+              keyExtractor={(item) => item.id}
+              renderItem={renderComment}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Text style={[styles.emptyText, { color: 'rgba(255, 255, 255, 0.8)' }]}>
+                    Henüz yorum yok
+                  </Text>
+                  <Text style={[styles.emptySubtext, { color: 'rgba(255, 255, 255, 0.6)' }]}>
+                    İlk yorumu sen yap!
                   </Text>
                 </View>
-                {isEditing ? (
-                  <View style={styles.editContainer}>
-                    <TextInput
-                      style={[styles.editInput, { color: COLORS.white, backgroundColor: 'rgba(255, 255, 255, 0.15)' }]}
-                      value={editingCommentText}
-                      onChangeText={setEditingCommentText}
-                      multiline
-                      maxLength={500}
-                      autoFocus
-                      textAlignVertical="top"
-                    />
-                    <View style={styles.editActions}>
-                      <TouchableOpacity
-                        style={[styles.editButton, styles.cancelButton]}
-                        onPress={handleCancelEdit}
-                      >
-                        <Text style={styles.editButtonText}>İptal</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.editButton, styles.saveButton, { backgroundColor: theme.colors.primary }]}
-                        onPress={handleSaveEdit}
-                        disabled={!editingCommentText.trim() || updateCommentMutation.isPending}
-                      >
-                        {updateCommentMutation.isPending ? (
-                          <ActivityIndicator size="small" color={COLORS.white} />
-                        ) : (
-                          <Text style={[styles.editButtonText, { color: COLORS.white }]}>Kaydet</Text>
-                        )}
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ) : (
-                  <>
-                    <Text style={[styles.commentText, { color: COLORS.white }]}>
-                      {item.content}
-                    </Text>
-                    {isOwner && (
-                      <TouchableOpacity
-                        style={styles.menuButton}
-                        onPress={() => setMenuVisibleCommentId(menuVisibleCommentId === item.id ? null : item.id)}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      >
-                        <MoreVertical size={16} color="rgba(255, 255, 255, 0.6)" />
-                      </TouchableOpacity>
-                    )}
-                  </>
-                )}
-              </View>
-            </TouchableOpacity>
-          );
-        }}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={[styles.emptyText, { color: 'rgba(255, 255, 255, 0.8)' }]}>
-              Henüz yorum yok
-            </Text>
-            <Text style={[styles.emptySubtext, { color: 'rgba(255, 255, 255, 0.6)' }]}>
-              İlk yorumu sen yap!
-            </Text>
-          </View>
-        }
-      />
+              }
+            />
+          </BottomSheetView>
 
-      {/* Yorum Menü Modal */}
-      {menuVisibleCommentId && (
-        <View style={styles.menuOverlay} onTouchEnd={() => setMenuVisibleCommentId(null)}>
-          <View style={[styles.menuContainer, { backgroundColor: theme.colors.card }]}>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                const comment = comments.find((c) => c.id === menuVisibleCommentId);
-                if (comment) {
-                  handleEditComment(comment.id, comment.content);
-                }
-              }}
-            >
-              <Edit3 size={18} color={theme.colors.text} />
-              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Düzenle</Text>
-            </TouchableOpacity>
-            <View style={[styles.menuDivider, { backgroundColor: theme.colors.border }]} />
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                if (menuVisibleCommentId) {
-                  handleDeleteComment(menuVisibleCommentId);
-                }
-              }}
-            >
-              <Trash2 size={18} color={COLORS.error} />
-              <Text style={[styles.menuItemText, { color: COLORS.error }]}>Sil</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-    </View>
-  );
-}
+          {/* Yorum Menü Modal */}
+          {menuVisibleCommentId && (
+            <View style={styles.menuOverlay} onTouchEnd={() => setMenuVisibleCommentId(null)}>
+              <View style={[styles.menuContainer, { backgroundColor: theme.colors.card }]}>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    const comment = comments.find((c) => c.id === menuVisibleCommentId);
+                    if (comment) {
+                      handleEditComment(comment.id, comment.content);
+                    }
+                  }}
+                >
+                  <Edit3 size={18} color={theme.colors.text} />
+                  <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Düzenle</Text>
+                </TouchableOpacity>
+                <View style={[styles.menuDivider, { backgroundColor: theme.colors.border }]} />
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    if (menuVisibleCommentId) {
+                      handleDeleteComment(menuVisibleCommentId);
+                    }
+                  }}
+                >
+                  <Trash2 size={18} color={COLORS.error} />
+                  <Text style={[styles.menuItemText, { color: COLORS.error }]}>Sil</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </BottomSheetModal>
+      </>
+    );
+  }
+);
+
+CommentSheet.displayName = 'CommentSheet';
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    flexDirection: 'column',
-    overflow: 'hidden', // Container overflow'u kontrol et
+  handle: {
+    paddingTop: 8,
   },
-  commentsList: {
+  handleIndicator: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  sheetContainer: {
     flex: 1,
-    overflow: 'hidden', // Yukarıdaki yorumlar kaybolacak
+  },
+  header: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  headerTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+  },
+  headerCount: {
+    fontSize: FONT_SIZES.md,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 0.7,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    gap: SPACING.sm,
+    flexShrink: 0,
+    zIndex: 10,
+  },
+  inputAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  input: {
+    flex: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    color: COLORS.white,
+  },
+  sendButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sendButtonDisabled: {
+    opacity: 0.5,
   },
   listContent: {
-    padding: SPACING.md,
-    paddingTop: SPACING.sm, // Üstten az padding
-    flexGrow: 1,
-  },
-  listContentEmpty: {
-    flex: 1,
-    justifyContent: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+    paddingBottom: 40,
   },
   commentItem: {
     flexDirection: 'row',
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
     gap: SPACING.sm,
-    backgroundColor: 'transparent', // Şeffaf arka plan - video görünür
+    backgroundColor: 'transparent',
     paddingHorizontal: SPACING.sm,
   },
   commentAvatar: {
@@ -410,40 +606,6 @@ const styles = StyleSheet.create({
   },
   emptySubtext: {
     fontSize: FONT_SIZES.sm,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderBottomWidth: 0.7,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    gap: SPACING.sm,
-    zIndex: 10, // Input bar her zaman üstte
-  },
-  inputAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-  },
-  input: {
-    flex: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 14,
-    color: COLORS.white,
-  },
-  sendButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sendButtonDisabled: {
-    opacity: 0.5,
   },
   menuButton: {
     position: 'absolute' as const,
@@ -518,4 +680,3 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
 });
-

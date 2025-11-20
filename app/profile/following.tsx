@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -8,28 +8,39 @@ import {
   TextInput,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter, Stack } from 'expo-router';
+import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { Image } from 'expo-image';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Search, X, Users, ArrowLeft } from 'lucide-react-native';
+import { Search, X, Users } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
 import { SupporterBadge } from '@/components/SupporterBadge';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function FollowingScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const { theme } = useTheme();
-  const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState('');
 
-  const { data, isLoading, error } = trpc.user.getFollowing.useQuery(
-    { user_id: user?.id || '', limit: 100, offset: 0 },
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: 'Takip Edilenler',
+      headerShown: true,
+      headerStyle: { backgroundColor: theme.colors.background },
+      headerTintColor: theme.colors.text,
+      headerTitleStyle: { color: theme.colors.text },
+    });
+  }, [navigation, theme]);
+
+  const { data, isLoading } = trpc.user.getFollowing.useQuery(
+    { user_id: id || user?.id || '', limit: 100, offset: 0 },
     {
-      enabled: !!user?.id && user.id.length > 0,
+      enabled: !!(id || user?.id),
       retry: false,
     }
   );
@@ -39,42 +50,24 @@ export default function FollowingScreen() {
     if (!searchQuery.trim()) return following;
 
     const query = searchQuery.toLowerCase().trim();
-    return following.filter((following: any) =>
-      following.full_name?.toLowerCase().includes(query) ||
-      following.username?.toLowerCase().includes(query)
+    return following.filter((follow: any) =>
+      follow.full_name?.toLowerCase().includes(query) ||
+      follow.username?.toLowerCase().includes(query)
     );
   }, [data, searchQuery]);
 
   if (isLoading) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <Stack.Screen
-          options={{
-            title: 'Takip Edilenler',
-            headerShown: true,
-            headerStyle: { backgroundColor: theme.colors.background },
-            headerTintColor: theme.colors.text,
-            headerTitleStyle: { color: theme.colors.text },
-          }}
-        />
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <Stack.Screen
-        options={{
-          title: 'Takip Edilenler',
-          headerShown: true,
-          headerStyle: { backgroundColor: theme.colors.background },
-          headerTintColor: theme.colors.text,
-          headerTitleStyle: { color: theme.colors.text },
-        }}
-      />
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
 
       <View style={[styles.searchContainer, { backgroundColor: theme.colors.card }]}>
         <Search size={20} color={theme.colors.textLight} />
@@ -96,12 +89,12 @@ export default function FollowingScreen() {
         <View style={styles.emptyContainer}>
           <Users size={48} color={theme.colors.textLight} />
           <Text style={[styles.emptyText, { color: theme.colors.text }]}>
-            {searchQuery ? 'Sonuç bulunamadı' : 'Henüz kimseyi takip etmiyorsunuz'}
+            {searchQuery ? 'Sonuç bulunamadı' : 'Henüz takip edilen yok'}
           </Text>
           <Text style={[styles.emptySubtext, { color: theme.colors.textLight }]}>
             {searchQuery
               ? 'Farklı bir arama terimi deneyin'
-              : 'İlginizi çeken kullanıcıları takip ederek içeriklerini görebilirsiniz'}
+              : 'Diğer kullanıcıları takip ederek bağlantılarınızı artırabilirsiniz'}
           </Text>
         </View>
       ) : (
@@ -144,7 +137,7 @@ export default function FollowingScreen() {
           )}
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -219,4 +212,3 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 });
-
