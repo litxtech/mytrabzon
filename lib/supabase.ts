@@ -1,33 +1,28 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Environment variables'ı güvenli şekilde al
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() ?? '';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? '';
 
+// Production build'de environment variables EAS Build tarafından sağlanır
+// Eğer eksikse, fallback değerler kullan (crash'i önlemek için)
+const finalSupabaseUrl = supabaseUrl || 'https://xcvcplwimicylaxghiak.supabase.co';
+const finalSupabaseAnonKey = supabaseAnonKey || 'sb_publishable_jTpEPRL2oeGnsBcZSyoxPA_G2cG4ZM7';
+
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('❌ Supabase environment variables eksik!');
-  console.log('URL:', supabaseUrl || 'YOK');
-  console.log('Key:', supabaseAnonKey ? `***${supabaseAnonKey.slice(-4)}` : 'YOK');
-  console.error('⚠️ UYARI: Supabase bağlantısı yapılamayacak! Lütfen .env dosyasını kontrol edin.');
+  console.error('❌ Supabase environment variables eksik! Fallback değerler kullanılıyor.');
+  console.log('URL:', finalSupabaseUrl);
+  console.log('Key (son 4 karakter):', `***${finalSupabaseAnonKey.slice(-4)}`);
+  console.warn('⚠️ UYARI: Production build\'de environment variables EAS Build tarafından sağlanmalı!');
 } else {
   if (__DEV__) {
     console.log('✅ Supabase bağlantı bilgileri yüklendi');
-    console.log('URL:', supabaseUrl);
-    console.log('Key (son 4 karakter):', `***${supabaseAnonKey.slice(-4)}`);
+    console.log('URL:', finalSupabaseUrl);
+    console.log('Key (son 4 karakter):', `***${finalSupabaseAnonKey.slice(-4)}`);
   }
 }
 
-// Supabase client'ı sadece URL ve key varsa oluştur
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    '❌ CRITICAL: Supabase URL ve Key eksik!\n' +
-    'Lütfen proje kök dizininde (C:\\Users\\ilkse\\OneDrive\\Masaüstü\\mytrabzon) .env dosyası oluşturun.\n' +
-    'İçeriği:\n' +
-    'EXPO_PUBLIC_SUPABASE_URL=https://xcvcplwimicylaxghiak.supabase.co\n' +
-    'EXPO_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_jTpEPRL2oeGnsBcZSyoxPA_G2cG4ZM7'
-  );
-}
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient(finalSupabaseUrl, finalSupabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
@@ -45,15 +40,16 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-// Bağlantıyı test et
-if (supabaseUrl && supabaseAnonKey) {
+// Bağlantıyı test et (sadece development'ta)
+if (__DEV__) {
   supabase.auth.getSession().then(({ data, error }) => {
     if (error) {
       console.warn('⚠️ Supabase session kontrolü hatası:', error.message);
-    } else if (__DEV__) {
+    } else {
       console.log('✅ Supabase client başarıyla oluşturuldu');
     }
   }).catch((err) => {
     console.error('❌ Supabase bağlantı testi başarısız:', err);
   });
 }
+

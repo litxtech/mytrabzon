@@ -15,6 +15,7 @@ import { supabase } from "@/lib/supabase";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import "@/lib/debug-supabase"; // Supabase bağlantı testi için
 import { ProximityManager } from "@/components/ProximityManager";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -630,22 +631,24 @@ export default function RootLayout() {
   }, [handleCallNavigation]);
 
   return (
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        <AuthContext>
-          <ChatContext>
-            <ThemeProvider>
-              <GestureHandlerRootView style={styles.container}>
-                <BottomSheetModalProvider>
-                  <RootLayoutNav />
-                  <ProximityManager />
-                </BottomSheetModalProvider>
-              </GestureHandlerRootView>
-            </ThemeProvider>
-          </ChatContext>
-        </AuthContext>
-      </QueryClientProvider>
-    </trpc.Provider>
+    <ErrorBoundary>
+      <trpc.Provider client={trpcClient} queryClient={queryClient}>
+        <QueryClientProvider client={queryClient}>
+          <AuthContext>
+            <ChatContext>
+              <ThemeProvider>
+                <GestureHandlerRootView style={styles.container}>
+                  <BottomSheetModalProvider>
+                    <RootLayoutNav />
+                    <ProximityManager />
+                  </BottomSheetModalProvider>
+                </GestureHandlerRootView>
+              </ThemeProvider>
+            </ChatContext>
+          </AuthContext>
+        </QueryClientProvider>
+      </trpc.Provider>
+    </ErrorBoundary>
   );
 }
 
