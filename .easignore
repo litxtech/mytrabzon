@@ -1,0 +1,75 @@
+# Dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Native
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+
+# Debug
+.DS_Store
+*.log
+
+# Environment
+.env
+.env*.local
+
+# Sensitive files
+google-play-service-account.json
+*.p12
+*.key
+*.pem
+*.jks
+*.mobileprovision
+user-token.txt
+
+# Build artifacts
+android/app/build/
+android/.gradle/
+ios/build/
+ios/Pods/
+ios/*.xcworkspace
+ios/*.xcuserdata
+
+# Test files
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__/
+__mocks__/
+
+# Documentation
+*.md
+!README.md
+
+# SQL files (not needed for build)
+*.sql
+
+# PowerShell scripts
+*.ps1
+
+# Temporary files
+*.tmp
+*.temp
+-1
+2200
+generated-icon.png
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Vercel
+.vercel
+
