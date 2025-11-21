@@ -101,7 +101,8 @@
     "lucide-react-native": {
       "react": "$react",
       "react-native": "$react-native"
-    }
+    },
+    "jsonwebtoken": "^9.0.2"
   },
   "private": true
 }
