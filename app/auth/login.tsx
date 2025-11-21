@@ -2085,7 +2085,6 @@ const styles = StyleSheet.create({
     }),
     textAlign: 'left' as const,
   },
-<<<<<<< HEAD
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
