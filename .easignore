@@ -37,6 +37,7 @@ user-token.txt
 # Build artifacts
 android/app/build/
 android/.gradle/
+/ios
 ios/build/
 ios/Pods/
 ios/*.xcworkspace

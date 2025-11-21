@@ -158,10 +158,19 @@
         "projectId": "368ac56e-da84-480e-b163-f04077df7fa6"
       },
       "agoraAppId": "d1e34b20cd2b4da69418f360039d254d",
-      "agoraCertificate": "d0c65c85891f40c680764c5cf0523433"
-    },
-    "cli": {
-      "appVersionSource": "local"
+      "agoraCertificate": "d0c65c85891f40c680764c5cf0523433",
+      "cli": {
+        "appVersionSource": "local"
+      },
+      "privacy": "unlisted",
+      "description": "Trabzon'un dijital sesi. Sosyal medya, etkinlikler, halı saha maçları ve daha fazlası.",
+      "primaryColor": "#DC2626",
+      "privacyPolicy": "https://www.litxtech.com/privacy-policy",
+      "termsOfService": "https://www.litxtech.com/terms-of-service",
+      "supportUrl": "https://www.litxtech.com/support",
+      "childSafetyPolicy": "https://www.litxtech.com/child-safety-policy",
+      "communityPolicy": "https://www.litxtech.com/community-policy",
+      "owner": "mytrabzon"
     },
     "sdkVersion": "54.0.0",
     "jsEngine": "hermes",
@@ -169,15 +178,7 @@
       "visible": "immersive",
       "backgroundColor": "#ffffff"
     },
-    "privacy": "unlisted",
     "description": "Trabzon'un dijital sesi. Sosyal medya, etkinlikler, halı saha maçları ve daha fazlası.",
-    "primaryColor": "#DC2626",
-    "privacyPolicy": "https://www.litxtech.com/privacy-policy",
-    "termsOfService": "https://www.litxtech.com/terms-of-service",
-    "supportUrl": "https://www.litxtech.com/support",
-    "childSafetyPolicy": "https://www.litxtech.com/child-safety-policy",
-    "communityPolicy": "https://www.litxtech.com/community-policy",
-    "icon": "./assets/images/icon.png",
-    "owner": "mytrabzon"
+    "icon": "./assets/images/icon.png"
   }
 }
