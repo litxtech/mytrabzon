@@ -34,7 +34,10 @@ export const getRideListProcedure = protectedProcedure
     const { data, error } = await query;
 
     if (error) {
-      console.error('Admin get ride list error:', error);
+      // Log error only in development
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Admin get ride list error:', error);
+      }
       throw new Error(error.message || 'Yolculuklar alınamadı');
     }
 

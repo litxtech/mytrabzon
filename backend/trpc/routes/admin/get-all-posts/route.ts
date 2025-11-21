@@ -42,18 +42,18 @@ export const getAllPostsProcedure = protectedProcedure
       .from("posts")
       .select(`
         *,
-<<<<<<< HEAD
         author:profiles!posts_author_id_fkey(id, full_name, avatar_url, username),
         post_media(*),
         warnings:post_warnings!post_warnings_post_id_fkey(id, warning_reason, warning_message, is_resolved, created_at)
-=======
-        author:profiles!posts_author_id_fkey(id, full_name, avatar_url, username)
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
       `, { count: "exact" })
       .eq("is_deleted", false);
     
     if (input.search) {
-      query = query.ilike('content', `%${input.search}%`);
+      // Sanitize search input to prevent SQL injection
+      const sanitizedSearch = input.search.trim().slice(0, 200); // Max 200 chars
+      if (sanitizedSearch.length > 0) {
+        query = query.ilike('content', `%${sanitizedSearch}%`);
+      }
     }
     
     query = query

@@ -24,7 +24,10 @@ export const getRideDetailProcedure = protectedProcedure
       .single();
 
     if (error || !data) {
-      console.error('Admin get ride detail error:', error);
+      // Log error only in development
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Admin get ride detail error:', error);
+      }
       throw new Error(error?.message || 'Yolculuk bulunamadı');
     }
 

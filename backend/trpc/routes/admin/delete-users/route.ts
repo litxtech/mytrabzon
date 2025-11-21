@@ -23,13 +23,19 @@ export const deleteUsersProcedure = protectedProcedure
         .eq("organizer_id", userId);
 
       if (matchesError) {
-        console.error("Failed to delete matches for user", userId, matchesError);
+        // Log error but don't expose internal details
+        if (process.env.NODE_ENV === 'development') {
+          console.error("Failed to delete matches for user", userId, matchesError);
+        }
         throw new Error(matchesError.message);
       }
 
       const { error: deleteError } = await supabase.auth.admin.deleteUser(userId);
       if (deleteError) {
-        console.error("Failed to delete auth user", userId, deleteError);
+        // Log error but don't expose internal details
+        if (process.env.NODE_ENV === 'development') {
+          console.error("Failed to delete auth user", userId, deleteError);
+        }
         throw new Error(deleteError.message ?? "Kullanıcı silinemedi");
       }
     }

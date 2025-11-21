@@ -90,7 +90,9 @@ export const sendNotificationProcedure = protectedProcedure
       });
     }
     
-    const bodyText = input.body.trim();
+    // Sanitize notification inputs
+    const sanitizedTitle = input.title.trim().slice(0, 100); // Max 100 chars
+    const bodyText = input.body.trim().slice(0, 500); // Max 500 chars
     
     // Data objesini oluştur (medya URL'i varsa ekle)
     const notificationData: any = { ...(input.data || {}) };
@@ -100,7 +102,7 @@ export const sendNotificationProcedure = protectedProcedure
     }
 
     // Admin bildirimleri mytrabzonteam adıyla gönderilir
-    const adminTitle = input.type === 'SYSTEM' ? `MyTrabzonTeam: ${input.title}` : input.title;
+    const adminTitle = input.type === 'SYSTEM' ? `MyTrabzonTeam: ${sanitizedTitle}` : sanitizedTitle;
     
     const notifications = targetUserIds.map((userId) => ({
       user_id: userId,
@@ -149,11 +151,11 @@ export const sendNotificationProcedure = protectedProcedure
     if (pushTokens.length > 0) {
       try {
         const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
-        const adminTitle = input.type === 'SYSTEM' ? `MyTrabzonTeam: ${input.title}` : input.title;
+        const pushTitle = input.type === 'SYSTEM' ? `MyTrabzonTeam: ${sanitizedTitle}` : sanitizedTitle;
         const messages = pushTokens.map((token) => ({
           to: token,
           sound: 'default',
-          title: adminTitle,
+          title: pushTitle,
           body: bodyText,
           data: {
             ...(input.data || {}),
@@ -178,7 +180,10 @@ export const sendNotificationProcedure = protectedProcedure
           });
 
           if (!response.ok) {
-            console.error('Push notification error:', await response.text());
+            // Log error only in development
+            if (process.env.NODE_ENV === 'development') {
+              console.error('Push notification error:', await response.text());
+            }
           }
         }
 
@@ -191,7 +196,10 @@ export const sendNotificationProcedure = protectedProcedure
             .in('id', sentNotificationIds);
         }
       } catch (pushError) {
-        console.error('Push notification error:', pushError);
+        // Log error only in development
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Push notification error:', pushError);
+        }
         // Push hatası olsa bile bildirimler kaydedildi, devam et
       }
     }

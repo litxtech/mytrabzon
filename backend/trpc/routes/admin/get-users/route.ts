@@ -39,6 +39,14 @@ export const getUsersProcedure = protectedProcedure
         hidden_users!left(id, hidden_at)
       `, { count: "exact" });
     
+    // Sanitize search input
+    if (input.search) {
+      const sanitizedSearch = input.search.trim().slice(0, 200); // Max 200 chars
+      if (sanitizedSearch.length > 0) {
+        query = query.or(`full_name.ilike.%${sanitizedSearch}%,username.ilike.%${sanitizedSearch}%,phone.ilike.%${sanitizedSearch}%`);
+      }
+    }
+    
     // Filtreler
     if (input.filter === 'today') {
       const today = new Date();
@@ -89,9 +97,7 @@ export const getUsersProcedure = protectedProcedure
       query = query.eq('is_online', true);
     }
     
-    if (input.search) {
-      query = query.or(`full_name.ilike.%${input.search}%,email.ilike.%${input.search}%`);
-    }
+    // Search already handled above, no need to duplicate
     
     // Sıralama: Önce created_at'e göre sırala, sonra join'leri yap
     // Join'lerden önce sıralama yapmak için order'ı en sona koyuyoruz

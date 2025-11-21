@@ -47,7 +47,11 @@ export const getAllCommentsProcedure = protectedProcedure
       `, { count: "exact" });
     
     if (input.search) {
-      query = query.ilike('content', `%${input.search}%`);
+      // Sanitize search input to prevent SQL injection
+      const sanitizedSearch = input.search.trim().slice(0, 200); // Max 200 chars
+      if (sanitizedSearch.length > 0) {
+        query = query.ilike('content', `%${sanitizedSearch}%`);
+      }
     }
     
     query = query

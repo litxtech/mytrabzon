@@ -71,11 +71,17 @@ export const warnPostProcedure = protectedProcedure
       }
     }
 
+    // Sanitize warning inputs
+    const sanitizedReason = input.warningReason.trim().slice(0, 500); // Max 500 chars
+    const sanitizedMessage = input.warningMessage 
+      ? input.warningMessage.trim().slice(0, 1000) // Max 1000 chars
+      : `Bu içerik platform politikalarına uymuyor: ${sanitizedReason}`;
+    
     // Uyarı oluştur
     const warningData: any = {
       warned_by: user.id,
-      warning_reason: input.warningReason,
-      warning_message: input.warningMessage || `Bu içerik platform politikalarına uymuyor: ${input.warningReason}`,
+      warning_reason: sanitizedReason,
+      warning_message: sanitizedMessage,
       content_type: contentType,
       is_resolved: false,
     };

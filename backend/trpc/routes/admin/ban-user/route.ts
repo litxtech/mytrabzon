@@ -50,10 +50,13 @@ export const banUserProcedure = protectedProcedure
       adminUserId = adminUserRecord?.id || user.id;
     }
     
+    // Sanitize reason input
+    const sanitizedReason = input.reason.trim().slice(0, 500); // Max 500 chars
+    
     const banData: any = {
       user_id: input.userId,
       banned_by: adminUserId,
-      reason: input.reason,
+      reason: sanitizedReason,
       ban_type: input.banType,
       is_active: true,
     };

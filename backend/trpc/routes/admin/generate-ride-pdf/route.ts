@@ -279,7 +279,10 @@ export const generateRidePdfProcedure = protectedProcedure
       });
 
     if (uploadError) {
-      console.error('PDF upload error:', uploadError);
+      // Log error only in development
+      if (process.env.NODE_ENV === 'development') {
+        console.error('PDF upload error:', uploadError);
+      }
       // Upload hatası olsa bile PDF'i base64 olarak döndür
       return {
         pdfBase64,
