@@ -6,8 +6,9 @@ const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? '';
 
 // Production build'de environment variables EAS Build tarafından sağlanır
 // Eğer eksikse, fallback değerler kullan (crash'i önlemek için)
-const finalSupabaseUrl = supabaseUrl || 'https://xcvcplwimicylaxghiak.supabase.co';
-const finalSupabaseAnonKey = supabaseAnonKey || 'sb_publishable_jTpEPRL2oeGnsBcZSyoxPA_G2cG4ZM7';
+// NOT: Fallback değerler sadece development için - production'da mutlaka env vars kullanılmalı
+const finalSupabaseUrl = supabaseUrl || (__DEV__ ? 'https://xcvcplwimicylaxghiak.supabase.co' : '');
+const finalSupabaseAnonKey = supabaseAnonKey || (__DEV__ ? 'sb_publishable_jTpEPRL2oeGnsBcZSyoxPA_G2cG4ZM7' : '');
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('❌ Supabase environment variables eksik! Fallback değerler kullanılıyor.');

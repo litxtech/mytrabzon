@@ -232,8 +232,22 @@ export default function ResetPasswordScreen() {
       return;
     }
 
-    if (password.length < 6) {
-      Alert.alert('Hata', 'Şifre en az 6 karakter olmalı');
+    // Güçlü şifre kontrolü
+    if (password.length < 8) {
+      Alert.alert('Hata', 'Şifre en az 8 karakter olmalıdır');
+      return;
+    }
+    
+    // Şifre güçlülük kontrolü
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumber = /[0-9]/.test(password);
+    
+    if (!hasUpperCase || !hasLowerCase || !hasNumber) {
+      Alert.alert(
+        'Güvenlik Uyarısı',
+        'Şifreniz en az bir büyük harf, bir küçük harf ve bir rakam içermelidir'
+      );
       return;
     }
 
