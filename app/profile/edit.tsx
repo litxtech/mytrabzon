@@ -18,7 +18,7 @@ import { DISTRICTS, getDistrictsByCity } from '@/constants/districts';
 import { CITIES, GENDERS, SOCIAL_MEDIA_PLATFORMS, City } from '@/constants/cities';
 import { Camera, Trash2, ChevronDown, Eye, EyeOff, Save, Users } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import { SocialMedia, PrivacySettings } from '@/types/database';
 import { trpc } from '@/lib/trpc';
 

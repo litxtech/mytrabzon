@@ -31,7 +31,11 @@ export default function CreateMatchScreen() {
     district: '',
     match_date: '',
     match_time: '',
+<<<<<<< HEAD
     match_type: 'looking_for_opponent' as 'looking_for_opponent' | 'looking_for_players', // Oyuncu Aranıyor veya Rakip Aranıyor
+=======
+    match_type: 'looking_for_opponent' as 'looking_for_opponent' | 'looking_for_players', // Yeni: Maç tipi
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     team1_name: '',
     team2_name: '',
     max_players: '',
@@ -41,7 +45,7 @@ export default function CreateMatchScreen() {
 
   const utils = trpc.useUtils();
   
-  const createMatch = trpc.football.createMatch.useMutation({
+  const createMatch = (trpc as any).football.createMatch.useMutation({
     onSuccess: async () => {
       // Query cache'i invalidate et ve refetch yap ki yeni maç görünsün
       await (utils as any).football.getTodayMatches.invalidate();
@@ -133,17 +137,34 @@ export default function CreateMatchScreen() {
         return;
       }
       
+      // Maç tipine göre validasyon
+      if (formData.match_type === 'looking_for_players' && !formData.needed_players) {
+        Alert.alert('Hata', 'Oyuncu aranıyor durumunda eksik oyuncu sayısı zorunludur');
+        setLoading(false);
+        return;
+      }
+
       await createMatch.mutateAsync({
         field_name: formData.field_name,
         city: formData.city,
         district: formData.district,
         match_date: matchDateTime.toISOString(),
+<<<<<<< HEAD
         match_type: formData.match_type, // 'looking_for_opponent' veya 'looking_for_players'
         team1_name: formData.team1_name || undefined,
         team2_name: formData.team2_name || undefined,
         max_players: formData.max_players ? parseInt(formData.max_players) : undefined,
         needed_players: formData.match_type === 'looking_for_players' && formData.needed_players ? parseInt(formData.needed_players) : undefined,
         position_needed: formData.match_type === 'looking_for_players' && formData.position_needed ? formData.position_needed : undefined,
+=======
+        match_type: formData.match_type, // Yeni: Maç tipi
+        team1_name: formData.team1_name || undefined,
+        team2_name: formData.team2_name || undefined,
+        max_players: formData.max_players ? parseInt(formData.max_players) : undefined,
+        needed_players: formData.match_type === 'looking_for_players' && formData.needed_players 
+          ? parseInt(formData.needed_players) 
+          : undefined,
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
       });
     } catch (err) {
       console.error('Create match error:', err);
@@ -392,6 +413,7 @@ export default function CreateMatchScreen() {
           )}
         </View>
 
+<<<<<<< HEAD
         {/* Rakip Aranıyor durumunda */}
         {formData.match_type === 'looking_for_opponent' && (
           <>
@@ -406,11 +428,74 @@ export default function CreateMatchScreen() {
               <Text style={styles.hintText}>Rakip takım bulmak için takım adınızı girin</Text>
             </View>
 
+=======
+        {/* Maç Tipi Seçimi - Şeffaf ve Basit */}
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Ne Arıyorsunuz? *</Text>
+          <View style={styles.matchTypeContainer}>
+            <TouchableOpacity
+              style={[
+                styles.matchTypeButton,
+                formData.match_type === 'looking_for_opponent' && styles.matchTypeButtonActive,
+              ]}
+              onPress={() => setFormData({ ...formData, match_type: 'looking_for_opponent' })}
+            >
+              <Text
+                style={[
+                  styles.matchTypeButtonText,
+                  formData.match_type === 'looking_for_opponent' && styles.matchTypeButtonTextActive,
+                ]}
+              >
+                🏆 Rakip Takım Aranıyor
+              </Text>
+              <Text style={styles.matchTypeDescription}>
+                Rakip takım arıyorsanız seçin
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.matchTypeButton,
+                formData.match_type === 'looking_for_players' && styles.matchTypeButtonActive,
+              ]}
+              onPress={() => setFormData({ ...formData, match_type: 'looking_for_players' })}
+            >
+              <Text
+                style={[
+                  styles.matchTypeButtonText,
+                  formData.match_type === 'looking_for_players' && styles.matchTypeButtonTextActive,
+                ]}
+              >
+                👥 Oyuncu Aranıyor
+              </Text>
+              <Text style={styles.matchTypeDescription}>
+                Oyuncu arıyorsanız seçin
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Rakip Takım Aranıyor Durumu */}
+        {formData.match_type === 'looking_for_opponent' && (
+          <>
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Takım Adı (Opsiyonel)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Takımınızın adı"
+                value={formData.team1_name}
+                onChangeText={(text) => setFormData({ ...formData, team1_name: text })}
+              />
+            </View>
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
             <View style={styles.formGroup}>
               <Text style={styles.label}>Maksimum Oyuncu Sayısı (Opsiyonel)</Text>
               <TextInput
                 style={styles.input}
+<<<<<<< HEAD
                 placeholder="Örnek: 10 (5v5 için)"
+=======
+                placeholder="Örnek: 10"
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
                 value={formData.max_players}
                 onChangeText={(text) => setFormData({ ...formData, max_players: text })}
                 keyboardType="numeric"
@@ -419,6 +504,7 @@ export default function CreateMatchScreen() {
           </>
         )}
 
+<<<<<<< HEAD
         {/* Oyuncu Aranıyor durumunda */}
         {formData.match_type === 'looking_for_players' && (
           <>
@@ -437,12 +523,23 @@ export default function CreateMatchScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="Örnek: 2, 3, 5..."
+=======
+        {/* Oyuncu Aranıyor Durumu */}
+        {formData.match_type === 'looking_for_players' && (
+          <>
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Kaç Oyuncu Aranıyor? *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Örnek: 3"
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
                 value={formData.needed_players}
                 onChangeText={(text) => setFormData({ ...formData, needed_players: text })}
                 keyboardType="numeric"
               />
               <Text style={styles.hintText}>Eksik oyuncu sayısını girin</Text>
             </View>
+<<<<<<< HEAD
 
             <View style={styles.formGroup}>
               <Text style={styles.label}>Aranan Pozisyon (Opsiyonel)</Text>
@@ -455,11 +552,17 @@ export default function CreateMatchScreen() {
               <Text style={styles.hintText}>Belirli bir pozisyon arıyorsanız belirtin</Text>
             </View>
 
+=======
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
             <View style={styles.formGroup}>
               <Text style={styles.label}>Maksimum Oyuncu Sayısı (Opsiyonel)</Text>
               <TextInput
                 style={styles.input}
+<<<<<<< HEAD
                 placeholder="Örnek: 10 (5v5 için)"
+=======
+                placeholder="Örnek: 10"
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
                 value={formData.max_players}
                 onChangeText={(text) => setFormData({ ...formData, max_players: text })}
                 keyboardType="numeric"
@@ -635,7 +738,11 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xs,
     fontStyle: 'italic',
   },
+<<<<<<< HEAD
   matchTypeButtons: {
+=======
+  matchTypeContainer: {
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     flexDirection: 'row',
     gap: SPACING.md,
   },
@@ -643,7 +750,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.white,
     borderRadius: 12,
+<<<<<<< HEAD
     padding: SPACING.md,
+=======
+    padding: SPACING.lg,
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     borderWidth: 2,
     borderColor: COLORS.border,
     alignItems: 'center',
@@ -659,6 +770,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.text,
     marginBottom: SPACING.xs,
+<<<<<<< HEAD
+=======
+    textAlign: 'center',
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   },
   matchTypeButtonTextActive: {
     color: COLORS.primary,
@@ -667,6 +782,9 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
     textAlign: 'center',
+<<<<<<< HEAD
     marginTop: SPACING.xs,
+=======
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   },
 });

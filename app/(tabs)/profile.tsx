@@ -1,17 +1,21 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Share, Platform, FlatList, ActivityIndicator } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Platform, ActivityIndicator, TouchableWithoutFeedback, RefreshControl, Linking } from 'react-native';
 import { Image } from 'expo-image';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode, Audio } from 'expo-av';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
+<<<<<<< HEAD
 import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, MoreVertical, Share2, Users, MessageCircle, Trophy, X } from 'lucide-react-native';
+=======
+import { LogOut, Settings, Edit3, Heart, MoreVertical, MessageCircle, Instagram, Twitter, Facebook, Linkedin, Youtube, Shield, Car, Trophy, Search, HelpCircle, Target } from 'lucide-react-native';
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 import { DISTRICT_BADGES } from '../../constants/districts';
 import { useRouter } from 'expo-router';
 import { Footer } from '../../components/Footer';
-import { SupportPanel } from '../../components/SupportPanel';
 import { SupporterBadge } from '../../components/SupporterBadge';
 import VerifiedBadgeIcon from '../../components/VerifiedBadge';
+import { GenderIcon } from '../../components/GenderIcon';
 import { trpc } from '../../lib/trpc';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -24,12 +28,11 @@ type QuickAction = {
   tone?: 'danger' | 'success';
 };
 
-// Post Grid Item Component (Instagram benzeri overlay ile) - Video desteği ile
+// Post Grid Item Component
 function PostGridItem({ post, firstMedia, router, onDelete }: { post: any; firstMedia: any; router: any; onDelete?: (postId: string) => void }) {
   const [isPressed, setIsPressed] = useState(false);
   const [isVideo, setIsVideo] = useState(false);
-  const videoRef = React.useRef<any>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const videoRef = useRef<Video>(null);
 
   React.useEffect(() => {
     if (firstMedia) {
@@ -39,15 +42,27 @@ function PostGridItem({ post, firstMedia, router, onDelete }: { post: any; first
   }, [firstMedia]);
 
   // Video otomatik oynatma
-  React.useEffect(() => {
-    if (isVideo && videoRef.current && !isPressed) {
-      videoRef.current?.playAsync?.().catch(console.error);
-      setIsPlaying(true);
-    } else if (isVideo && videoRef.current && isPressed) {
-      videoRef.current?.pauseAsync?.().catch(console.error);
-      setIsPlaying(false);
+  useEffect(() => {
+    if (isVideo && firstMedia?.path && videoRef.current) {
+      // Audio session'ı aktif et
+      Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        staysActiveInBackground: false,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      }).catch(() => {
+        // Sessizce devam et
+      });
+
+      const timer = setTimeout(() => {
+        videoRef.current?.playAsync().catch(() => {
+          // Hata durumunda sessizce devam et
+        });
+      }, 300);
+      return () => clearTimeout(timer);
     }
-  }, [isVideo, isPressed]);
+  }, [isVideo, firstMedia]);
 
   const handlePress = () => {
     if (isVideo) {
@@ -84,16 +99,19 @@ function PostGridItem({ post, firstMedia, router, onDelete }: { post: any; first
       activeOpacity={1}
     >
       {firstMedia ? (
-        isVideo ? (
+        isVideo && firstMedia.path ? (
           <Video
             ref={videoRef}
-            source={{ uri: firstMedia.path, overrideFileExtensionAndroid: 'mp4' }}
+            source={{ uri: firstMedia.path }}
             style={styles.postGridImage}
             resizeMode={ResizeMode.COVER}
             isLooping
             isMuted
-            shouldPlay={isPlaying}
+            shouldPlay
             useNativeControls={false}
+            onError={() => {
+              // Hata durumunda sessizce devam et
+            }}
           />
         ) : (
           <Image
@@ -109,7 +127,6 @@ function PostGridItem({ post, firstMedia, router, onDelete }: { post: any; first
           </Text>
         </View>
       )}
-      {/* Instagram benzeri overlay */}
       <View style={[styles.postGridOverlay, isPressed && styles.postGridOverlayVisible]}>
         <View style={styles.postGridStats}>
           <Heart size={16} color={COLORS.white} fill={COLORS.white} />
@@ -123,249 +140,43 @@ function PostGridItem({ post, firstMedia, router, onDelete }: { post: any; first
           <Text style={styles.postGridBadgeText}>+{post.media.length - 1}</Text>
         </View>
       )}
-      {isVideo && (
-        <View style={styles.videoBadge}>
-          <Text style={styles.videoBadgeText}>▶</Text>
-        </View>
-      )}
     </TouchableOpacity>
   );
 }
 
-// Takipçiler Listesi Component
-function FollowersList({ userId }: { userId: string }) {
-  const router = useRouter();
-  const { data, isLoading } = trpc.user.getFollowers.useQuery(
-    { user_id: userId, limit: 100, offset: 0 },
-    { enabled: !!userId }
-  );
-
-  if (isLoading) {
-    return (
-      <View style={styles.modalLoadingContainer}>
-        <ActivityIndicator size="small" color={COLORS.primary} />
-      </View>
-    );
-  }
-
-  if (!data?.followers || data.followers.length === 0) {
-    return (
-      <View style={styles.emptyContainer}>
-        <Users size={48} color={COLORS.textLight} />
-        <Text style={styles.emptyText}>Henüz takipçi yok</Text>
-        <Text style={styles.emptySubtext}>
-          Paylaşımlarınızı artırarak daha fazla takipçi kazanabilirsiniz
-        </Text>
-      </View>
-    );
-  }
-
-  return (
-    <FlatList
-      data={data.followers}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => (
-        <TouchableOpacity
-          style={styles.followerItem}
-          onPress={() => router.push(`/profile/${item.id}` as any)}
-        >
-          <Image
-            source={{ uri: item.avatar_url || 'https://via.placeholder.com/50' }}
-            style={styles.followerAvatar}
-          />
-          <View style={styles.followerInfo}>
-            <Text style={styles.followerName}>{item.full_name}</Text>
-            {item.username && (
-              <Text style={styles.followerUsername}>@{item.username}</Text>
-            )}
-          </View>
-          {item.supporter_badge && item.supporter_badge_visible && (
-            <SupporterBadge
-              visible={true}
-              size="small"
-              color={item.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
-            />
-          )}
-        </TouchableOpacity>
-      )}
-      contentContainerStyle={styles.modalListContent}
-    />
-  );
-}
-
-// Takip Edilenler Listesi Component
-function FollowingList({ userId }: { userId: string }) {
-  const router = useRouter();
-  const { data, isLoading } = trpc.user.getFollowing.useQuery(
-    { user_id: userId, limit: 100, offset: 0 },
-    { enabled: !!userId }
-  );
-
-  if (isLoading) {
-    return (
-      <View style={styles.modalLoadingContainer}>
-        <ActivityIndicator size="small" color={COLORS.primary} />
-      </View>
-    );
-  }
-
-  if (!data?.following || data.following.length === 0) {
-    return (
-      <View style={styles.emptyContainer}>
-        <Users size={48} color={COLORS.textLight} />
-        <Text style={styles.emptyText}>Henüz kimseyi takip etmiyorsunuz</Text>
-        <Text style={styles.emptySubtext}>
-          İlginizi çeken kullanıcıları takip ederek içeriklerini görebilirsiniz
-        </Text>
-      </View>
-    );
-  }
-
-  return (
-    <FlatList
-      data={data.following}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => (
-        <TouchableOpacity
-          style={styles.followerItem}
-          onPress={() => router.push(`/profile/${item.id}` as any)}
-        >
-          <Image
-            source={{ uri: item.avatar_url || 'https://via.placeholder.com/50' }}
-            style={styles.followerAvatar}
-          />
-          <View style={styles.followerInfo}>
-            <Text style={styles.followerName}>{item.full_name}</Text>
-            {item.username && (
-              <Text style={styles.followerUsername}>@{item.username}</Text>
-            )}
-          </View>
-          {item.supporter_badge && item.supporter_badge_visible && (
-            <SupporterBadge
-              visible={true}
-              size="small"
-              color={item.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
-            />
-          )}
-        </TouchableOpacity>
-      )}
-      contentContainerStyle={styles.modalListContent}
-    />
-  );
-}
 
 export default function ProfileScreen() {
-  const { profile, user, signOut } = useAuth();
+  const { profile, user, signOut, loading: authLoading } = useAuth();
   const { theme } = useTheme();
   const router = useRouter();
-  const [supportVisible, setSupportVisible] = useState(false);
-  const [menuVisible, setMenuVisible] = useState(false);
-  const [followersModalVisible, setFollowersModalVisible] = useState(false);
-  const [followingModalVisible, setFollowingModalVisible] = useState(false);
   const insets = useSafeAreaInsets();
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [avatarModalVisible, setAvatarModalVisible] = useState(false);
 
-  const deleteAccountMutation = trpc.user.requestAccountDeletion.useMutation();
-  const SPECIAL_ADMIN_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
-  
-  // Admin kontrolü - admin_users tablosundan direkt kontrol et
-  const [isAdmin, setIsAdmin] = useState(false);
-  
-  useEffect(() => {
-    if (!user?.id) {
-      setIsAdmin(false);
-      return;
-    }
-    
-    // Supabase'den direkt kontrol et
-    const checkAdmin = async () => {
-      if (user.id === SPECIAL_ADMIN_ID) {
+  // Admin kontrolü - Sadece belirli hesap için
+  const ADMIN_USER_ID = '98542f02-11f8-4ccd-b38d-4dd42066daa7';
+  const ADMIN_EMAIL = 'support@litxtech.com';
+  const ADMIN_USERNAME = 'mytrabzonteam';
+
+  React.useEffect(() => {
+    if (user?.id === ADMIN_USER_ID) {
+      // Email ve username kontrolü
+      const userEmail = user.email || user.user_metadata?.email || '';
+      const username = profile?.username || user.user_metadata?.username || '';
+      
+      if (userEmail === ADMIN_EMAIL && username === ADMIN_USERNAME) {
         setIsAdmin(true);
-        return;
+      } else {
+        setIsAdmin(false);
       }
-
-      const { supabase } = await import('../../lib/supabase');
-      const { data, error } = await supabase
-        .from('admin_users')
-        .select('id, role, is_active')
-        .eq('user_id', user.id)
-        .eq('is_active', true)
-        .maybeSingle();
-      
-      setIsAdmin(!!data && !error);
-    };
-    
-    checkAdmin();
-  }, [user?.id]);
-
-  // KYC durumu kontrolü
-  const { data: kycData } = trpc.kyc.get.useQuery(undefined, {
-    enabled: !!user?.id,
-  });
-
-  // Kullanıcının gönderilerini getir
-  const utils = trpc.useUtils();
-  const { data: postsData, isLoading: postsLoading } = trpc.post.getPosts.useQuery({
-    author_id: user?.id,
-    limit: 50,
-    offset: 0,
-  }, {
-    enabled: !!user?.id, // Sadece user varsa query çalışsın
-  });
-
-  // Gönderi silme mutation'ı
-  const deletePostMutation = trpc.post.deletePost.useMutation({
-    onSuccess: () => {
-      // Gönderileri yeniden yükle
-      utils.post.getPosts.invalidate({ author_id: user?.id });
-      Alert.alert('Başarılı', 'Gönderi silindi');
-    },
-    onError: (error) => {
-      Alert.alert('Hata', error.message || 'Gönderi silinemedi');
-    },
-  });
-
-  const handleDeletePost = (postId: string) => {
-    deletePostMutation.mutate({ postId });
-  };
-
-  // Kullanıcının geçmiş maçlarını getir
-  const { data: userMatchesData } = (trpc as any).football.getUserMatches.useQuery(
-    {
-      user_id: user?.id || '',
-      limit: 20,
-      offset: 0,
-    },
-    {
-      enabled: !!user?.id,
+    } else {
+      setIsAdmin(false);
     }
-  );
-
-  // Geçmiş maçları filtrele (süresi geçmiş olanlar)
-  const pastMatches = useMemo(() => {
-    if (!userMatchesData?.matches || !Array.isArray(userMatchesData.matches)) return [];
-    const now = Date.now();
-    const gracePeriod = 5 * 60 * 1000; // 5 dakika tolerans
-    
-    return userMatchesData.matches.filter((match: any) => {
-      let matchDateTime: string | null = null;
-      
-      if (match.match_date_time) {
-        matchDateTime = match.match_date_time;
-      } else if (match.match_date && match.start_time) {
-        matchDateTime = `${match.match_date}T${match.start_time}+03:00`;
-      }
-      
-      if (!matchDateTime) return false;
-      
-      const start = new Date(matchDateTime).getTime();
-      // Süresi geçmiş maçlar (başlangıç + 5 dakika < şimdi)
-      return start + gracePeriod < now;
-    });
-  }, [userMatchesData]);
-
-  // İstatistikleri hesapla
-  const totalPosts = postsData?.posts?.length || 0;
+  }, [user?.id, user?.email, user?.user_metadata?.email, profile?.username, user?.user_metadata?.username]);
   
+<<<<<<< HEAD
   // Takipçi ve takip sayılarını getir - gerçek zamanlı güncelleme için refetch
   const { data: followStats, refetch: refetchFollowStats } = trpc.user.getFollowStats.useQuery(
     { user_id: user?.id || '' },
@@ -446,17 +257,70 @@ export default function ProfileScreen() {
           }
         }
       ]
+=======
+  // Loading durumunda loading göster
+  if (authLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     );
+  }
+
+  // User yoksa loading göster
+  if (!user) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+    );
+  }
+
+  // Profile yoksa placeholder göster
+  const displayProfile = profile || {
+    id: user.id,
+    full_name: user.user_metadata?.full_name || 'Kullanıcı',
+    username: user.user_metadata?.username || '',
+    avatar_url: user.user_metadata?.avatar_url || 'https://via.placeholder.com/100',
+    bio: '',
+    district: null,
+    gender: null,
+    verified: false,
+    privacy_settings: { show_social_media: true, show_gender: true },
+    social_media: {},
+    supporter_badge: null,
+    supporter_badge_visible: false,
+    supporter_badge_color: null,
   };
 
-  const handleShareProfile = async () => {
-    try {
-      const message = `MyTrabzon profilimi keşfet: ${profile?.full_name || 'Kullanıcı'}`;
-      await Share.share({ message });
-    } catch (error: any) {
-      Alert.alert('Hata', error.message || 'Paylaşım yapılamadı');
-    } finally {
-      setMenuVisible(false);
+  const showGender = displayProfile.privacy_settings?.show_gender !== false && displayProfile.gender;
+
+  const socialMedia = (displayProfile.social_media || {}) as {
+    instagram?: string;
+    twitter?: string;
+    facebook?: string;
+    linkedin?: string;
+    youtube?: string;
+    tiktok?: string;
+  };
+  const showSocialMedia = displayProfile.privacy_settings?.show_social_media !== false;
+
+  // Sosyal medya linklerini açma fonksiyonu
+  const openSocialMedia = (platform: string, username: string) => {
+    const urls: Record<string, string> = {
+      instagram: `https://instagram.com/${username.replace('@', '')}`,
+      twitter: `https://twitter.com/${username.replace('@', '')}`,
+      facebook: `https://facebook.com/${username.replace('@', '')}`,
+      linkedin: `https://linkedin.com/in/${username.replace('@', '')}`,
+      youtube: `https://youtube.com/@${username.replace('@', '')}`,
+      tiktok: `https://tiktok.com/@${username.replace('@', '')}`,
+    };
+    const url = urls[platform];
+    if (url) {
+      Linking.openURL(url).catch(() => {
+        Alert.alert('Hata', 'Link açılamadı');
+      });
     }
   };
 
@@ -465,83 +329,100 @@ export default function ProfileScreen() {
     router.push(path as any);
   };
 
-  const kycAction = (() => {
-    if (profile?.verified) {
-      return {
-        id: 'kyc-verified',
-        label: 'Kimlik Onaylı',
-        icon: CheckCircle2,
-        disabled: true,
-        tone: 'success',
-      };
+  const handleLogout = async () => {
+    setMenuVisible(false);
+    await signOut();
+    router.replace('/auth/login');
+  };
+
+  // Adım 2: getFollowStats query'si ekleniyor
+  const { data: followStats } = trpc.user.getFollowStats.useQuery(
+    { user_id: user?.id || '' },
+    { 
+      enabled: !!user?.id && user.id.length > 0,
+      retry: false,
+      staleTime: 30 * 1000,
+      refetchOnMount: false,
+      refetchOnWindowFocus: false,
+      refetchInterval: false,
     }
+  );
 
-    if (kycData?.status === 'pending') {
-      return {
-        id: 'kyc-pending',
-        label: 'Onay Bekleniyor',
-        icon: Clock,
-        disabled: true,
-      };
+  // Adım 3: getPosts query'si ekleniyor
+  const utils = trpc.useUtils();
+  const { data: postsData, refetch: refetchPosts } = trpc.post.getPosts.useQuery({
+    author_id: user?.id,
+    limit: 50,
+    offset: 0,
+  }, {
+    enabled: !!user?.id && !!user.id,
+    retry: false,
+    staleTime: 2 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  });
+
+  // Post silme mutation'ı
+  const deletePostMutation = trpc.post.deletePost.useMutation({
+    onSuccess: async () => {
+      Alert.alert('Başarılı', 'Gönderi silindi');
+      await utils.post.getPosts.invalidate();
+      await refetchPosts();
+      await utils.user.getFollowStats.invalidate();
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Gönderi silinemedi';
+      Alert.alert('Hata', message);
+    },
+  });
+
+  const handleDeletePost = (postId: string) => {
+    deletePostMutation.mutate({ postId });
+  };
+
+  const totalPosts = postsData?.posts?.length || 0;
+  const followersCount = followStats?.followers_count || 0;
+  const followingCount = followStats?.following_count || 0;
+
+  // Pull to refresh handler
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        utils.post.getPosts.invalidate(),
+        utils.user.getFollowStats.invalidate(),
+        refetchPosts(),
+      ]);
+    } finally {
+      setRefreshing(false);
     }
+  };
 
-    if (kycData?.status === 'rejected') {
-      return {
-        id: 'kyc-retry',
-        label: 'Tekrar Doğrula',
-        icon: XCircle,
-        onPress: () => handleNavigate('/kyc/verify'),
-        tone: 'danger',
-      };
-    }
-
-    return {
-      id: 'kyc-start',
-      label: 'Kimliği Doğrula',
-      icon: Shield,
-      onPress: () => handleNavigate('/kyc/verify'),
-    };
-  })();
-
-  // Sadece "Profili Düzenle" ve "Destekle" butonları grid'de kalacak
   const quickActions: QuickAction[] = [
     { id: 'edit', label: 'Profili Düzenle', icon: Edit3, onPress: () => handleNavigate('/profile/edit') },
+    { id: 'myskor', label: 'Karma Skorum', icon: Target, onPress: () => {
+      // Karma Skorum sayfasına yönlendirme - henüz sayfa yoksa alert göster
+      Alert.alert('Karma Skorum', 'Karma Skorum özelliği yakında eklenecek!');
+    } },
     { id: 'donate', label: 'Destekle', icon: Heart, onPress: () => handleNavigate('/support/donate') },
+    { id: 'support', label: 'Destek Talebi', icon: HelpCircle, onPress: () => handleNavigate('/support/create') },
   ];
-
-  // Menüye eklenecek butonlar
-  const menuActions: QuickAction[] = [
-    { id: 'share', label: 'Profili Paylaş', icon: Share2, onPress: handleShareProfile },
-    { id: 'matches', label: 'Paylaşılan Maçlar', icon: Trophy, onPress: () => {
-      setMenuVisible(false);
-      router.push('/profile/my-matches' as any);
-    }, disabled: pastMatches.length === 0 },
-    { id: 'settings', label: 'Ayarlar', icon: Settings, onPress: () => handleNavigate('/profile/settings') },
-    { id: 'support', label: 'Destek', icon: HelpCircle, onPress: () => { setMenuVisible(false); setSupportVisible(true); } },
-    kycAction as QuickAction,
-    { id: 'logout', label: 'Çıkış Yap', icon: LogOut, onPress: () => { setMenuVisible(false); handleLogout(); }, tone: 'danger' },
-    { id: 'delete', label: 'Hesabı Sil', icon: Trash2, onPress: () => { setMenuVisible(false); handleDeleteAccount(); }, tone: 'danger' },
-  ];
-
-  if (isAdmin) {
-    menuActions.splice(4, 0, {
-      id: 'admin',
-      label: 'Admin Paneli',
-      icon: Shield,
-      onPress: () => handleNavigate('/admin/dashboard'),
-    });
-  }
-
-
-  if (!profile) return null;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background, paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.md) : 0 }]}>
       <ScrollView 
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: Platform.OS === 'android' ? SPACING.lg : 0 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.colors.primary}
+            colors={[theme.colors.primary]}
+          />
+        }
       >
-        {/* Header - Resimdeki gibi */}
+        {/* Header */}
         <View style={[styles.profileHeader, { backgroundColor: theme.colors.card, paddingTop: Math.max(insets.top, SPACING.md) }]}>
           <TouchableOpacity 
             style={[styles.menuButton, { backgroundColor: theme.colors.card }]} 
@@ -550,134 +431,189 @@ export default function ProfileScreen() {
           >
             <MoreVertical size={18} color={theme.colors.text} />
           </TouchableOpacity>
-          <View style={styles.profileTopRow}>
-            <View style={styles.profileLeft}>
-              <View style={styles.avatarContainer}>
-                <TouchableOpacity 
-                  onPress={() => router.push('/profile/edit')}
-                  activeOpacity={0.8}
-                >
+          
+          {/* Profil Avatar - Merkezi ve Büyük */}
+          <View style={styles.profileTopSection}>
+            <View style={styles.avatarContainer}>
+              <TouchableOpacity 
+                onLongPress={() => setAvatarModalVisible(true)}
+                delayLongPress={300}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.avatarWrapper, { borderColor: theme.colors.primary }]}>
                   <Image
-                    source={{ uri: profile.avatar_url || 'https://via.placeholder.com/100' }}
+                    source={{ uri: displayProfile.avatar_url || 'https://via.placeholder.com/120' }}
                     style={styles.avatar}
                   />
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.storyAddButton}
-                  onPress={() => router.push('/profile/edit')}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.storyAddIcon}>+</Text>
-                </TouchableOpacity>
-              </View>
+                </View>
+              </TouchableOpacity>
             </View>
-            <View style={styles.profileRight}>
-              <View style={styles.statsRow}>
-                <TouchableOpacity style={styles.statItem} onPress={() => {}}>
-                  <Text style={[styles.statValue, { color: theme.colors.text }]}>{totalPosts}</Text>
-                  <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>gönderi</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.statItem} 
-                  onPress={() => setFollowersModalVisible(true)}
-                >
-                  <Text style={[styles.statValue, { color: theme.colors.text }]}>{followersCount}</Text>
-                  <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>takipçi</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.statItem} 
-                  onPress={() => setFollowingModalVisible(true)}
-                >
-                  <Text style={[styles.statValue, { color: theme.colors.text }]}>{followingCount}</Text>
-                  <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>takip</Text>
-                </TouchableOpacity>
-              </View>
+
+            {/* İstatistikler - Modern Kart Tasarımı */}
+            <View style={styles.statsContainer}>
+              <TouchableOpacity 
+                style={[styles.statCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.statValue, { color: theme.colors.text }]}>{totalPosts}</Text>
+                <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>Gönderi</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.statCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                onPress={() => router.push('/profile/followers' as any)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.statValue, { color: theme.colors.text }]}>{followersCount}</Text>
+                <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>Takipçi</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.statCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                onPress={() => router.push('/profile/following' as any)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.statValue, { color: theme.colors.text }]}>{followingCount}</Text>
+                <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>Takip</Text>
+              </TouchableOpacity>
             </View>
           </View>
           
+          {/* Kullanıcı Bilgileri */}
           <View style={styles.profileInfo}>
             <View style={styles.nameRow}>
-              <Text style={[styles.name, { color: theme.colors.text }]}>{profile.full_name}</Text>
-              {profile.verified && <VerifiedBadgeIcon size={20} />}
-              {profile.supporter_badge && profile.supporter_badge_visible && (
+              <Text style={[styles.name, { color: theme.colors.text }]}>{displayProfile.full_name}</Text>
+              {showGender && (
+                <GenderIcon 
+                  gender={displayProfile.gender as 'male' | 'female' | 'other'} 
+                  size={18} 
+                />
+              )}
+              {displayProfile.verified && <VerifiedBadgeIcon size={18} />}
+              {displayProfile.supporter_badge && displayProfile.supporter_badge_visible && (
                 <SupporterBadge 
                   visible={true} 
                   size="small" 
-                  color={profile.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
+                  color={displayProfile.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
                 />
               )}
             </View>
-            {profile.username && (
-              <Text style={[styles.username, { color: theme.colors.textLight }]}>@{profile.username}</Text>
+            {displayProfile.username && (
+              <Text style={[styles.username, { color: theme.colors.textLight }]}>@{displayProfile.username}</Text>
             )}
-            {profile.bio && (
+            {displayProfile.bio && (
               <Text style={[styles.bio, { color: theme.colors.text }]} numberOfLines={3}>
-                {profile.bio}
+                {displayProfile.bio}
               </Text>
             )}
-            {profile.district && (
+            {displayProfile.district && (
               <View style={styles.locationRow}>
                 <Text style={[styles.locationText, { color: theme.colors.textLight }]}>
-                  {DISTRICT_BADGES[profile.district as keyof typeof DISTRICT_BADGES] || '📍'} {profile.district}
+                  {DISTRICT_BADGES[displayProfile.district as keyof typeof DISTRICT_BADGES] || '📍'} {displayProfile.district}
                 </Text>
               </View>
             )}
-            {/* Mesaj Butonu - Kendi profiline mesaj göndermek mantıklı değil, bu yüzden kaldırıldı */}
+
+            {/* Sosyal Medya Linkleri - Kompakt ve Modern */}
+            {showSocialMedia && Object.keys(socialMedia).length > 0 && (
+              <View style={styles.socialMediaContainer}>
+                {socialMedia.instagram && (
+                  <TouchableOpacity
+                    style={[styles.socialMediaButton, { backgroundColor: theme.colors.background }]}
+                    onPress={() => openSocialMedia('instagram', socialMedia.instagram!)}
+                    activeOpacity={0.7}
+                  >
+                    <Instagram size={16} color="#E4405F" />
+                  </TouchableOpacity>
+                )}
+                {socialMedia.twitter && (
+                  <TouchableOpacity
+                    style={[styles.socialMediaButton, { backgroundColor: theme.colors.background }]}
+                    onPress={() => openSocialMedia('twitter', socialMedia.twitter!)}
+                    activeOpacity={0.7}
+                  >
+                    <Twitter size={16} color="#1DA1F2" />
+                  </TouchableOpacity>
+                )}
+                {socialMedia.facebook && (
+                  <TouchableOpacity
+                    style={[styles.socialMediaButton, { backgroundColor: theme.colors.background }]}
+                    onPress={() => openSocialMedia('facebook', socialMedia.facebook!)}
+                    activeOpacity={0.7}
+                  >
+                    <Facebook size={16} color="#1877F2" />
+                  </TouchableOpacity>
+                )}
+                {socialMedia.linkedin && (
+                  <TouchableOpacity
+                    style={[styles.socialMediaButton, { backgroundColor: theme.colors.background }]}
+                    onPress={() => openSocialMedia('linkedin', socialMedia.linkedin!)}
+                    activeOpacity={0.7}
+                  >
+                    <Linkedin size={16} color="#0A66C2" />
+                  </TouchableOpacity>
+                )}
+                {socialMedia.youtube && (
+                  <TouchableOpacity
+                    style={[styles.socialMediaButton, { backgroundColor: theme.colors.background }]}
+                    onPress={() => openSocialMedia('youtube', socialMedia.youtube!)}
+                    activeOpacity={0.7}
+                  >
+                    <Youtube size={16} color="#FF0000" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
           </View>
 
-        <View style={[styles.quickActions, { backgroundColor: theme.colors.card }]}>
-          {quickActions.map((action) => {
-            const IconComponent = action.icon;
-            const isDisabled = action.disabled;
-            const toneColor =
-              action.tone === 'danger'
-                ? theme.colors.error
-                : action.tone === 'success'
-                ? theme.colors.success
-                : theme.colors.primary;
-            return (
-              <TouchableOpacity
-                key={action.id}
-                style={[styles.quickActionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, isDisabled && styles.quickActionCardDisabled]}
-                onPress={action.onPress}
-                disabled={isDisabled || !action.onPress}
-                activeOpacity={isDisabled ? 1 : 0.8}
-              >
-                <IconComponent size={18} color={toneColor} />
-                <Text
+          {/* Quick Actions - Kompakt ve Estetik */}
+          <View style={[styles.quickActions, { backgroundColor: theme.colors.card }]}>
+            {quickActions.map((action) => {
+              const IconComponent = action.icon;
+              const isDisabled = action.disabled;
+              const toneColor =
+                action.tone === 'danger'
+                  ? theme.colors.error
+                  : action.tone === 'success'
+                  ? theme.colors.success
+                  : theme.colors.primary;
+              return (
+                <TouchableOpacity
+                  key={action.id}
                   style={[
-                    styles.quickActionLabel,
-                    { color: theme.colors.text },
-                    isDisabled && styles.quickActionLabelDisabled,
+                    styles.quickActionCardCompact, 
+                    { 
+                      backgroundColor: theme.colors.background, 
+                      borderColor: theme.colors.border,
+                      shadowColor: theme.colors.text,
+                    }, 
+                    isDisabled && styles.quickActionCardDisabled
                   ]}
+                  onPress={action.onPress}
+                  disabled={isDisabled || !action.onPress}
+                  activeOpacity={isDisabled ? 1 : 0.7}
                 >
-                  {action.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        </View>
-
-        {/* Tab Navigation - Grid, Tagged */}
-        <View style={[styles.tabNavigation, { backgroundColor: theme.colors.card, borderTopColor: theme.colors.border }]}>
-          <TouchableOpacity style={[styles.tab, styles.tabActive]}>
-            <View style={[styles.tabIcon, { backgroundColor: theme.colors.primary }]} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.tab}>
-            <View style={[styles.tabIcon, styles.tabIconTagged, { backgroundColor: theme.colors.textLight }]} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Posts Grid - Resimdeki gibi boş durum */}
-        {postsLoading ? (
-          <View style={styles.loadingContainer}>
-            <Text style={[styles.loadingText, { color: theme.colors.text }]}>Yükleniyor...</Text>
+                  <View style={[styles.quickActionIconContainer, { backgroundColor: toneColor + '15' }]}>
+                    <IconComponent size={14} color={toneColor} />
+                  </View>
+                  <Text
+                    style={[
+                      styles.quickActionLabelCompact,
+                      { color: theme.colors.text },
+                      isDisabled && styles.quickActionLabelDisabled,
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {action.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
-        ) : postsData?.posts && postsData.posts.length > 0 ? (
+        </View>
+
+        {/* Posts Section - Adım 9: Post Grid */}
+        {postsData?.posts && postsData.posts.length > 0 ? (
           <View style={styles.postsGrid}>
-            {postsData.posts.map((post) => {
+            {postsData.posts.map((post: any) => {
               const firstMedia = post.media && post.media.length > 0 ? post.media[0] : null;
               return (
                 <PostGridItem
@@ -708,66 +644,17 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* Geçmiş Maçlar Bölümü */}
-        {pastMatches.length > 0 && (
-          <View style={[styles.matchesSection, { backgroundColor: theme.colors.card, borderTopColor: theme.colors.border }]}>
-            <View style={[styles.sectionHeader, { borderBottomColor: theme.colors.border }]}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Geçmiş Maçlar</Text>
-            </View>
-            <View style={styles.matchesList}>
-              {pastMatches.map((match: any) => {
-                let matchDateTime: string | null = null;
-                if (match.match_date_time) {
-                  matchDateTime = match.match_date_time;
-                } else if (match.match_date && match.start_time) {
-                  matchDateTime = `${match.match_date}T${match.start_time}+03:00`;
-                }
-                
-                const formattedDate = matchDateTime 
-                  ? new Date(matchDateTime).toLocaleDateString('tr-TR', {
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric',
-                    })
-                  : 'Tarih bilgisi yok';
-                
-                const formattedTime = matchDateTime
-                  ? new Date(matchDateTime).toLocaleTimeString('tr-TR', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
-                  : '--:--';
-
-                return (
-                  <TouchableOpacity
-                    key={match.id}
-                    style={[styles.matchItem, { backgroundColor: theme.colors.surface }]}
-                    onPress={() => router.push(`/football/match/${match.id}` as any)}
-                  >
-                    <View style={styles.matchItemContent}>
-                      <Text style={[styles.matchItemField, { color: theme.colors.text }]}>{match.field?.name || 'Halı Saha'}</Text>
-                      <Text style={[styles.matchItemDate, { color: theme.colors.textLight }]}>{formattedDate}</Text>
-                      <Text style={[styles.matchItemTime, { color: theme.colors.primary }]}>{formattedTime}</Text>
-                      {match.district && (
-                        <Text style={[styles.matchItemDistrict, { color: theme.colors.textLight }]}>{match.district}</Text>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
         <Footer />
       </ScrollView>
 
+      {/* Menu Modal - Basit */}
       <Modal
         visible={menuVisible}
         transparent
         animationType="fade"
         onRequestClose={() => setMenuVisible(false)}
       >
+<<<<<<< HEAD
         <TouchableOpacity 
           style={styles.menuOverlay}
           activeOpacity={1}
@@ -781,10 +668,21 @@ export default function ProfileScreen() {
             <View style={styles.menuHeader}>
               <Text style={[styles.menuTitle, { color: theme.colors.text }]}>Profil menüsü</Text>
               <TouchableOpacity 
+=======
+        <View style={styles.menuOverlay}>
+          <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
+            <View style={styles.menuBackdrop} />
+          </TouchableWithoutFeedback>
+          <View style={[styles.menuContent, { backgroundColor: theme.colors.card }]}>
+            <View style={[styles.menuHeader, { borderBottomColor: theme.colors.border }]}>
+              <Text style={[styles.menuTitle, { color: theme.colors.text }]}>Profil menüsü</Text>
+              <TouchableOpacity
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
                 onPress={() => setMenuVisible(false)}
                 style={styles.menuCloseButton}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
+<<<<<<< HEAD
                 <X size={24} color={theme.colors.text} />
               </TouchableOpacity>
             </View>
@@ -852,20 +750,85 @@ export default function ProfileScreen() {
               <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Takipçiler</Text>
               <TouchableOpacity onPress={() => setFollowersModalVisible(false)}>
                 <Text style={[styles.modalCloseText, { color: theme.colors.textLight }]}>✕</Text>
+=======
+                <Text style={[styles.menuCloseText, { color: theme.colors.text }]}>✕</Text>
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
               </TouchableOpacity>
             </View>
-            <FollowersList userId={user?.id || ''} />
+            <TouchableOpacity
+              style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
+              onPress={() => {
+                setMenuVisible(false);
+                handleNavigate('/profile/settings');
+              }}
+            >
+              <Settings size={18} color={theme.colors.text} />
+              <Text style={[styles.menuOptionText, { color: theme.colors.text }]}>Ayarlar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
+              onPress={() => {
+                setMenuVisible(false);
+                handleNavigate('/all-users');
+              }}
+            >
+              <Search size={18} color={theme.colors.text} />
+              <Text style={[styles.menuOptionText, { color: theme.colors.text }]}>Kullanıcı Ara</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
+              onPress={() => {
+                setMenuVisible(false);
+                handleNavigate('/profile/my-matches');
+              }}
+            >
+              <Trophy size={18} color={theme.colors.text} />
+              <Text style={[styles.menuOptionText, { color: theme.colors.text }]}>Paylaşılan Maçlar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
+              onPress={() => {
+                setMenuVisible(false);
+                handleNavigate('/ride/search');
+              }}
+            >
+              <Car size={18} color={theme.colors.text} />
+              <Text style={[styles.menuOptionText, { color: theme.colors.text }]}>Yolculuklarım</Text>
+            </TouchableOpacity>
+            {isAdmin && (
+              <TouchableOpacity
+                style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
+                onPress={() => {
+                  setMenuVisible(false);
+                  handleNavigate('/admin/dashboard');
+                }}
+              >
+                <Shield size={18} color={theme.colors.success} />
+                <Text style={[styles.menuOptionText, { color: theme.colors.success }]}>Admin Panel</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
+              onPress={() => {
+                setMenuVisible(false);
+                handleLogout();
+              }}
+            >
+              <LogOut size={18} color={theme.colors.error} />
+              <Text style={[styles.menuOptionText, { color: theme.colors.error }]}>Çıkış Yap</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Takip Edilenler Modal */}
+      {/* Avatar Modal - Büyük Profil Resmi */}
       <Modal
-        visible={followingModalVisible}
+        visible={avatarModalVisible}
         transparent
-        animationType="slide"
-        onRequestClose={() => setFollowingModalVisible(false)}
+        animationType="fade"
+        onRequestClose={() => setAvatarModalVisible(false)}
       >
+<<<<<<< HEAD
         <View style={styles.modalOverlay}>
           <TouchableOpacity 
             style={StyleSheet.absoluteFill}
@@ -880,9 +843,22 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
             <FollowingList userId={user?.id || ''} />
+=======
+        <View style={styles.avatarModalOverlay}>
+          <TouchableWithoutFeedback onPress={() => setAvatarModalVisible(false)}>
+            <View style={styles.avatarModalBackdrop} />
+          </TouchableWithoutFeedback>
+          <View style={styles.avatarModalContent} pointerEvents="box-none">
+            <Image
+              source={{ uri: displayProfile.avatar_url || 'https://via.placeholder.com/400' }}
+              style={styles.avatarModalImage}
+              contentFit="contain"
+            />
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
           </View>
         </View>
       </Modal>
+
     </View>
   );
 }
@@ -899,59 +875,65 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.lg,
     position: 'relative',
   },
-  profileTopRow: {
-    flexDirection: 'row',
+  menuButton: {
+    position: 'absolute',
+    top: SPACING.lg + SPACING.md,
+    right: SPACING.md,
+    padding: SPACING.sm,
+    minWidth: 36,
+    minHeight: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 18,
+  },
+  profileTopSection: {
+    alignItems: 'center',
     marginBottom: SPACING.md,
   },
-  profileLeft: {
-    marginRight: SPACING.lg,
-  },
   avatarContainer: {
-    position: 'relative',
+    marginBottom: SPACING.md,
+  },
+  avatarWrapper: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 2.5,
+    padding: 2.5,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
   },
   avatar: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    borderWidth: 2,
-    borderColor: COLORS.border,
-    overflow: 'hidden',
+    width: '100%',
+    height: '100%',
+    borderRadius: 47.5,
   },
-  storyAddButton: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.primary,
-    borderWidth: 2,
-    borderColor: COLORS.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  storyAddIcon: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '700',
-    lineHeight: 20,
-  },
-  profileRight: {
-    flex: 1,
-    justifyContent: 'center',
-    marginTop: SPACING.md, // 3 nokta menü butonundan aşağı al
-  },
-  statsRow: {
+  statsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    width: '100%',
+    paddingHorizontal: SPACING.md,
   },
-  statItem: {
+  statCard: {
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+    borderRadius: 10,
+    borderWidth: 1,
+    minHeight: 60,
   },
   statValue: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.lg,
     fontWeight: '700',
+<<<<<<< HEAD
     color: COLORS.text,
     ...(Platform.OS === 'android' && {
       includeFontPadding: false,
@@ -966,22 +948,21 @@ const styles = StyleSheet.create({
       includeFontPadding: false,
       lineHeight: FONT_SIZES.xs * 1.3,
     }),
+=======
+    marginBottom: SPACING.xs / 2,
+  },
+  statLabel: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   },
   profileInfo: {
+    alignItems: 'center',
     marginBottom: SPACING.md,
-  },
-  quickActions: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    justifyContent: 'space-between',
-    marginTop: SPACING.md,
-  },
-  quickActionCard: {
-    width: '48%',
-    backgroundColor: COLORS.background,
-    borderRadius: 12,
-    paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
+<<<<<<< HEAD
     borderWidth: 1,
     borderColor: COLORS.border,
     flexDirection: 'row' as const,
@@ -1003,19 +984,29 @@ const styles = StyleSheet.create({
   },
   quickActionLabelDisabled: {
     color: COLORS.textLight,
+=======
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: SPACING.xs,
     gap: SPACING.xs,
+    marginBottom: SPACING.xs / 2,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
   },
   name: {
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  username: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    color: COLORS.text,
+    marginBottom: SPACING.xs,
+    fontWeight: '500',
   },
   bio: {
+<<<<<<< HEAD
     fontSize: FONT_SIZES.xs,
     color: COLORS.text,
     lineHeight: 16,
@@ -1024,124 +1015,125 @@ const styles = StyleSheet.create({
       includeFontPadding: false,
       lineHeight: FONT_SIZES.xs * 1.3,
     }),
+=======
+    fontSize: FONT_SIZES.md,
+    textAlign: 'center',
+    marginBottom: SPACING.sm,
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   },
   locationRow: {
     marginTop: SPACING.xs,
   },
   locationText: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textLight,
+    fontSize: FONT_SIZES.sm,
   },
-  menuButton: {
-    position: 'absolute',
-    top: SPACING.lg + SPACING.md, // Aşağı kaydırıldı
-    right: SPACING.md,
-    padding: SPACING.sm,
-    minWidth: 36,
-    minHeight: 36,
-    borderRadius: 12,
-    backgroundColor: COLORS.background,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    zIndex: 10,
-    elevation: 3, // Android için
-    shadowColor: '#000', // iOS için
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-  },
-  tabNavigation: {
+  quickActions: {
     flexDirection: 'row',
-    backgroundColor: COLORS.white,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    gap: SPACING.xs,
+    marginTop: SPACING.md,
+    paddingHorizontal: SPACING.xs,
   },
-  tab: {
+  quickActionCard: {
     flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: 'transparent',
+    paddingHorizontal: SPACING.md,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: SPACING.xs,
   },
-  tabActive: {
-    borderBottomColor: COLORS.text,
+  quickActionCardCompact: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.xs + 2,
+    paddingHorizontal: SPACING.xs / 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 4,
+    minHeight: 64,
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  tabIcon: {
-    width: 18,
-    height: 18,
-    borderWidth: 1.5,
-    borderColor: COLORS.text,
+  quickActionIconContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  tabIconTagged: {
-    borderRadius: 12,
+  quickActionCardDisabled: {
+    opacity: 0.5,
+  },
+  quickActionLabel: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '500',
+  },
+  quickActionLabelCompact: {
+    fontSize: 10,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 12,
+  },
+  quickActionLabelDisabled: {
+    opacity: 0.5,
   },
   postsGrid: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    width: '100%',
-    backgroundColor: COLORS.white,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
   },
   postGridItem: {
     width: '33.333%',
     aspectRatio: 1,
-    borderWidth: 0.5,
-    borderColor: COLORS.border,
-    position: 'relative' as const,
-    overflow: 'hidden' as const,
+    position: 'relative',
   },
   postGridImage: {
     width: '100%',
     height: '100%',
+    overflow: 'hidden',
   },
   postGridPlaceholder: {
     backgroundColor: COLORS.background,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: SPACING.xs,
+    padding: SPACING.sm,
   },
   postGridText: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textLight,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
     textAlign: 'center',
   },
-  postGridBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  postGridBadgeText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '600',
-  },
   postGridOverlay: {
-    position: 'absolute' as const,
+    position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
     opacity: 0,
   },
   postGridOverlayVisible: {
     opacity: 1,
   },
   postGridStats: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: SPACING.xs,
   },
   postGridStatText: {
     color: COLORS.white,
     fontSize: FONT_SIZES.sm,
+<<<<<<< HEAD
     fontWeight: '700' as const,
     marginLeft: 2,
   },
@@ -1377,12 +1369,15 @@ const styles = StyleSheet.create({
   menuOptionText: {
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
+=======
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     fontWeight: '600',
     ...(Platform.OS === 'android' && {
       includeFontPadding: false,
       lineHeight: FONT_SIZES.md * 1.3,
     }),
   },
+<<<<<<< HEAD
   menuOptionDanger: {
     borderTopWidth: 1,
     borderColor: COLORS.border,
@@ -1515,36 +1510,27 @@ const styles = StyleSheet.create({
   },
   matchItem: {
     backgroundColor: COLORS.background,
+=======
+  postGridBadge: {
+    position: 'absolute',
+    top: SPACING.xs,
+    right: SPACING.xs,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     borderRadius: 12,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: 2,
   },
-  matchItemContent: {
-    gap: SPACING.xs,
-  },
-  matchItemField: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  matchItemDate: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textLight,
-  },
-  matchItemTime: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  matchItemDistrict: {
+  postGridBadgeText: {
+    color: COLORS.white,
     fontSize: FONT_SIZES.xs,
-    color: COLORS.textLight,
+    fontWeight: '600',
   },
   videoBadge: {
-    position: 'absolute' as const,
-    top: SPACING.xs,
+    position: 'absolute',
+    bottom: SPACING.xs,
     left: SPACING.xs,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     borderRadius: 12,
     paddingHorizontal: SPACING.xs,
     paddingVertical: 2,
@@ -1552,6 +1538,155 @@ const styles = StyleSheet.create({
   videoBadgeText: {
     color: COLORS.white,
     fontSize: FONT_SIZES.xs,
-    fontWeight: '600' as const,
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    padding: SPACING.xl,
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: FONT_SIZES.md,
+  },
+  emptyPostsContainer: {
+    padding: SPACING.xl,
+    alignItems: 'center',
+    marginTop: SPACING.lg,
+  },
+  emptyPostsIllustration: {
+    marginBottom: SPACING.md,
+  },
+  emptyPostsEmoji: {
+    fontSize: 64,
+  },
+  emptyPostsTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600',
+    marginBottom: SPACING.xs,
+  },
+  emptyPostsSubtitle: {
+    fontSize: FONT_SIZES.md,
+    marginBottom: SPACING.lg,
+    textAlign: 'center',
+  },
+  createPostButton: {
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    borderRadius: 8,
+  },
+  createPostButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  menuBackdrop: {
+    flex: 1,
+  },
+  menuContent: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: SPACING.xl,
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: SPACING.md,
+    borderBottomWidth: 1,
+  },
+  menuTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600',
+  },
+  menuCloseButton: {
+    padding: SPACING.xs,
+  },
+  menuCloseText: {
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '600',
+  },
+  menuOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.md,
+    borderTopWidth: 1,
+    gap: SPACING.md,
+  },
+  menuOptionDanger: {
+    borderTopColor: COLORS.error + '20',
+  },
+  menuOptionDisabled: {
+    opacity: 0.5,
+  },
+  menuOptionText: {
+    fontSize: FONT_SIZES.md,
+  },
+  emptyContainer: {
+    padding: SPACING.xl,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: 'bold',
+    marginTop: SPACING.md,
+    color: COLORS.text,
+  },
+  emptySubtext: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textLight,
+    textAlign: 'center',
+    marginTop: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+  },
+  socialMediaContainer: {
+    flexDirection: 'row',
+    gap: SPACING.xs,
+    marginTop: SPACING.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  socialMediaButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  avatarModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarModalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  avatarModalContent: {
+    width: '90%',
+    height: '90%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarModalImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 0,
   },
 });

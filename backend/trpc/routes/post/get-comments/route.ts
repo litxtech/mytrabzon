@@ -18,7 +18,16 @@ export const getCommentsProcedure = publicProcedure
         .select(
           `
           *,
-          user:profiles!comments_user_id_fkey(*)
+          user:profiles!comments_user_id_fkey(
+            id,
+            full_name,
+            username,
+            avatar_url,
+            verified,
+            supporter_badge,
+            supporter_badge_visible,
+            supporter_badge_color
+          )
         `,
           { count: "exact" }
         )

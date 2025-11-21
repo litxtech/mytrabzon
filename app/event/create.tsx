@@ -20,7 +20,7 @@ import { ArrowLeft, AlertCircle, ChevronDown, Camera, Image as ImageIcon, X, Vid
 import { getDistrictsByCity } from '@/constants/districts';
 import { Footer } from '@/components/Footer';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffect } from 'react';
 
@@ -224,8 +224,7 @@ export default function CreateEventScreen() {
       return;
     }
 
-    // "Tümü" seçildiyse district'i null yap (backend'de tüm ilçelere gönderilecek)
-    const districtToSend = formData.district === 'Tümü' ? null : formData.district;
+    // İlçe zorunlu - "Tümü" seçeneği kaldırıldı
 
     setLoading(true);
     setUploading(true);
@@ -254,6 +253,7 @@ export default function CreateEventScreen() {
         mediaUrls = existingMedia;
       }
 
+<<<<<<< HEAD
       if (isEditMode && params.edit) {
         // Düzenleme modu
         await updateEventMutation.mutateAsync({
@@ -282,6 +282,19 @@ export default function CreateEventScreen() {
           media_urls: mediaUrls.length > 0 ? mediaUrls : undefined,
         });
       }
+=======
+      await createEventMutation.mutateAsync({
+        title: formData.title,
+        description: formData.description,
+        category: formData.category as any,
+        severity: formData.severity,
+        district: formData.district,
+        city: formData.city,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+        media_urls: mediaUrls.length > 0 ? mediaUrls : undefined,
+      });
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     } catch (error) {
       console.error('Event save error:', error);
       Alert.alert('Hata', error instanceof Error ? error.message : 'Olay kaydedilemedi');
@@ -501,25 +514,6 @@ export default function CreateEventScreen() {
           {showDistrictPicker && formData.city && (
             <View style={styles.pickerContainer}>
               <ScrollView style={styles.pickerScroll} nestedScrollEnabled>
-                <TouchableOpacity
-                  style={[
-                    styles.pickerOption,
-                    formData.district === 'Tümü' && styles.pickerOptionActive,
-                  ]}
-                  onPress={() => {
-                    setFormData({ ...formData, district: 'Tümü' });
-                    setShowDistrictPicker(false);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.pickerOptionText,
-                      formData.district === 'Tümü' && styles.pickerOptionTextActive,
-                    ]}
-                  >
-                    🌍 Tümü (Tüm İlçelere Paylaş)
-                  </Text>
-                </TouchableOpacity>
                 {availableDistricts.map((district) => (
                   <TouchableOpacity
                     key={district}

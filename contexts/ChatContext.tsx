@@ -518,15 +518,24 @@ export const [ChatContext, useChat] = createContextHook(() => {
     }
   }, [user]);
 
-  const loadMessages = useCallback(async (roomId: string) => {
+  const loadMessages = useCallback(async (roomId: string, optimisticMessages?: Message[]) => {
     if (!user) return;
 
     try {
-      const roomMessages = await fetchRoomMessages(roomId, 50);
-      setMessages(prev => ({
-        ...prev,
-        [roomId]: roomMessages,
-      }));
+      if (optimisticMessages) {
+        // Optimistic update için direkt mesajları set et
+        setMessages(prev => ({
+          ...prev,
+          [roomId]: optimisticMessages,
+        }));
+      } else {
+        // Normal fetch
+        const roomMessages = await fetchRoomMessages(roomId, 50);
+        setMessages(prev => ({
+          ...prev,
+          [roomId]: roomMessages,
+        }));
+      }
     } catch (error) {
       console.error('Error loading messages:', { roomId, error });
     }

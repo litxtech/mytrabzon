@@ -16,7 +16,7 @@ import {
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Plus, X, Calendar, Users, Check } from 'lucide-react-native';
+import { ArrowLeft, Plus, X, Users, Check } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 
@@ -27,7 +27,6 @@ export default function RideCreateScreen() {
   const insets = useSafeAreaInsets();
   const utils = trpc.useUtils();
   const [loading, setLoading] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
 
   // Form state
   const [departureTitle, setDepartureTitle] = useState('');
@@ -40,6 +39,8 @@ export default function RideCreateScreen() {
   const [totalSeats, setTotalSeats] = useState('3');
   const [selectedPrice, setSelectedPrice] = useState<number | null>(null);
   const [showPricePicker, setShowPricePicker] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [notes, setNotes] = useState('');
   const [allowPets, setAllowPets] = useState(false);
   const [allowSmoking, setAllowSmoking] = useState(false);
@@ -79,6 +80,62 @@ export default function RideCreateScreen() {
     setStops(stops.filter((_, i) => i !== index));
   };
 
+  const formatDate = (date: Date): string => {
+    const day = date.getDate().toString().padStart(2, '0');
+    const monthNames = [
+      'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+      'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
+    ];
+    const month = monthNames[date.getMonth()];
+    const year = date.getFullYear();
+    return `${day} ${month} ${year}`;
+  };
+
+  const formatTime = (date: Date): string => {
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
+  const handleDatePress = () => {
+    if (Platform.OS === 'ios') {
+      setShowDatePicker(true);
+    } else {
+      DateTimePickerAndroid.open({
+        value: departureTime,
+        mode: 'date',
+        onChange: (event, selectedDate) => {
+          if (event.type === 'dismissed' || !selectedDate) return;
+          const newDate = new Date(selectedDate);
+          newDate.setHours(departureTime.getHours());
+          newDate.setMinutes(departureTime.getMinutes());
+          setDepartureTime(newDate);
+        },
+      });
+    }
+  };
+
+  const handleTimePress = () => {
+    if (Platform.OS === 'ios') {
+      setShowTimePicker(true);
+    } else {
+      DateTimePickerAndroid.open({
+        value: departureTime,
+        mode: 'time',
+        is24Hour: true,
+        onChange: (event, selectedTime) => {
+          if (event.type === 'dismissed' || !selectedTime) return;
+          const newDate = new Date(departureTime);
+          newDate.setHours(selectedTime.getHours());
+          newDate.setMinutes(selectedTime.getMinutes());
+          newDate.setSeconds(0);
+          newDate.setMilliseconds(0);
+          setDepartureTime(newDate);
+        },
+      });
+    }
+  };
+
   const handleSubmit = async () => {
     if (!departureTitle.trim() || !destinationTitle.trim()) {
       Alert.alert('Hata', 'Lütfen kalkış ve varış yerlerini girin');
@@ -90,13 +147,23 @@ export default function RideCreateScreen() {
       return;
     }
 
-    if (!selectedPrice) {
-      Alert.alert('Hata', 'Lütfen kişi başı ücret seçin');
+    if (selectedPrice === null || selectedPrice === undefined || selectedPrice < 10) {
+      Alert.alert('Hata', 'Lütfen en az 10 TL ücret seçin');
       return;
     }
 
-    if (!vehicleBrand.trim() || !vehicleModel.trim() || !vehicleColor.trim()) {
-      Alert.alert('Hata', 'Araç marka, model ve renk bilgilerini eksiksiz girin');
+    if (!vehicleBrand.trim() || vehicleBrand.trim().length < 2) {
+      Alert.alert('Hata', 'Araç markası en az 2 karakter olmalıdır');
+      return;
+    }
+
+    if (!vehicleModel.trim() || vehicleModel.trim().length < 2) {
+      Alert.alert('Hata', 'Araç modeli en az 2 karakter olmalıdır');
+      return;
+    }
+
+    if (!vehicleColor.trim() || vehicleColor.trim().length < 2) {
+      Alert.alert('Hata', 'Araç rengi en az 2 karakter olmalıdır');
       return;
     }
 
@@ -130,7 +197,7 @@ export default function RideCreateScreen() {
 
     setLoading(true);
     try {
-      await createRideMutation.mutateAsync({
+      const rideData: any = {
         departure_title: departureTitle.trim(),
         departure_description: departureDescription.trim() || null,
         destination_title: destinationTitle.trim(),
@@ -138,7 +205,6 @@ export default function RideCreateScreen() {
         stops: stops,
         departure_time: departureTime.toISOString(),
         total_seats: parseInt(totalSeats),
-        price_per_seat: selectedPrice,
         notes: notes.trim() || null,
         allow_pets: allowPets,
         allow_smoking: allowSmoking,
@@ -148,7 +214,14 @@ export default function RideCreateScreen() {
         vehicle_plate: vehiclePlate.trim().toUpperCase(),
         driver_full_name: driverFullName.trim(),
         driver_phone: driverPhone.trim(),
-      });
+      };
+
+      // Fiyat ekle
+      if (selectedPrice !== null && selectedPrice !== undefined && selectedPrice >= 10) {
+        rideData.price_per_seat = selectedPrice;
+      }
+
+      await createRideMutation.mutateAsync(rideData);
     } catch (error) {
       console.error('Create ride error:', error);
     } finally {
@@ -283,73 +356,74 @@ export default function RideCreateScreen() {
         {/* Tarih & Saat */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Tarih & Saat</Text>
-        <TouchableOpacity
-          style={styles.dateButton}
-          onPress={() => {
-            if (Platform.OS === 'android') {
-              DateTimePickerAndroid.open({
-                value: departureTime,
-                mode: 'date',
-                onChange: (event, selectedDate) => {
-                  if (event?.type === 'dismissed') {
-                    return;
-                  }
-                  const baseDate = selectedDate || departureTime;
-                  DateTimePickerAndroid.open({
-                    value: baseDate,
-                    mode: 'time',
-                    is24Hour: true,
-                    onChange: (timeEvent, selectedTime) => {
-                      if (timeEvent?.type === 'dismissed') {
-                        return;
-                      }
-                      if (selectedTime) {
-                        const merged = new Date(baseDate);
-                        merged.setHours(selectedTime.getHours());
-                        merged.setMinutes(selectedTime.getMinutes());
-                        merged.setSeconds(0);
-                        merged.setMilliseconds(0);
-                        setDepartureTime(merged);
-                      }
-                    },
-                  });
-                },
-              });
-              return;
-            }
-            setShowDatePicker(true);
-          }}
-        >
-            <Calendar size={20} color={COLORS.primary} />
-            <Text style={styles.dateButtonText}>
-              {departureTime.toLocaleString('tr-TR', {
-                day: '2-digit',
-                month: 'long',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </Text>
-          </TouchableOpacity>
+          <Text style={styles.sectionSubtitle}>
+            Yolculuk tarihi ve kalkış saati
+          </Text>
+          
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Tarih *</Text>
+            <TouchableOpacity
+              style={styles.input}
+              onPress={handleDatePress}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.inputText}>
+                {formatDate(departureTime)}
+              </Text>
+            </TouchableOpacity>
+            {Platform.OS === 'ios' && showDatePicker && (
+              <View style={styles.pickerWrapper}>
+                <DateTimePicker
+                  value={departureTime}
+                  mode="date"
+                  display="default"
+                  onChange={(event: any, selectedDate?: Date) => {
+                    if (selectedDate) {
+                      const newDate = new Date(selectedDate);
+                      newDate.setHours(departureTime.getHours());
+                      newDate.setMinutes(departureTime.getMinutes());
+                      setDepartureTime(newDate);
+                    }
+                    setShowDatePicker(false);
+                  }}
+                />
+              </View>
+            )}
+          </View>
 
-          {showDatePicker && Platform.OS === 'ios' && (
-            <DateTimePicker
-              value={departureTime}
-              mode="datetime"
-              is24Hour={true}
-              display="default"
-              onChange={(event: any, selectedDate?: Date) => {
-                if (event?.type === 'dismissed') {
-                  setShowDatePicker(false);
-                  return;
-                }
-                if (selectedDate) {
-                  setDepartureTime(selectedDate);
-                }
-                setShowDatePicker(false);
-              }}
-            />
-          )}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Saat *</Text>
+            <TouchableOpacity
+              style={styles.input}
+              onPress={handleTimePress}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.inputText}>
+                {formatTime(departureTime)}
+              </Text>
+            </TouchableOpacity>
+            {Platform.OS === 'ios' && showTimePicker && (
+              <View style={styles.pickerWrapper}>
+                <DateTimePicker
+                  value={departureTime}
+                  mode="time"
+                  is24Hour={true}
+                  display="default"
+                  onChange={(event: any, selectedTime?: Date) => {
+                    if (selectedTime) {
+                      const newDate = new Date(departureTime);
+                      newDate.setHours(selectedTime.getHours());
+                      newDate.setMinutes(selectedTime.getMinutes());
+                      newDate.setSeconds(0);
+                      newDate.setMilliseconds(0);
+                      setDepartureTime(newDate);
+                    }
+                    setShowTimePicker(false);
+                  }}
+                />
+              </View>
+            )}
+          </View>
         </View>
 
         {/* Koltuk & Fiyat */}
@@ -372,7 +446,7 @@ export default function RideCreateScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Kişi başı fiyat *</Text>
+            <Text style={styles.label}>Kişi Başı Ücret *</Text>
             <TouchableOpacity
               style={styles.priceSelector}
               onPress={() => setShowPricePicker(true)}
@@ -570,7 +644,7 @@ export default function RideCreateScreen() {
                       selectedPrice === item && styles.priceOptionTextSelected,
                     ]}
                   >
-                    {item.toLocaleString('tr-TR')} TL
+                    {`${item.toLocaleString('tr-TR')} TL`}
                   </Text>
                   {selectedPrice === item && (
                     <Check size={18} color={COLORS.white} />
@@ -741,6 +815,20 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     borderWidth: 1,
     borderColor: COLORS.border,
+    minHeight: 48,
+    justifyContent: 'center',
+  },
+  inputText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+  },
+  pickerWrapper: {
+    marginTop: SPACING.sm,
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    padding: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   textArea: {
     minHeight: 80,
@@ -800,21 +888,6 @@ const styles = StyleSheet.create({
   },
   removeStopButton: {
     padding: SPACING.xs,
-  },
-  dateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: SPACING.sm,
-  },
-  dateButtonText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
-    fontWeight: '600',
   },
   checkboxRow: {
     flexDirection: 'row',
@@ -973,6 +1046,67 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     marginTop: SPACING.md,
     marginBottom: SPACING.xs,
+  },
+  dateButtonContent: {
+    flex: 1,
+  },
+  androidPickerContainer: {
+    gap: SPACING.md,
+    marginVertical: SPACING.lg,
+  },
+  androidPickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  pickerLabel: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.text,
+    minWidth: 60,
+  },
+  pickerButton: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    borderRadius: 12,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  pickerButtonText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  modalButtonRow: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginTop: SPACING.lg,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalButtonPrimary: {
+    backgroundColor: COLORS.primary,
+  },
+  modalButtonSecondary: {
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  modalButtonTextPrimary: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
+  },
+  modalButtonTextSecondary: {
+    color: COLORS.text,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
   },
 });
 

@@ -8,12 +8,12 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  Image,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as ImagePicker from 'expo-image-picker';
-import { ArrowLeft, Upload, CheckCircle } from 'lucide-react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import { ArrowLeft, CheckCircle, FileText } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
@@ -30,6 +30,7 @@ export default function KTUVerifyScreen() {
   const [classYear, setClassYear] = useState<number>(1);
   const [ktuEmail, setKtuEmail] = useState('');
   const [documentUri, setDocumentUri] = useState<string | null>(null);
+  const [documentName, setDocumentName] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
   // Fakülteleri ve bölümleri getir
@@ -55,53 +56,57 @@ export default function KTUVerifyScreen() {
   });
 
   const pickDocument = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('İzin Gerekli', 'Fotoğraf seçmek için izin gerekli.');
-      return;
-    }
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf', // Sadece PDF kabul et
+        copyToCacheDirectory: true,
+      });
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.8,
-      allowsMultipleSelection: false,
-      // Hem belge hem normal resim kabul et
-      exif: false,
-    });
+      if (!result.canceled && result.assets[0]) {
+        const file = result.assets[0];
+        
+        // PDF kontrolü
+        if (!file.name?.toLowerCase().endsWith('.pdf')) {
+          Alert.alert('Hata', 'Lütfen sadece PDF dosyası seçin.');
+          return;
+        }
 
-    if (!result.canceled && result.assets[0]) {
-      await uploadDocument(result.assets[0].uri);
+        await uploadDocument(file.uri, file.name);
+      }
+    } catch (error: any) {
+      console.error('Document picker error:', error);
+      Alert.alert('Hata', 'Belge seçilirken bir hata oluştu: ' + (error.message || 'Bilinmeyen hata'));
     }
   };
 
-  const uploadDocument = async (uri: string) => {
+  const uploadDocument = async (uri: string, fileName: string) => {
     if (!user) return;
 
     setUploading(true);
     try {
-      // Dosya uzantısını al ve düzelt
-      let fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
-      // jpg -> jpeg düzelt
-      if (fileExt === 'jpg') fileExt = 'jpeg';
-      const fileName = `ktu-verification/${user.id}-${Date.now()}.${fileExt}`;
+      // PDF dosyasını oku
+      const fileContent = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
 
-      // MIME type'ı düzelt
-      const mimeType = fileExt === 'jpeg' || fileExt === 'jpg' 
-        ? 'image/jpeg' 
-        : fileExt === 'png' 
-        ? 'image/png' 
-        : `image/${fileExt}`;
+      // Base64'ü Uint8Array'e çevir
+      const base64Data = fileContent;
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
 
-      // React Native'de blob() yok, doğrudan URI kullan
+      // Dosya adını oluştur
+      const timestamp = Date.now();
+      const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const storageFileName = `ktu-verification/${user.id}-${timestamp}-${sanitizedFileName}`;
+
+      // Supabase Storage'a yükle
       const { error } = await supabase.storage
         .from('kyc-documents')
-        .upload(fileName, {
-          uri,
-          type: mimeType,
-          name: fileName,
-        } as any, {
-          contentType: mimeType,
+        .upload(storageFileName, bytes, {
+          contentType: 'application/pdf',
           upsert: false,
         });
 
@@ -110,15 +115,17 @@ export default function KTUVerifyScreen() {
         throw error;
       }
 
+      // Public URL al
       const { data: urlData } = supabase.storage
         .from('kyc-documents')
-        .getPublicUrl(fileName);
+        .getPublicUrl(storageFileName);
 
       if (!urlData?.publicUrl) {
         throw new Error('Public URL oluşturulamadı');
       }
 
       setDocumentUri(urlData.publicUrl);
+      setDocumentName(fileName);
     } catch (error: any) {
       console.error('Upload error:', error);
       Alert.alert('Hata', error.message || 'Belge yüklenirken bir hata oluştu.');
@@ -164,6 +171,7 @@ export default function KTUVerifyScreen() {
       setClassYear(studentInfo.class_year || 1);
       setKtuEmail(studentInfo.ktu_email || '');
       setDocumentUri(studentInfo.verification_document_url || null);
+      setDocumentName(studentInfo.verification_document_url ? 'Yüklenmiş belge' : null);
     }
   }, [studentInfo]);
 
@@ -184,7 +192,7 @@ export default function KTUVerifyScreen() {
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>Öğrenci Doğrulama</Text>
           <Text style={styles.infoText}>
-            KTÜ özelliklerini kullanmak için öğrenci doğrulaması yapmanız gerekmektedir. Öğrenci belgenizi yükleyin ve bilgilerinizi doldurun.
+            KTÜ özelliklerini kullanmak için öğrenci doğrulaması yapmanız gerekmektedir. Öğrenci belgenizi PDF formatında yükleyin ve bilgilerinizi doldurun.
           </Text>
         </View>
 
@@ -291,28 +299,47 @@ export default function KTUVerifyScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Öğrenci Belgesi *</Text>
+            <Text style={styles.label}>Öğrenci Belgesi (PDF) *</Text>
+            <Text style={styles.hint}>Lütfen öğrenci belgenizi PDF formatında yükleyin</Text>
             <TouchableOpacity
               style={styles.uploadButton}
               onPress={pickDocument}
               disabled={uploading}
             >
               {uploading ? (
-                <ActivityIndicator size="small" color={COLORS.primary} />
+                <>
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                  <Text style={styles.uploadButtonText}>Yükleniyor...</Text>
+                </>
               ) : documentUri ? (
                 <>
                   <CheckCircle size={24} color={COLORS.success} />
-                  <Text style={styles.uploadButtonText}>Belge Yüklendi</Text>
+                  <View style={styles.uploadInfo}>
+                    <Text style={styles.uploadButtonText}>Belge Yüklendi</Text>
+                    {documentName && (
+                      <Text style={styles.documentName} numberOfLines={1}>
+                        {documentName}
+                      </Text>
+                    )}
+                  </View>
                 </>
               ) : (
                 <>
-                  <Upload size={24} color={COLORS.primary} />
-                  <Text style={styles.uploadButtonText}>Belge Yükle</Text>
+                  <FileText size={24} color={COLORS.primary} />
+                  <Text style={styles.uploadButtonText}>PDF Belge Seç</Text>
                 </>
               )}
             </TouchableOpacity>
             {documentUri && (
-              <Image source={{ uri: documentUri }} style={styles.documentPreview} />
+              <TouchableOpacity
+                style={styles.removeButton}
+                onPress={() => {
+                  setDocumentUri(null);
+                  setDocumentName(null);
+                }}
+              >
+                <Text style={styles.removeButtonText}>Belgeyi Kaldır</Text>
+              </TouchableOpacity>
             )}
           </View>
 
@@ -364,6 +391,12 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
     lineHeight: 20,
+  },
+  hint: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+    marginBottom: SPACING.sm,
+    fontStyle: 'italic',
   },
   form: {
     gap: SPACING.lg,
@@ -475,12 +508,24 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontWeight: '600',
   },
-  documentPreview: {
-    width: '100%',
-    height: 200,
-    borderRadius: 12,
-    marginTop: SPACING.md,
-    backgroundColor: COLORS.border,
+  uploadInfo: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  documentName: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+    marginTop: SPACING.xs / 2,
+  },
+  removeButton: {
+    marginTop: SPACING.sm,
+    padding: SPACING.sm,
+    alignItems: 'center',
+  },
+  removeButtonText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.error,
+    fontWeight: '500',
   },
   submitButton: {
     backgroundColor: COLORS.primary,

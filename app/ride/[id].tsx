@@ -50,6 +50,16 @@ export default function RideDetailScreen() {
     onSettled: () => setActionBookingId(null),
   });
 
+  const completeRideMutation = trpc.ride.completeRide.useMutation({
+    onSuccess: () => {
+      Alert.alert('Başarılı', 'Yolculuk tamamlandı olarak işaretlendi!');
+      refetch();
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Yolculuk tamamlanamadı');
+    },
+  });
+
 
   const bookRideMutation = trpc.ride.bookRide.useMutation({
     onSuccess: () => {
@@ -451,6 +461,38 @@ export default function RideDetailScreen() {
                         )}
                       </TouchableOpacity>
                     </View>
+                  )}
+
+                  {booking.status === 'approved' && !booking.completed_at && (
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.completeButton]}
+                      onPress={() => {
+                        Alert.alert(
+                          'Yolculuk Tamamlandı',
+                          'Bu yolculuğu tamamlandı olarak işaretlemek istediğinizden emin misiniz?',
+                          [
+                            { text: 'İptal', style: 'cancel' },
+                            {
+                              text: 'Tamamla',
+                              onPress: () => completeRideMutation.mutate({ booking_id: booking.id }),
+                            },
+                          ]
+                        );
+                      }}
+                      disabled={completeRideMutation.isPending}
+                    >
+                      {completeRideMutation.isPending ? (
+                        <ActivityIndicator size="small" color={COLORS.white} />
+                      ) : (
+                        <Text style={styles.actionButtonText}>Yolculuğu Tamamla</Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
+
+                  {booking.completed_at && !booking.reviewed_at && (
+                    <Text style={styles.completedText}>
+                      ✓ Yolculuk tamamlandı - Değerlendirme bekleniyor
+                    </Text>
                   )}
                 </View>
               );

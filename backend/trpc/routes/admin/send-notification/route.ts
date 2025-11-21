@@ -83,14 +83,14 @@ export const sendNotificationProcedure = protectedProcedure
 
     // Bildirim kayıtlarını oluştur
     // body alanı NOT NULL olduğu için boş olamaz
-    const bodyText = input.body?.trim() || input.title?.trim() || 'Bildirim';
-    
-    if (!bodyText || bodyText.length === 0) {
+    if (!input.body || input.body.trim().length === 0) {
       throw new TRPCError({
         code: 'BAD_REQUEST',
-        message: 'Mesaj içeriği boş olamaz',
+        message: 'Mesaj içeriği (body) boş olamaz',
       });
     }
+    
+    const bodyText = input.body.trim();
     
     // Data objesini oluştur (medya URL'i varsa ekle)
     const notificationData: any = { ...(input.data || {}) };
@@ -99,12 +99,19 @@ export const sendNotificationProcedure = protectedProcedure
       notificationData.mediaUrl = input.mediaUrl.trim();
     }
 
+    // Admin bildirimleri mytrabzonteam adıyla gönderilir
+    const adminTitle = input.type === 'SYSTEM' ? `MyTrabzonTeam: ${input.title}` : input.title;
+    
     const notifications = targetUserIds.map((userId) => ({
       user_id: userId,
       type: input.type,
-      title: input.title,
+      title: adminTitle,
       body: bodyText, // notifications tablosunda body kolonu var
-      data: notificationData,
+      data: {
+        ...notificationData,
+        sender: 'mytrabzonteam',
+        sender_name: 'MyTrabzonTeam',
+      },
       push_sent: false,
       is_deleted: false,
     }));
@@ -142,12 +149,17 @@ export const sendNotificationProcedure = protectedProcedure
     if (pushTokens.length > 0) {
       try {
         const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+        const adminTitle = input.type === 'SYSTEM' ? `MyTrabzonTeam: ${input.title}` : input.title;
         const messages = pushTokens.map((token) => ({
           to: token,
           sound: 'default',
-          title: input.title,
-          body: input.body,
-          data: input.data || {},
+          title: adminTitle,
+          body: bodyText,
+          data: {
+            ...(input.data || {}),
+            sender: 'mytrabzonteam',
+            sender_name: 'MyTrabzonTeam',
+          },
           badge: 1,
         }));
 

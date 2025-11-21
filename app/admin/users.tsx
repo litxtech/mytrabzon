@@ -79,8 +79,23 @@ export default function AdminUsersScreen() {
     },
   });
 
+  const utils = trpc.useUtils();
+
   const giveBlueTickMutation = trpc.admin.giveBlueTick.useMutation({
-    onSuccess: () => {
+    onSuccess: async (_data: any, variables: { userId: string }) => {
+      // Tüm ilgili cache'leri invalidate et
+      await Promise.all([
+        (utils.user.getProfile as any).invalidate({ userId: variables.userId }),
+        utils.user.getAllUsers.invalidate(),
+        utils.user.getFollowers.invalidate({ user_id: variables.userId }),
+        utils.user.getFollowing.invalidate({ user_id: variables.userId }),
+        utils.post.getComments.invalidate(),
+        utils.post.getPosts.invalidate(),
+        (utils.post.getPostDetail as any)?.invalidate(),
+        (utils.chat.getRooms as any)?.invalidate(),
+        (utils.event as any).getEventComments.invalidate(),
+        utils.event.getEvents.invalidate(),
+      ]);
       refetch();
       Alert.alert('Başarılı', 'Mavi tik verildi');
     },
@@ -90,7 +105,20 @@ export default function AdminUsersScreen() {
   });
 
   const removeBlueTickMutation = trpc.admin.removeBlueTick.useMutation({
-    onSuccess: () => {
+    onSuccess: async (_data: any, variables: { userId: string }) => {
+      // Tüm ilgili cache'leri invalidate et
+      await Promise.all([
+        (utils.user.getProfile as any).invalidate({ userId: variables.userId }),
+        utils.user.getAllUsers.invalidate(),
+        utils.user.getFollowers.invalidate({ user_id: variables.userId }),
+        utils.user.getFollowing.invalidate({ user_id: variables.userId }),
+        utils.post.getComments.invalidate(),
+        utils.post.getPosts.invalidate(),
+        (utils.post.getPostDetail as any)?.invalidate(),
+        (utils.chat.getRooms as any)?.invalidate(),
+        (utils.event as any).getEventComments.invalidate(),
+        utils.event.getEvents.invalidate(),
+      ]);
       refetch();
       Alert.alert('Başarılı', 'Mavi tik kaldırıldı');
     },
@@ -370,7 +398,9 @@ export default function AdminUsersScreen() {
                       </View>
                     )}
                   </View>
-                  <Text style={styles.userEmail}>{user.email || 'Email yok'}</Text>
+                  {user.email && <Text style={styles.userEmail}>📧 {user.email}</Text>}
+                  {user.phone && <Text style={styles.userPhone}>📱 {user.phone}</Text>}
+                  {!user.email && !user.phone && <Text style={styles.userEmail}>Email/Telefon yok</Text>}
                   <Text style={styles.userDistrict}>{user.district || 'İlçe belirtilmemiş'}</Text>
                   <Text style={styles.userDate}>
                     Kayıt: {new Date(user.created_at).toLocaleDateString('tr-TR')}
@@ -597,6 +627,11 @@ const styles = StyleSheet.create({
     marginLeft: SPACING.xs,
   },
   userEmail: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+    marginBottom: SPACING.xs,
+  },
+  userPhone: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
     marginBottom: SPACING.xs,

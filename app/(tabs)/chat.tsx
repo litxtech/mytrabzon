@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { MessageCircle, Users, MapPin, AlertCircle, Inbox, UsersRound, Plus, Trash2, CheckSquare, Square } from 'lucide-react-native';
 import { Footer } from '@/components/Footer';
 import { trpc } from '@/lib/trpc';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 
 type TabType = 'inbox' | 'groups';
 type GroupCategory = 'genel' | 'yardim' | 'etkinlik' | 'is' | 'egitim';
@@ -493,9 +494,14 @@ export default function ChatScreen() {
               <View style={styles.chatInfo}>
                 <View style={styles.chatHeader}>
                   <View style={styles.chatNameContainer}>
-                    <Text style={styles.chatName}>
-                      {getRoomName(room)}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.chatName}>
+                        {getRoomName(room)}
+                      </Text>
+                      {room.type === 'direct' && room.other_user?.verified && (
+                        <VerifiedBadgeIcon size={14} />
+                      )}
+                    </View>
                   </View>
                   <View style={styles.chatTimeContainer}>
                     <Text style={styles.chatTime}>

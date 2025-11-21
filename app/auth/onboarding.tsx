@@ -7,8 +7,6 @@ import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { DISTRICTS, DISTRICT_BADGES } from '@/constants/districts';
 import { District } from '@/types/database';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { PolicyConsentModal } from '@/components/PolicyConsentModal';
-import { trpc } from '@/lib/trpc';
 
 export default function OnboardingScreen() {
   const { user, refreshProfile } = useAuth();
@@ -17,15 +15,16 @@ export default function OnboardingScreen() {
   const [fullName, setFullName] = useState('');
   const [bio, setBio] = useState('');
   const [selectedDistrict, setSelectedDistrict] = useState<District | null>(null);
-  const [showPolicyModal, setShowPolicyModal] = useState(false);
-  const [policiesAccepted, setPoliciesAccepted] = useState(false);
   const [checkingProfile, setCheckingProfile] = useState(true);
 
   // Profil kontrolü - eğer profil varsa feed'e yönlendir
   useEffect(() => {
     const checkExistingProfile = async () => {
       if (!user?.id) {
+        console.warn('⚠️ [onboarding] No user found, redirecting to login');
         setCheckingProfile(false);
+        // Kullanıcı yoksa login sayfasına yönlendir
+        router.replace('/auth/login');
         return;
       }
 
@@ -60,45 +59,13 @@ export default function OnboardingScreen() {
     checkExistingProfile();
   }, [user?.id, router]);
 
-  // Zorunlu politikaları al
-  const { data: policiesData, isLoading: policiesLoading } = (trpc as any).user.getRequiredPolicies.useQuery();
-  const consentMutation = (trpc as any).user.consentToPolicies.useMutation();
-
-  // Policy yoksa veya query başarısızsa otomatik olarak kabul edilmiş say
-  useEffect(() => {
-    if (!policiesLoading && (!policiesData?.policies || policiesData.policies.length === 0)) {
-      console.log('✅ [onboarding] No policies required, auto-accepting');
-      setPoliciesAccepted(true);
-    }
-  }, [policiesData, policiesLoading]);
-
-  // İlk açılışta politika modalını göster
-  useEffect(() => {
-    if (policiesData?.policies && policiesData.policies.length > 0 && !policiesAccepted) {
-      console.log('📋 [onboarding] Showing policy modal');
-      setShowPolicyModal(true);
-    }
-  }, [policiesData, policiesAccepted]);
-
-  const handlePolicyAccept = async (policyIds: string[]) => {
-    try {
-      await consentMutation.mutateAsync({ policyIds });
-      setPoliciesAccepted(true);
-      setShowPolicyModal(false);
-    } catch (error) {
-      console.error('Error accepting policies:', error);
-      alert('Politika onayı sırasında bir hata oluştu');
-    }
-  };
 
   // Button disabled durumunu hesapla
   const isButtonDisabled = useMemo(() => {
-    const hasRequiredPolicies = policiesData?.policies && policiesData.policies.length > 0;
-    const needsPolicyAcceptance = hasRequiredPolicies && !policiesAccepted && !policiesLoading;
     const hasFullName = !!fullName.trim();
     const hasDistrict = !!selectedDistrict;
     
-    const disabled = loading || !hasFullName || !hasDistrict || needsPolicyAcceptance;
+    const disabled = loading || !hasFullName || !hasDistrict;
     
     if (disabled) {
       console.log('🚫 [onboarding] Button disabled:', {
@@ -106,10 +73,6 @@ export default function OnboardingScreen() {
         hasFullName,
         hasDistrict,
         selectedDistrict: selectedDistrict || 'null',
-        policiesAccepted,
-        policiesLoading,
-        hasRequiredPolicies,
-        needsPolicyAcceptance,
       });
     } else {
       console.log('✅ [onboarding] Button enabled:', {
@@ -120,7 +83,7 @@ export default function OnboardingScreen() {
     }
     
     return disabled;
-  }, [loading, fullName, selectedDistrict, policiesAccepted, policiesLoading, policiesData]);
+  }, [loading, fullName, selectedDistrict]);
 
   const handleComplete = async () => {
     console.log('🔘 [onboarding] Başla button pressed');
@@ -128,29 +91,27 @@ export default function OnboardingScreen() {
       fullName: fullName.trim(),
       selectedDistrict,
       hasUser: !!user,
-      policiesAccepted,
       loading,
       isButtonDisabled,
     });
     
     const trimmedFullName = fullName.trim();
-    if (!trimmedFullName || !selectedDistrict || !user) {
+    if (!trimmedFullName || !selectedDistrict) {
       console.error('❌ [onboarding] Validation failed:', {
         hasFullName: !!trimmedFullName,
         hasDistrict: !!selectedDistrict,
-        hasUser: !!user,
       });
       Alert.alert('Hata', 'Lütfen tüm alanları doldurun');
       return;
     }
 
-    // Politika onayı kontrolü
-    if (!policiesAccepted && policiesData?.policies && policiesData.policies.length > 0) {
-      console.warn('⚠️ [onboarding] Policies not accepted');
-      Alert.alert('Uyarı', 'Devam etmek için politikaları kabul etmeniz gerekmektedir');
-      setShowPolicyModal(true);
+    if (!user?.id) {
+      console.error('❌ [onboarding] No user found');
+      Alert.alert('Hata', 'Oturum bulunamadı. Lütfen tekrar giriş yapın.');
+      router.replace('/auth/login');
       return;
     }
+
 
     console.log('✅ [onboarding] Starting profile creation...');
     setLoading(true);
@@ -369,22 +330,6 @@ export default function OnboardingScreen() {
         </View>
       </View>
 
-      {/* Politika Onay Modalı */}
-      {policiesData?.policies && (
-        <PolicyConsentModal
-          visible={showPolicyModal}
-          policies={policiesData.policies}
-          onAccept={() => {
-            const policyIds = policiesData.policies.map((p: any) => p.id);
-            handlePolicyAccept(policyIds);
-          }}
-          onReject={() => {
-            // Zorunlu olduğu için reddetme seçeneği yok
-            alert('Politikaları kabul etmeden devam edemezsiniz');
-          }}
-          required={true}
-        />
-      )}
     </SafeAreaView>
   );
 }

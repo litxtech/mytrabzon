@@ -18,7 +18,7 @@ import { DISTRICT_BADGES } from '@/constants/districts';
 import { District } from '@/types/database';
 import { X, Image as ImageIcon, Camera, MapPin, Video as VideoIcon } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import { Footer } from '@/components/Footer';
 import { Video, ResizeMode } from 'expo-av';
 import { compressImage } from '@/lib/image-compression';
@@ -289,8 +289,35 @@ export default function CreatePostScreen() {
         ]);
       }
     } catch (error) {
-      console.error('Post oluşturma hatası:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Gönderi oluşturulurken bir hata oluştu';
+      console.error('❌ Post oluşturma hatası:', error);
+      
+      // Daha detaylı hata mesajı
+      let errorMessage = 'Gönderi oluşturulurken bir hata oluştu';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        
+        // Network hatalarını yakala
+        if (error.message.includes('fetch') || error.message.includes('network') || error.message.includes('Network')) {
+          errorMessage = 'İnternet bağlantınızı kontrol edin ve tekrar deneyin';
+        }
+        
+        // Supabase hatalarını yakala
+        if (error.message.includes('Supabase') || error.message.includes('supabase')) {
+          errorMessage = 'Sunucu bağlantı hatası. Lütfen daha sonra tekrar deneyin.';
+        }
+        
+        // Auth hatalarını yakala
+        if (error.message.includes('auth') || error.message.includes('unauthorized') || error.message.includes('token')) {
+          errorMessage = 'Oturum süreniz dolmuş olabilir. Lütfen tekrar giriş yapın.';
+        }
+      }
+      
+      console.error('Hata detayları:', {
+        message: errorMessage,
+        error: error,
+      });
+      
       Alert.alert('Hata', errorMessage);
     } finally {
       setIsUploading(false);
@@ -307,7 +334,11 @@ export default function CreatePostScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView 
+        style={styles.content}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.userInfo}>
           <Image
             source={{
@@ -383,8 +414,6 @@ export default function CreatePostScreen() {
         <Text style={styles.characterCount}>
           {content.length} / 1000
         </Text>
-        
-        <Footer />
       </ScrollView>
 
       <View style={styles.toolbar}>
@@ -470,6 +499,9 @@ const styles = StyleSheet.create({
 
   content: {
     flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: SPACING.md,
   },
   userInfo: {
     flexDirection: 'row' as const,

@@ -17,6 +17,7 @@ import { ArrowLeft, MessageCircle, Search, Check } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 
 export default function NewMessageScreen() {
   const router = useRouter();
@@ -115,9 +116,12 @@ export default function NewMessageScreen() {
                     style={styles.userAvatar}
                   />
                   <View style={styles.userInfo}>
-                    <Text style={styles.userName}>{item.full_name}</Text>
-                    {item.username && (
-                      <Text style={styles.userUsername}>@{item.username}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.userName}>{item.full_name}</Text>
+                      {item.verified && <VerifiedBadgeIcon size={14} />}
+                    </View>
+                    {(item as any).username && (
+                      <Text style={styles.userUsername}>@{(item as any).username}</Text>
                     )}
                     {item.district && (
                       <Text style={styles.userDistrict}>{item.district}</Text>

@@ -13,53 +13,84 @@ export const getFollowersProcedure = publicProcedure
   .query(async ({ ctx, input }) => {
     const { supabase } = ctx;
 
-    // Takipçileri getir
-    const { data: followers, error } = await supabase
-      .from("follows")
-      .select(
-        `
-        follower_id,
-        follower:profiles!follows_follower_id_fkey(
-          id,
-          full_name,
-          username,
-          avatar_url,
-          verified,
-          supporter_badge,
-          supporter_badge_color
-        )
-      `
-      )
-      .eq("following_id", input.user_id)
-      .order("created_at", { ascending: false })
-      .range(input.offset, input.offset + input.limit - 1);
+    try {
+      // Önce takipçi ID'lerini al
+      const { data: followsData, error: followsError } = await supabase
+        .from("follows")
+        .select("follower_id")
+        .eq("following_id", input.user_id)
+        .order("created_at", { ascending: false })
+        .range(input.offset, input.offset + input.limit - 1);
 
-    if (error) {
+      if (followsError) {
+        console.error("Get followers error:", followsError);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Takipçiler yüklenirken hata oluştu: ${followsError.message}`,
+        });
+      }
+
+      // Eğer takipçi yoksa boş dizi döndür
+      if (!followsData || followsData.length === 0) {
+        const { count } = await supabase
+          .from("follows")
+          .select("*", { count: "exact", head: true })
+          .eq("following_id", input.user_id);
+
+        return {
+          followers: [],
+          total: count || 0,
+        };
+      }
+
+      // Takipçi ID'lerini al
+      const followerIds = followsData.map((f: any) => f.follower_id);
+
+      // Profil detaylarını al
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, full_name, username, avatar_url, verified, supporter_badge, supporter_badge_color, supporter_badge_visible")
+        .in("id", followerIds);
+
+      if (profilesError) {
+        console.error("Get profiles error:", profilesError);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Profil bilgileri yüklenirken hata oluştu: ${profilesError.message}`,
+        });
+      }
+
+      // Profilleri ID'ye göre map'le
+      const profilesMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+
+      // Toplam takipçi sayısı
+      const { count } = await supabase
+        .from("follows")
+        .select("*", { count: "exact", head: true })
+        .eq("following_id", input.user_id);
+
+      return {
+        followers: followerIds.map((id: string) => {
+          const profile = profilesMap.get(id);
+          return {
+            id,
+            full_name: profile?.full_name || '',
+            username: profile?.username || null,
+            avatar_url: profile?.avatar_url || null,
+            verified: profile?.verified || false,
+            supporter_badge: profile?.supporter_badge || false,
+            supporter_badge_color: profile?.supporter_badge_color || null,
+            supporter_badge_visible: profile?.supporter_badge_visible || false,
+          };
+        }),
+        total: count || 0,
+      };
+    } catch (error: any) {
       console.error("Get followers error:", error);
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
-        message: "Takipçiler alınamadı",
+        message: `Takipçiler yüklenirken hata oluştu: ${error.message || error}`,
       });
     }
-
-    // Toplam takipçi sayısı
-    const { count } = await supabase
-      .from("follows")
-      .select("*", { count: "exact", head: true })
-      .eq("following_id", input.user_id);
-
-    return {
-      followers: followers?.map((f: any) => ({
-        id: f.follower_id,
-        full_name: f.follower?.full_name || '',
-        username: f.follower?.username || null,
-        avatar_url: f.follower?.avatar_url || null,
-        verified: f.follower?.verified || false,
-        supporter_badge: f.follower?.supporter_badge || false,
-        supporter_badge_color: f.follower?.supporter_badge_color || null,
-        supporter_badge_visible: f.follower?.supporter_badge_visible || false,
-      })) || [],
-      total: count || 0,
-    };
   });
 

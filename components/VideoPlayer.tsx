@@ -16,8 +16,9 @@ import {
   Dimensions,
   Pressable,
   ActivityIndicator,
-  Animated,
   PanResponder,
+  Share,
+  Alert,
 } from 'react-native';
 import { Video, ResizeMode, AVPlaybackStatus, Audio } from 'expo-av';
 import {
@@ -37,7 +38,11 @@ import {
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
-import { CommentSheet } from './CommentSheet';
+import { CommentSheetExpoGo, CommentSheetExpoGoRef } from './CommentSheetExpoGo';
+
+// Expo Go için CommentSheetExpoGo kullan (her zaman çalışır)
+const CommentSheet = CommentSheetExpoGo;
+type CommentSheetRef = CommentSheetExpoGoRef;
 
 interface VideoPlayerProps {
   videoUrl: string;
@@ -56,6 +61,8 @@ interface VideoPlayerProps {
   showControls?: boolean;
   previewMode?: boolean; // Önizleme modu (feed'de)
   onFullScreen?: () => void; // Fullscreen'e geçiş callback'i
+  onClose?: () => void; // Tam ekrandan çıkış callback'i (previewMode=false olduğunda)
+  containerStyle?: any; // Özel container stili
 }
 
 export function VideoPlayer({
@@ -75,9 +82,21 @@ export function VideoPlayer({
   showControls = true,
   previewMode = true,
   onFullScreen,
+  onClose,
+  containerStyle,
 }: VideoPlayerProps) {
   const { theme } = useTheme();
   const videoRef = useRef<Video>(null);
+  
+  // Early return if videoUrl is invalid
+  if (!videoUrl || typeof videoUrl !== 'string' || videoUrl.trim() === '') {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
+        <ActivityIndicator size="large" color={COLORS.white} />
+        <Text style={{ color: COLORS.white, marginTop: 10 }}>Video yükleniyor...</Text>
+      </View>
+    );
+  }
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(previewMode); // Önizlemede sessiz başlar
   const [showFullScreen, setShowFullScreen] = useState(false);
@@ -85,6 +104,7 @@ export function VideoPlayer({
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
   const [showControlsOverlay, setShowControlsOverlay] = useState(true);
+  const [showShareModal, setShowShareModal] = useState(false);
   const lastTap = useRef<number>(0);
   const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -99,9 +119,7 @@ export function VideoPlayer({
       playThroughEarpieceAndroid: false,
     })
       .then(() => {
-        if (mounted) {
-          console.log('✅ Audio session activated');
-        }
+        // Audio session activated silently
       })
       .catch((err) => {
         if (mounted) {
@@ -174,17 +192,27 @@ export function VideoPlayer({
 
   const togglePlayPause = async () => {
     if (videoRef.current) {
-      if (isPlaying) {
-        await videoRef.current.pauseAsync();
-      } else {
-        await videoRef.current.playAsync();
+      try {
+        if (isPlaying) {
+          await videoRef.current.pauseAsync();
+        } else {
+          await videoRef.current.playAsync();
+        }
+      } catch (error) {
+        // Video null olabilir veya henüz yüklenmemiş olabilir
+        console.warn('⚠️ Video play/pause operation warning:', error);
       }
     }
   };
 
   const toggleMute = async () => {
     if (videoRef.current) {
-      await videoRef.current.setIsMutedAsync(!isMuted);
+      try {
+        await videoRef.current.setIsMutedAsync(!isMuted);
+      } catch (error) {
+        // Video null olabilir veya henüz yüklenmemiş olabilir
+        console.warn('⚠️ Video mute operation warning:', error);
+      }
     }
   };
 
@@ -237,8 +265,48 @@ export function VideoPlayer({
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  const handleShare = () => {
+    setShowShareModal(true);
+  };
+
+  const handleShareNormal = async () => {
+    setShowShareModal(false);
+    if (onShare) {
+      onShare();
+    } else {
+      try {
+        await Share.share({
+          message: 'Bu videoyu izle!',
+          url: videoUrl,
+        });
+      } catch (error) {
+        console.error('Share error:', error);
+      }
+    }
+  };
+
+  const handleShareSilent = async () => {
+    setShowShareModal(false);
+    try {
+      await Share.share({
+        message: '🔇 Sessiz video - Bu videoyu izle!',
+        url: videoUrl,
+      });
+    } catch (error) {
+      console.error('Share error:', error);
+    }
+  };
+
   // Önizleme modunda video (feed'de)
   if (previewMode) {
+    if (!videoUrl) {
+      return (
+        <View style={[styles.previewContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+          <Text style={{ color: COLORS.white }}>Video yükleniyor...</Text>
+        </View>
+      );
+    }
+
     return (
       <>
         <Pressable
@@ -246,23 +314,44 @@ export function VideoPlayer({
           onPress={handleSingleTap}
           onLongPress={handleDoubleTap}
         >
-          <Video
-            ref={videoRef}
-            source={{ 
-              uri: videoUrl,
-              overrideFileExtensionAndroid: 'mp4',
-            }}
-            style={styles.previewVideo}
-            resizeMode={ResizeMode.COVER}
-            isLooping
-            isMuted={isMuted}
-            shouldPlay={autoPlay || isPlaying}
-            onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
-            useNativeControls={false}
-            usePoster={false}
-            posterSource={undefined}
-            progressUpdateIntervalMillis={100}
-          />
+          {videoUrl && videoUrl.trim() !== '' && typeof videoUrl === 'string' ? (
+            <Video
+              key={`preview-video-${postId}-${videoUrl.substring(0, 20)}`}
+              ref={videoRef}
+              source={{ 
+                uri: videoUrl.trim(),
+                overrideFileExtensionAndroid: 'mp4',
+              }}
+              style={styles.previewVideo}
+              resizeMode={ResizeMode.COVER}
+              isLooping
+              isMuted={isMuted}
+              shouldPlay={(autoPlay || isPlaying) && !isLoading}
+              onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+              useNativeControls={false}
+              usePoster={false}
+              posterSource={undefined}
+              progressUpdateIntervalMillis={100}
+              onError={(error) => {
+                console.error('Preview Video error:', error);
+                setIsLoading(false);
+              }}
+              onLoadStart={() => {
+                setIsLoading(true);
+              }}
+              onLoad={() => {
+                setIsLoading(false);
+              }}
+              onReadyForDisplay={() => {
+                setIsLoading(false);
+              }}
+            />
+          ) : (
+            <View style={[styles.previewVideo, { justifyContent: 'center', alignItems: 'center' }]}>
+              <ActivityIndicator size="large" color={COLORS.white} />
+              <Text style={{ color: COLORS.white, marginTop: 10 }}>Video yükleniyor...</Text>
+            </View>
+          )}
           
           {isLoading && (
             <View style={styles.loadingOverlay}>
@@ -329,30 +418,128 @@ export function VideoPlayer({
             shareCount={shareCount}
             onLike={onLike}
             onComment={onComment}
-            onShare={onShare}
+            onShare={handleShare}
             onTag={onTag}
             onSave={onSave}
-            onClose={() => setShowFullScreen(false)}
+            onClose={onClose || (() => setShowFullScreen(false))}
           />
+        </Modal>
+
+        {/* Paylaş Modal */}
+        <Modal
+          visible={showShareModal}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowShareModal(false)}
+        >
+          <Pressable
+            style={styles.shareModalOverlay}
+            onPress={() => setShowShareModal(false)}
+          >
+            <View style={[styles.shareModalContent, { backgroundColor: theme.colors.card }]}>
+              <Text style={[styles.shareModalTitle, { color: theme.colors.text }]}>
+                Paylaş
+              </Text>
+              
+              <TouchableOpacity
+                style={[styles.shareOption, { borderBottomColor: theme.colors.border }]}
+                onPress={handleShareNormal}
+              >
+                <Share2 size={24} color={theme.colors.text} />
+                <Text style={[styles.shareOptionText, { color: theme.colors.text }]}>
+                  Normal Paylaş
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.shareOption}
+                onPress={handleShareSilent}
+              >
+                <VolumeX size={24} color={theme.colors.text} />
+                <Text style={[styles.shareOptionText, { color: theme.colors.text }]}>
+                  Sessiz Paylaş
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.shareCancelButton, { backgroundColor: theme.colors.background }]}
+                onPress={() => setShowShareModal(false)}
+              >
+                <Text style={[styles.shareCancelText, { color: theme.colors.text }]}>
+                  İptal
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
         </Modal>
       </>
     );
   }
 
-  // Tam ekran olmayan normal video player
-  return (
-    <View style={styles.normalContainer}>
-      <Video
-        ref={videoRef}
-        source={{ uri: videoUrl }}
-        style={styles.normalVideo}
-        resizeMode={ResizeMode.CONTAIN}
-        isLooping
-        isMuted={isMuted}
-        shouldPlay={isPlaying}
-        onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
-        useNativeControls
+  // previewMode=false ve onClose varsa direkt FullScreenVideoPlayer render et
+  if (!previewMode && onClose) {
+    return (
+      <FullScreenVideoPlayer
+        videoUrl={videoUrl}
+        postId={postId}
+        isLiked={isLiked}
+        isSaved={isSaved}
+        likeCount={likeCount}
+        commentCount={commentCount}
+        shareCount={shareCount}
+        onLike={onLike}
+        onComment={onComment}
+        onShare={onShare}
+        onTag={onTag}
+        onSave={onSave}
+        onClose={onClose}
       />
+    );
+  }
+
+  // Tam ekran olmayan normal video player
+  if (!videoUrl) {
+    return (
+      <View style={[styles.normalContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: COLORS.text }}>Video yükleniyor...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.normalContainer, containerStyle]}>
+      {videoUrl && videoUrl.trim() !== '' && typeof videoUrl === 'string' ? (
+        <Video
+          key={`normal-video-${postId}-${videoUrl.substring(0, 20)}`}
+          ref={videoRef}
+          source={{ uri: videoUrl.trim() }}
+          style={styles.normalVideo}
+          resizeMode={ResizeMode.COVER}
+          isLooping
+          isMuted={isMuted}
+          shouldPlay={isPlaying && !isLoading}
+          onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+          useNativeControls
+          onError={(error) => {
+            console.error('Normal Video error:', error);
+            setIsLoading(false);
+          }}
+          onLoadStart={() => {
+            setIsLoading(true);
+          }}
+          onLoad={() => {
+            setIsLoading(false);
+          }}
+          onReadyForDisplay={() => {
+            setIsLoading(false);
+          }}
+        />
+      ) : (
+        <View style={[styles.normalVideo, { justifyContent: 'center', alignItems: 'center' }]}>
+          <ActivityIndicator size="large" color={COLORS.text} />
+          <Text style={{ color: COLORS.text, marginTop: 10 }}>Video yükleniyor...</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -390,6 +577,8 @@ function FullScreenVideoPlayer({
   onClose,
 }: FullScreenVideoPlayerProps) {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [showShareModal, setShowShareModal] = useState(false);
   const videoRef = useRef<Video>(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
@@ -397,15 +586,60 @@ function FullScreenVideoPlayer({
   const [isLoading, setIsLoading] = useState(true);
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
-  const [showComments, setShowComments] = useState(false);
+  const commentSheetRef = useRef<CommentSheetRef>(null);
+  const [showControlsOverlay, setShowControlsOverlay] = useState(true);
   const lastTap = useRef<number>(0);
   const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const insets = useSafeAreaInsets();
   const { width, height } = Dimensions.get('window');
   const SCREEN_HEIGHT = height;
-  const COMMENT_SHEET_HEIGHT = SCREEN_HEIGHT * 0.5; // Ekranın yarısı
-  const commentSheetY = useRef(new Animated.Value(COMMENT_SHEET_HEIGHT)).current;
+  const isPlayingRef = useRef(true); // Ref ile gerçek durumu takip et
+
+  const handleShareNormal = async () => {
+    setShowShareModal(false);
+    if (onShare) {
+      onShare();
+    } else {
+      try {
+        await Share.share({
+          message: 'Bu videoyu izle!',
+          url: videoUrl,
+        });
+      } catch (error) {
+        console.error('Share error:', error);
+      }
+    }
+  };
+
+  const handleShareSilent = async () => {
+    setShowShareModal(false);
+    try {
+      await Share.share({
+        message: '🔇 Sessiz video - Bu videoyu izle!',
+        url: videoUrl,
+      });
+    } catch (error) {
+      console.error('Share error:', error);
+    }
+  };
   const hasStartedRef = useRef(false);
+
+  // Sola ve sağa swipe ile çıkış için pan responder
+  const swipePanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Sola veya sağa swipe
+        // Yatay hareket varsa ve yatay hareket dikey hareketten fazlaysa
+        return Math.abs(gestureState.dx) > 30 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        // Sola veya sağa yeterince çekildiyse çık (eşik: 80px)
+        if (Math.abs(gestureState.dx) > 80 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5) {
+          onClose?.();
+        }
+      },
+    })
+  ).current;
 
   // Audio session'ı aktif et (sadece bir kez)
   useEffect(() => {
@@ -418,9 +652,7 @@ function FullScreenVideoPlayer({
       playThroughEarpieceAndroid: false,
     })
       .then(() => {
-        if (mounted) {
-          console.log('✅ Audio session activated (FullScreen)');
-        }
+        // Audio session activated silently
       })
       .catch((err) => {
         if (mounted) {
@@ -433,32 +665,25 @@ function FullScreenVideoPlayer({
   }, []);
 
   useEffect(() => {
-    // Tam ekran açıldığında video'yu otomatik başlat
+    // Tam ekran açıldığında video'yu otomatik başlat (sadece bir kez)
     if (videoRef.current && !hasStartedRef.current) {
       hasStartedRef.current = true;
+      setIsPlaying(true);
+      isPlayingRef.current = true;
+      // Video hazır olduğunda başlat
       const timer = setTimeout(() => {
-        videoRef.current?.playAsync().catch(console.error);
-        setIsPlaying(true);
+        if (videoRef.current) {
+          videoRef.current.playAsync().catch((err) => {
+            console.warn('Video play error:', err);
+            setIsPlaying(false);
+            isPlayingRef.current = false;
+          });
+        }
       }, 500); // Audio session'ın aktif olması için biraz bekle
       return () => clearTimeout(timer);
     }
   }, []);
 
-  // Yorum paneli açıldığında animasyonu başlat
-  useEffect(() => {
-    if (showComments) {
-      commentSheetY.setValue(COMMENT_SHEET_HEIGHT);
-      const timer = setTimeout(() => {
-        Animated.spring(commentSheetY, {
-          toValue: 0,
-          useNativeDriver: true,
-          tension: 50,
-          friction: 7,
-        }).start();
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [showComments, commentSheetY, COMMENT_SHEET_HEIGHT]);
 
   useEffect(() => {
     return () => {
@@ -470,51 +695,64 @@ function FullScreenVideoPlayer({
 
   const handlePlaybackStatusUpdate = (status: AVPlaybackStatus) => {
     if (status.isLoaded) {
-      // Sadece değiştiğinde state'i güncelle (infinite loop'u önle)
-      if (status.isPlaying !== isPlaying) {
-        setIsPlaying(status.isPlaying);
-      }
-      if (status.isMuted !== isMuted) {
-        setIsMuted(status.isMuted);
-      }
-      if (status.durationMillis !== duration) {
-        setDuration(status.durationMillis || 0);
-      }
-      if (status.positionMillis !== position) {
-        setPosition(status.positionMillis || 0);
-      }
-      if (isLoading) {
+      // Duration ve position güncellemeleri (bunlar sürekli değişir, sorun değil)
+      setDuration(status.durationMillis || 0);
+      setPosition(status.positionMillis || 0);
+      
+      // Loading durumunu güncelle - video oynuyorsa loading false
+      if (isLoading && status.isPlaying) {
         setIsLoading(false);
       }
       
-      // Sadece ilk yüklemede ve henüz başlamadıysa otomatik başlat
-      if (!hasStartedRef.current && !status.isPlaying && !status.didJustFinish) {
-        hasStartedRef.current = true;
-        setTimeout(() => {
-          videoRef.current?.playAsync().catch(console.error);
-        }, 200);
+      // isPlaying state'ini sadece gerçekten değiştiğinde güncelle
+      // Ref ile karşılaştır, gereksiz re-render'ları önle
+      if (status.isPlaying !== isPlayingRef.current) {
+        isPlayingRef.current = status.isPlaying;
+        setIsPlaying(status.isPlaying);
+      }
+      
+      // isMuted state'ini güncelle
+      if (status.isMuted !== isMuted) {
+        setIsMuted(status.isMuted);
       }
     } else if (status.error) {
       console.error('Full screen video playback error:', status.error);
-      if (isLoading) {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
+      isPlayingRef.current = false;
+      setIsPlaying(false);
     }
   };
 
   const togglePlayPause = async () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        await videoRef.current.pauseAsync();
-      } else {
+    if (!videoRef.current || isLoading) return;
+    
+    try {
+      const newPlayingState = !isPlayingRef.current;
+      isPlayingRef.current = newPlayingState;
+      setIsPlaying(newPlayingState); // Optimistic update
+      
+      if (newPlayingState) {
         await videoRef.current.playAsync();
+      } else {
+        await videoRef.current.pauseAsync();
       }
+    } catch (error) {
+      // Hata durumunda state'i geri al
+      const revertState = !isPlayingRef.current;
+      isPlayingRef.current = revertState;
+      setIsPlaying(revertState);
+      console.warn('⚠️ FullScreen Video play/pause operation warning:', error);
     }
   };
 
   const toggleMute = async () => {
     if (videoRef.current) {
-      await videoRef.current.setIsMutedAsync(!isMuted);
+      try {
+        await videoRef.current.setIsMutedAsync(!isMuted);
+      } catch (error) {
+        // Video null olabilir veya henüz yüklenmemiş olabilir
+        console.warn('⚠️ FullScreen Video mute operation warning:', error);
+      }
     }
   };
 
@@ -559,71 +797,55 @@ function FullScreenVideoPlayer({
     return count.toString();
   };
 
-  const closeCommentsSheet = useCallback(() => {
-    Animated.spring(commentSheetY, {
-      toValue: COMMENT_SHEET_HEIGHT,
-      useNativeDriver: true,
-      tension: 50,
-      friction: 7,
-    }).start(() => {
-      setShowComments(false);
-    });
-  }, [COMMENT_SHEET_HEIGHT, commentSheetY]);
-
-  const handleCloseComments = () => {
-    closeCommentsSheet();
+  const handleComment = () => {
+    commentSheetRef.current?.present();
   };
 
-  // Yorum paneli için pan responder (sadece drag handle için - aşağı çekme)
-  const dragHandlePanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dy) > 5;
-      },
-      onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) {
-          const newOffset = Math.min(gestureState.dy, COMMENT_SHEET_HEIGHT);
-          commentSheetY.setValue(newOffset);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > COMMENT_SHEET_HEIGHT * 0.3) {
-          closeCommentsSheet();
-        } else {
-          Animated.spring(commentSheetY, {
-            toValue: 0,
-            useNativeDriver: true,
-            tension: 50,
-            friction: 7,
-          }).start();
-        }
-      },
-    })
-  ).current;
-
   return (
-    <View style={[styles.fullScreenContainer, { paddingTop: insets.top }]}>
+    <View style={styles.fullScreenContainer} {...swipePanResponder.panHandlers}>
       <Pressable
         style={styles.videoContainer}
         onPress={handleSingleTap}
         onLongPress={handleDoubleTap}
       >
-        <Video
-          ref={videoRef}
-          source={{ 
-            uri: videoUrl,
-            overrideFileExtensionAndroid: 'mp4',
-          }}
-          style={[styles.fullScreenVideo, { width, height: height - insets.top - insets.bottom }]}
-          resizeMode={ResizeMode.COVER}
-          isLooping
-          isMuted={isMuted}
-          shouldPlay={isPlaying}
-          onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
-          usePoster={false}
-          progressUpdateIntervalMillis={100}
-        />
+        {videoUrl && videoUrl.trim() !== '' && typeof videoUrl === 'string' ? (
+          <Video
+            key={`fullscreen-video-${postId}-${videoUrl.substring(0, 20)}`}
+            ref={videoRef}
+            source={{ 
+              uri: videoUrl.trim(),
+              overrideFileExtensionAndroid: 'mp4',
+            }}
+            style={[styles.fullScreenVideo, { width, height }]}
+            resizeMode={ResizeMode.COVER}
+            isLooping
+            isMuted={isMuted}
+            shouldPlay={isPlaying && !isLoading} // Added isLoading check
+            onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+            usePoster={false}
+            progressUpdateIntervalMillis={100}
+            onError={(error) => {
+              console.error('FullScreen Video error:', error);
+              setIsLoading(false);
+              isPlayingRef.current = false;
+              setIsPlaying(false);
+            }}
+            onLoadStart={() => {
+              setIsLoading(true);
+            }}
+            onLoad={() => {
+              setIsLoading(false);
+            }}
+            onReadyForDisplay={() => {
+              setIsLoading(false);
+            }}
+          />
+        ) : (
+          <View style={[styles.fullScreenVideo, { width, height, justifyContent: 'center', alignItems: 'center' }]}>
+            <ActivityIndicator size="large" color={COLORS.white} />
+            <Text style={{ color: COLORS.white, marginTop: 10 }}>Video yükleniyor...</Text>
+          </View>
+        )}
 
         {isLoading && (
           <View style={styles.loadingOverlay}>
@@ -644,19 +866,23 @@ function FullScreenVideoPlayer({
               </TouchableOpacity>
             </View>
 
-            {/* Orta - Play/Pause */}
-            <View style={styles.centerControls}>
-              <TouchableOpacity
-                style={styles.playPauseButton}
-                onPress={togglePlayPause}
-              >
-                {isPlaying ? (
-                  <Pause size={60} color={COLORS.white} fill={COLORS.white} />
-                ) : (
-                  <Play size={60} color={COLORS.white} fill={COLORS.white} />
-                )}
-              </TouchableOpacity>
-            </View>
+            {/* Orta - Play/Pause (sadece kontroller açıkken ve video durduğunda veya loading'de göster) */}
+            {showControls && (!isPlaying || isLoading) && (
+              <View style={styles.centerControls}>
+                <TouchableOpacity
+                  style={styles.playPauseButton}
+                  onPress={togglePlayPause}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator size="large" color={COLORS.white} />
+                  ) : isPlaying ? (
+                    <Pause size={60} color={COLORS.white} fill={COLORS.white} />
+                  ) : (
+                    <Play size={60} color={COLORS.white} fill={COLORS.white} />
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Alt Bar - Progress ve Ses */}
             <View style={styles.bottomBar}>
@@ -705,7 +931,7 @@ function FullScreenVideoPlayer({
             style={styles.actionButtonLarge}
             onPress={() => {
               console.log('Yorum butonuna basıldı, panel açılıyor...');
-              setShowComments(true);
+              handleComment();
             }}
           >
             <MessageCircle size={32} color={COLORS.white} />
@@ -714,7 +940,9 @@ function FullScreenVideoPlayer({
 
           <TouchableOpacity
             style={styles.actionButtonLarge}
-            onPress={onShare}
+            onPress={() => {
+              setShowShareModal(true);
+            }}
           >
             <Share2 size={32} color={COLORS.white} />
             <Text style={styles.actionCountText}>{formatCount(shareCount)}</Text>
@@ -742,42 +970,60 @@ function FullScreenVideoPlayer({
         </View>
       </Pressable>
 
-      {/* Yorum Paneli (Bottom Sheet) - Instagram tarzı, şeffaf, video izlenirken */}
-      {showComments && (
-        <Animated.View
-          style={[
-            styles.commentSheet,
-            {
-              transform: [{ translateY: commentSheetY }],
-              height: COMMENT_SHEET_HEIGHT,
-              backgroundColor: 'rgba(0, 0, 0, 0.75)', // Şeffaf - video görünür
-              zIndex: 1000,
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-            },
-          ]}
-          pointerEvents="auto"
+      {/* Yorum Paneli - BottomSheetModal */}
+      <CommentSheet
+        ref={commentSheetRef}
+        postId={postId}
+        initialCount={commentCount || 0}
+      />
+
+      {/* Paylaş Modal */}
+      <Modal
+        visible={showShareModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowShareModal(false)}
+      >
+        <Pressable
+          style={styles.shareModalOverlay}
+          onPress={() => setShowShareModal(false)}
         >
-          {/* Drag Handle - Sadece burada pan responder çalışır */}
-          <View style={styles.dragHandleContainer} {...dragHandlePanResponder.panHandlers} pointerEvents="auto">
-            <View style={[styles.dragHandle, { backgroundColor: COLORS.white }]} />
-          </View>
-          
-          <View style={[styles.commentSheetHeader, { borderBottomColor: 'rgba(255, 255, 255, 0.1)' }]} pointerEvents="auto">
-            <Text style={[styles.commentSheetTitle, { color: COLORS.white }]}>
-              Yorumlar ({commentCount || 0})
+          <View style={[styles.shareModalContent, { backgroundColor: theme.colors.card }]}>
+            <Text style={[styles.shareModalTitle, { color: theme.colors.text }]}>
+              Paylaş
             </Text>
-            <TouchableOpacity onPress={handleCloseComments}>
-              <X size={24} color={COLORS.white} />
+            
+            <TouchableOpacity
+              style={[styles.shareOption, { borderBottomColor: theme.colors.border }]}
+              onPress={handleShareNormal}
+            >
+              <Share2 size={24} color={theme.colors.text} />
+              <Text style={[styles.shareOptionText, { color: theme.colors.text }]}>
+                Normal Paylaş
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.shareOption}
+              onPress={handleShareSilent}
+            >
+              <VolumeX size={24} color={theme.colors.text} />
+              <Text style={[styles.shareOptionText, { color: theme.colors.text }]}>
+                Sessiz Paylaş
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.shareCancelButton, { backgroundColor: theme.colors.background }]}
+              onPress={() => setShowShareModal(false)}
+            >
+              <Text style={[styles.shareCancelText, { color: theme.colors.text }]}>
+                İptal
+              </Text>
             </TouchableOpacity>
           </View>
-          <View style={styles.commentSheetContent} pointerEvents="auto">
-            <CommentSheet postId={postId} />
-          </View>
-        </Animated.View>
-      )}
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -847,9 +1093,7 @@ const styles = StyleSheet.create({
   // Normal Video Player
   normalContainer: {
     width: '100%',
-    aspectRatio: 16 / 9,
     backgroundColor: '#000',
-    borderRadius: 12,
     overflow: 'hidden',
   },
   normalVideo: {
@@ -861,53 +1105,22 @@ const styles = StyleSheet.create({
   fullScreenContainer: {
     flex: 1,
     backgroundColor: '#000',
+    width: '100%',
+    height: '100%',
   },
   videoContainer: {
     flex: 1,
-    position: 'relative',
-  },
-  fullScreenVideo: {
-    flex: 1,
-  },
-  commentSheet: {
     position: 'absolute',
-    bottom: 0,
+    top: 0,
     left: 0,
     right: 0,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 15,
-    overflow: 'hidden',
-    zIndex: 1000,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
   },
-  commentSheetContent: {
-    flex: 1,
-  },
-  dragHandleContainer: {
-    alignItems: 'center',
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.xs,
-  },
-  dragHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    opacity: 0.5,
-  },
-  commentSheetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: SPACING.md,
-    borderBottomWidth: 1,
-  },
-  commentSheetTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '700',
+  fullScreenVideo: {
+    width: '100%',
+    height: '100%',
   },
   controlsOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1001,6 +1214,49 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.8)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+
+  // Paylaş Modal
+  shareModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  shareModalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: SPACING.xl,
+    paddingTop: SPACING.md,
+  },
+  shareModalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.md,
+  },
+  shareOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderBottomWidth: 1,
+    gap: SPACING.md,
+  },
+  shareOptionText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '500',
+  },
+  shareCancelButton: {
+    marginTop: SPACING.md,
+    marginHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  shareCancelText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
   },
 });
 

@@ -1,24 +1,66 @@
 {
-"cli": {
-  "version": ">= 12.5.0"
-},
-"submit": {
-  "production": {
-    "android": {
-      "serviceAccountKeyPath": "./google-play-service-account.json"
+  "cli": {
+    "version": ">= 12.5.0"
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./google-play-service-account.json"
+      },
+      "ios": {
+        "appleId": "developerilksepet@gmail.com",
+        "ascAppId": "1234567890",
+        "appleTeamId": "9W6CR7KXM7"
+      }
+    }
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "RCT_NEW_ARCH_ENABLED": "1"
+      },
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleDebug"
+      },
+      "ios": {
+        "simulator": false,
+        "buildConfiguration": "Debug"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "RCT_NEW_ARCH_ENABLED": "1"
+      },
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease"
+      },
+      "ios": {
+        "simulator": false,
+        "buildConfiguration": "Release",
+      }
+    },
+    "production": {
+      "node": "22.11.0",
+      "env": {
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "RCT_NEW_ARCH_ENABLED": "1"
+      },
+      "ios": {
+        "simulator": false,
+        "buildConfiguration": "Release",
+      },
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:bundleRelease",
+        "image": "latest"
+      }
     }
   }
-},
-"build": {
-  "development": {
-    "developmentClient": true,
-    "distribution": "internal"
-  },
-  "preview": {
-    "distribution": "internal"
-  },
-  "production": {
-    "node": "22.11.0"
-  }
-}
 }

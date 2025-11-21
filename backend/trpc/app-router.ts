@@ -48,6 +48,8 @@ import { getFollowersProcedure } from "./routes/user/get-followers/route";
 import { getFollowingProcedure } from "./routes/user/get-following/route";
 import { getFollowStatsProcedure } from "./routes/user/get-follow-stats/route";
 import { reportUserProcedure } from "./routes/user/report-user/route";
+import { getRequiredPoliciesProcedure } from "./routes/user/get-required-policies/route";
+import { consentToPoliciesProcedure } from "./routes/user/consent-to-policies/route";
 import { checkAdminProcedure } from "./routes/admin/check-admin/route";
 import { getUsersProcedure } from "./routes/admin/get-users/route";
 import { deleteUsersProcedure } from "./routes/admin/delete-users/route";
@@ -91,7 +93,10 @@ import {
 import { createEventProcedure } from "./routes/event/create-event/route";
 import { getEventsProcedure } from "./routes/event/get-events/route";
 import { deleteEventProcedure } from "./routes/event/delete-event/route";
+<<<<<<< HEAD
 import { updateEventProcedure } from "./routes/event/update-event/route";
+=======
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 import { createRideProcedure } from "./routes/ride/create-ride/route";
 import { searchRidesProcedure } from "./routes/ride/search-rides/route";
 import { getRideDetailProcedure } from "./routes/ride/get-ride-detail/route";
@@ -99,6 +104,8 @@ import { getDriverRidesProcedure } from "./routes/ride/get-driver-rides/route";
 import { bookRideProcedure } from "./routes/ride/book-ride/route";
 import { approveBookingProcedure } from "./routes/ride/approve-booking/route";
 import { rejectBookingProcedure } from "./routes/ride/reject-booking/route";
+import { completeRideProcedure } from "./routes/ride/complete-ride/route";
+import { createReviewProcedure } from "./routes/ride/create-review/route";
 import { getNotificationsProcedure, getUnreadCountProcedure } from "./routes/notification/get-notifications/route";
 import {
   markAsReadProcedure as markNotificationAsReadProcedure,
@@ -127,6 +134,8 @@ export const appRouter = createTRPCRouter({
     getFollowing: getFollowingProcedure,
     getFollowStats: getFollowStatsProcedure,
     reportUser: reportUserProcedure,
+    getRequiredPolicies: getRequiredPoliciesProcedure,
+    consentToPolicies: consentToPoliciesProcedure,
   }),
   chat: createTRPCRouter({
     getRooms: getRoomsProcedure,
@@ -206,7 +215,10 @@ export const appRouter = createTRPCRouter({
   event: createTRPCRouter({
     createEvent: createEventProcedure,
     getEvents: getEventsProcedure,
+<<<<<<< HEAD
     updateEvent: updateEventProcedure,
+=======
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     deleteEvent: deleteEventProcedure,
   }),
   notification: createTRPCRouter({
@@ -225,6 +237,8 @@ export const appRouter = createTRPCRouter({
     bookRide: bookRideProcedure,
     approveBooking: approveBookingProcedure,
     rejectBooking: rejectBookingProcedure,
+    completeRide: completeRideProcedure,
+    createReview: createReviewProcedure,
   }),
   support: createTRPCRouter({
     createTicket: createTicketProcedure,

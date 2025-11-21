@@ -23,7 +23,7 @@ try {
 
 export const AGORA_APP_ID = Constants.expoConfig?.extra?.agoraAppId || 
   process.env.EXPO_PUBLIC_AGORA_APP_ID || 
-  'd1e34b20cd2b4da69418f3';
+  'd1e34b20cd2b4da69418f360039d254d';
 
 export const AGORA_CERTIFICATE = Constants.expoConfig?.extra?.agoraCertificate || 
   process.env.EXPO_PUBLIC_AGORA_CERTIFICATE || 
@@ -95,6 +95,12 @@ export class AgoraCallManager {
   }
 
   async joinChannel(config: AgoraCallConfig): Promise<void> {
+    // Zaten aynı kanalda isek tekrar join etme
+    if (this.currentChannel === config.channelName && this.currentUid === config.uid) {
+      console.log('Already in channel:', config.channelName);
+      return;
+    }
+
     if (!this.isInitialized) {
       await this.initialize();
     }

@@ -23,7 +23,11 @@ import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
 import { DISTRICTS, DISTRICT_BADGES } from '@/constants/districts';
 import { Post, District } from '@/types/database';
+<<<<<<< HEAD
 import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, MoreVertical, AlertCircle, Car, Search, AlertTriangle } from 'lucide-react-native';
+=======
+import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, MoreVertical, AlertCircle, Trash2, Car, Search } from 'lucide-react-native';
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLogo } from '@/components/AppLogo';
@@ -63,6 +67,7 @@ export default function FeedScreen() {
   const {
     data: feedData,
     isLoading,
+    error: feedError,
     refetch,
   } = trpc.post.getPosts.useQuery(
     {
@@ -76,17 +81,20 @@ export default function FeedScreen() {
       gcTime: 10 * 60 * 1000, // 10 dakika
       refetchOnMount: false, // Cache'den kullan
       refetchOnWindowFocus: false,
+      retry: 2, // Hata durumunda 2 kez tekrar dene
+      retryDelay: 1000, // 1 saniye bekle
     }
   );
 
-  // Olay Var event'lerini getir - tüm kullanıcılara göster
+  // Olay Var event'lerini getir - tüm kullanıcılara göster (district filtresi yok, her zaman tüm event'ler görünür)
   const {
     data: eventsData,
     isLoading: eventsLoading,
+    error: eventsError,
     refetch: refetchEvents,
   } = trpc.event.getEvents.useQuery(
     {
-      district: selectedDistrict === 'all' ? undefined : selectedDistrict,
+      // district parametresi yok - her zaman tüm event'ler görünür
       limit: 20,
       offset: 0,
     },
@@ -95,6 +103,8 @@ export default function FeedScreen() {
       gcTime: 10 * 60 * 1000, // 10 dakika
       refetchOnMount: false, // Cache'den kullan
       refetchOnWindowFocus: false, // Egress optimizasyonu
+      retry: 2, // Hata durumunda 2 kez tekrar dene
+      retryDelay: 1000, // 1 saniye bekle
     }
   );
 
@@ -273,6 +283,7 @@ export default function FeedScreen() {
     onError: (error) => Alert.alert('Hata', error.message),
   });
 
+<<<<<<< HEAD
   const resolveWarningMutation = (trpc as any).admin.resolveWarning.useMutation({
     onSuccess: () => {
       refetch();
@@ -282,6 +293,8 @@ export default function FeedScreen() {
     },
   });
 
+=======
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   const handlePostOptions = useCallback((post: Post) => {
     if (post.author_id !== user?.id) return;
     Alert.alert('Gönderi', 'Seçenekler', [
@@ -373,11 +386,32 @@ export default function FeedScreen() {
           </TouchableOpacity>
           {event.user_id === user?.id && (
             <TouchableOpacity
+<<<<<<< HEAD
               style={styles.postMenuButton}
               onPress={() => handleEventOptions(event)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <MoreVertical size={18} color={theme.colors.textLight} />
+=======
+              style={styles.eventDeleteButton}
+              onPress={() => {
+                Alert.alert(
+                  'Olayı Sil',
+                  'Bu olayı tüm ilçelerden kaldırmak istediğinize emin misiniz?',
+                  [
+                    { text: 'Vazgeç', style: 'cancel' },
+                    {
+                      text: 'Sil',
+                      style: 'destructive',
+                      onPress: () => deleteEventMutation.mutate({ event_id: event.id }),
+                    },
+                  ]
+                );
+              }}
+              disabled={deleteEventMutation.isPending}
+            >
+              <Trash2 size={18} color={theme.colors.error} />
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
             </TouchableOpacity>
           )}
         </View>
@@ -498,7 +532,11 @@ export default function FeedScreen() {
         </View>
       </View>
     );
+<<<<<<< HEAD
   }, [router, theme, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible, refetchEvents, formatCount, likeEventMutation, user?.id, handleEventOptions]);
+=======
+  }, [router, theme, user?.id, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible, refetchEvents, formatCount, likeEventMutation, deleteEventMutation]);
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 
   const renderPost = useCallback(({ item }: { item: Post }) => {
     const firstMedia = item.media && item.media.length > 0 ? item.media[0] : null;
@@ -602,10 +640,10 @@ export default function FeedScreen() {
 
         {firstMedia && (
           <>
-            {isVideo ? (
+            {isVideo && firstMedia.path && typeof firstMedia.path === 'string' && firstMedia.path.trim() !== '' ? (
               <View style={styles.videoContainer}>
                 <VideoPlayer
-                  videoUrl={firstMedia.path}
+                  videoUrl={firstMedia.path.trim()}
                   postId={item.id}
                   isLiked={item.is_liked}
                   isSaved={false}
@@ -615,6 +653,8 @@ export default function FeedScreen() {
                   onLike={() => handleLike(item.id)}
                   onComment={() => router.push(`/post/${item.id}` as any)}
                   onShare={async () => {
+                    // VideoPlayer component'i içinde paylaş modal'ı açılacak
+                    // Burada sadece normal paylaş işlemi yapılır
                     try {
                       await Share.share({
                         message: `${item.author?.full_name} - ${item.content || 'Gönderi'}`,
@@ -717,31 +757,31 @@ export default function FeedScreen() {
     });
   }, [eventsData?.events, feedData?.posts]);
 
-  const renderRideActions = useMemo(() => (
-    <View style={[styles.rideActionsContainer, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
-      <TouchableOpacity
-        style={[styles.rideActionButton, { backgroundColor: theme.colors.primary }]}
-        onPress={() => router.push('/ride/search')}
-      >
-        <Search size={20} color={COLORS.white} />
-        <Text style={styles.rideActionText}>Yolculuk Ara</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.rideActionButton, { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.primary }]}
-        onPress={() => router.push('/ride/create')}
-      >
-        <Car size={20} color={theme.colors.primary} />
-        <Text style={[styles.rideActionText, { color: theme.colors.primary }]}>Yolculuk Oluştur</Text>
-      </TouchableOpacity>
-    </View>
-  ), [theme, router]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background, paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.md) : 0 }]}>
       <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border, paddingTop: Math.max(insets.top, Platform.OS === 'android' ? SPACING.lg : SPACING.md) }]}>
         <AppLogo size="medium" style={styles.headerLogo} />
+<<<<<<< HEAD
         <View style={styles.headerButtons}>
           <WhatsAppComplaintButton />
+=======
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={[styles.headerActionButton, { backgroundColor: theme.colors.primary }]}
+            onPress={() => router.push('/ride/search')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Search size={18} color={COLORS.white} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.headerActionButton, { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.primary }]}
+            onPress={() => router.push('/ride/create')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Car size={18} color={theme.colors.primary} />
+          </TouchableOpacity>
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
           <TouchableOpacity
             style={[styles.usersButton, { backgroundColor: theme.colors.surface }]}
             onPress={() => router.push('/all-users')}
@@ -752,13 +792,68 @@ export default function FeedScreen() {
         </View>
       </View>
 
-      {renderRideActions}
       {renderSortTabs}
       {renderDistrictFilter}
 
+      {(feedError || eventsError) && !isLoading && !eventsLoading && (
+        <View style={styles.errorContainer}>
+          <AlertCircle size={48} color={theme.colors.error} />
+          <Text style={[styles.errorText, { color: theme.colors.error }]}>
+            {(() => {
+              const error = feedError || eventsError;
+              const errorMessage = error?.message || '';
+              
+              // Network hatalarını yakala
+              if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('Network') || errorMessage.includes('Failed to fetch')) {
+                return 'İnternet bağlantınızı kontrol edin';
+              }
+              
+              // Supabase hatalarını yakala
+              if (errorMessage.includes('Supabase') || errorMessage.includes('supabase') || errorMessage.includes('functions')) {
+                return 'Sunucu bağlantı hatası. Lütfen daha sonra tekrar deneyin.';
+              }
+              
+              // Auth hatalarını yakala
+              if (errorMessage.includes('auth') || errorMessage.includes('unauthorized') || errorMessage.includes('token') || errorMessage.includes('401')) {
+                return 'Oturum süreniz dolmuş olabilir. Lütfen tekrar giriş yapın.';
+              }
+              
+              // NOT_FOUND hatalarını yakala
+              if (errorMessage.includes('NOT_FOUND') || errorMessage.includes('bulunamadı') || errorMessage.includes('not found')) {
+                return 'Veri bulunamadı. Lütfen sayfayı yenileyin.';
+              }
+              
+              // Genel hata mesajı
+              return errorMessage || 'Veriler yüklenirken bir hata oluştu';
+            })()}
+          </Text>
+          <TouchableOpacity
+            style={[styles.retryButton, { backgroundColor: theme.colors.primary }]}
+            onPress={() => {
+              refetch();
+              refetchEvents();
+            }}
+          >
+            <Text style={[styles.retryButtonText, { color: COLORS.white }]}>Tekrar Dene</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       {isLoading || eventsLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={[styles.loadingText, { color: theme.colors.textLight }]}>Yükleniyor...</Text>
+        </View>
+      ) : combinedFeedData.length === 0 && !feedError && !eventsError ? (
+        <View style={styles.emptyContainer}>
+          <Text style={[styles.emptyText, { color: theme.colors.text }]}>Henüz gönderi yok</Text>
+          <Text style={[styles.emptySubtext, { color: theme.colors.textLight }]}>İlk gönderiyi sen oluştur!</Text>
+          <TouchableOpacity
+            style={[styles.createButton, { backgroundColor: theme.colors.primary }]}
+            onPress={() => router.push('/create-post')}
+          >
+            <Plus size={20} color={COLORS.white} />
+            <Text style={[styles.createButtonText, { color: COLORS.white }]}>Gönderi Oluştur</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
@@ -1010,9 +1105,9 @@ export default function FeedScreen() {
           >
             <Text style={styles.modalCloseText}>✕</Text>
           </TouchableOpacity>
-                 {selectedVideo && (
+                 {selectedVideo && typeof selectedVideo === 'string' && selectedVideo.trim() !== '' ? (
                    <VideoPlayer
-                     videoUrl={selectedVideo}
+                     videoUrl={selectedVideo.trim()}
                      postId=""
                      isLiked={false}
                      likeCount={0}
@@ -1026,7 +1121,7 @@ export default function FeedScreen() {
                      previewMode={false}
                      showControls={true}
                    />
-                 )}
+                 ) : null}
         </View>
       </Modal>
 
@@ -1050,11 +1145,25 @@ const styles = StyleSheet.create({
   headerLogo: {
     marginLeft: -SPACING.xs, // Logo için hafif margin ayarı
   },
+<<<<<<< HEAD
   headerButtons: {
+=======
+  headerActions: {
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: SPACING.xs,
   },
+<<<<<<< HEAD
+=======
+  headerActionButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   usersButton: {
     width: 44,
     height: 44,
@@ -1062,6 +1171,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
     marginTop: 2,
+    marginLeft: SPACING.xs,
   },
   sortContainer: {
     flexDirection: 'row' as const,
@@ -1316,19 +1426,67 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
+    padding: SPACING.xl,
+  },
+  loadingText: {
+    marginTop: SPACING.md,
+    fontSize: FONT_SIZES.md,
   },
   emptyContainer: {
-    padding: SPACING.xxl,
+    flex: 1,
+    justifyContent: 'center' as const,
     alignItems: 'center' as const,
+    padding: SPACING.xxl,
+    minHeight: 400,
   },
   emptyText: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '600' as const,
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '700' as const,
     marginBottom: SPACING.sm,
+    textAlign: 'center' as const,
   },
   emptySubtext: {
     fontSize: FONT_SIZES.md,
     textAlign: 'center' as const,
+    marginBottom: SPACING.xl,
+    opacity: 0.7,
+  },
+  createButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderRadius: 12,
+  },
+  createButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600' as const,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: SPACING.xl,
+    minHeight: 400,
+  },
+  errorText: {
+    fontSize: FONT_SIZES.md,
+    textAlign: 'center' as const,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.lg,
+    lineHeight: 22,
+  },
+  retryButton: {
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderRadius: 12,
+    minWidth: 120,
+  },
+  retryButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600' as const,
+    color: COLORS.white,
   },
   fab: {
     position: 'absolute' as const,
@@ -1383,26 +1541,9 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     fontWeight: '700' as const,
   },
-  rideActionsContainer: {
-    flexDirection: 'row',
-    padding: SPACING.md,
-    gap: SPACING.sm,
-    borderBottomWidth: 1,
-  },
-  rideActionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderRadius: 12,
-    gap: SPACING.xs,
-  },
-  rideActionText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '700' as const,
-    color: COLORS.white,
+  eventDeleteButton: {
+    padding: SPACING.xs,
+    marginLeft: SPACING.sm,
   },
   warningBadge: {
     position: 'absolute' as const,

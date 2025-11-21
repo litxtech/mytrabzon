@@ -7,11 +7,22 @@ import { createClient, SupabaseClient, User } from "npm:@supabase/supabase-js@2"
 
 // Get Supabase configuration from environment
 function getSupabaseAdmin(): SupabaseClient {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-  const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  // Supabase Edge Functions'ta otomatik olarak sağlanan environment değişkenleri
+  // Ayrıca kullanıcı tarafından manuel set edilen APP_ prefixli değişkenleri de kontrol et
+  const supabaseUrl = 
+    Deno.env.get("SUPABASE_URL") || 
+    Deno.env.get("SUPABASE_PROJECT_URL") || 
+    Deno.env.get("APP_SUPABASE_URL") || 
+    "";
+    
+  const supabaseServiceRoleKey = 
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || 
+    Deno.env.get("APP_SERVICE_ROLE_KEY") || 
+    "";
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
-    throw new Error("Missing Supabase configuration for backend context");
+    // Sessizce hata fırlat, gereksiz log yok
+    throw new Error("Missing Supabase configuration");
   }
 
   return createClient(supabaseUrl, supabaseServiceRoleKey, {
@@ -23,7 +34,13 @@ function getSupabaseAdmin(): SupabaseClient {
   });
 }
 
-const supabaseAdminClient = getSupabaseAdmin();
+let supabaseAdminClient: SupabaseClient | null = null;
+
+try {
+  supabaseAdminClient = getSupabaseAdmin();
+} catch (error) {
+  // Sessizce geç, ilk request'te tekrar deneyecek
+}
 
 export interface Context {
   req: Request;
@@ -32,6 +49,15 @@ export interface Context {
 }
 
 export const createContext = async (req: Request): Promise<Context> => {
+  // Eğer admin client başlatılamadıysa, tekrar dene
+  if (!supabaseAdminClient) {
+    try {
+      supabaseAdminClient = getSupabaseAdmin();
+    } catch (error) {
+      throw new Error("Backend configuration error");
+    }
+  }
+
   const authorizationHeader = req.headers.get("authorization") || req.headers.get("Authorization");
   let user: User | null = null;
 
@@ -59,7 +85,9 @@ export const createContext = async (req: Request): Promise<Context> => {
   } else {
     // Authorization header yok - bu normal (publicProcedure için)
     // Sadece log atalım, hata fırlatmayalım
-    console.log("No authorization header - using public context");
+    if (Deno.env.get("DENO_ENV") === "development") {
+      console.log("No authorization header - using public context");
+    }
   }
 
   return {

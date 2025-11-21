@@ -1,22 +1,25 @@
 {
   "expo": {
     "name": "MyTrabzon",
-    "slug": "MyTrabzon",
-    "version": "1.0.47",
+    "slug": "mytrabzon-",
+    "version": "1.0.54",
     "orientation": "portrait",
     "scheme": "mytrabzon",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "platforms": [
       "ios",
-      "android",
-      "web"
+      "android"
     ],
     "runtimeVersion": {
       "policy": "sdkVersion"
     },
     "splash": {
+<<<<<<< HEAD
       "image": "./assets/images/icon.png",
+=======
+      "image": "./assets/images/splash-icon.png",
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -26,7 +29,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.litxtech.mytrabzon",
-      "versionCode": 46,
+      "versionCode": 53,
       "playStoreUrl": "https://play.google.com/store/apps/details?id=com.litxtech.mytrabzon",
       "permissions": [
         "CAMERA",
@@ -64,15 +67,21 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.litxtech.mytrabzon",
-      "buildNumber": "46",
+      "buildNumber": "53",
       "icon": "./assets/images/icon.png",
       "appStoreUrl": "https://apps.apple.com/app/mytrabzon/id1234567890",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photos",
-        "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to access your camera",
-        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to access your microphone",
-        "NSLocationWhenInUseUsageDescription": "Allow $(PRODUCT_NAME) to access your location to show nearby events and matches",
-        "NSLocationAlwaysUsageDescription": "Allow $(PRODUCT_NAME) to access your location for better recommendations",
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "MyTrabzon needs access to your photo library to let you share photos and videos with your friends and create posts.",
+        "NSPhotoLibraryAddUsageDescription": "MyTrabzon needs permission to save photos and videos to your photo library.",
+        "NSCameraUsageDescription": "MyTrabzon needs access to your camera to let you take photos and videos to share with your friends and create posts.",
+        "NSMicrophoneUsageDescription": "MyTrabzon needs access to your microphone for voice and video calls, and to record videos with audio.",
+        "NSLocationWhenInUseUsageDescription": "MyTrabzon uses your location to show nearby users, events, matches, and help you discover local activities in Trabzon. Location is only used when the app is active and you have enabled location sharing in settings.",
+        "NSLocationAlwaysUsageDescription": "MyTrabzon does not use location in the background. This permission is not required.",
+        "NSUserTrackingUsageDescription": "MyTrabzon does not track users across apps or websites. This permission is not used.",
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
@@ -82,14 +91,13 @@
           }
         ]
       },
-      "config": {
-        "usesNonExemptEncryption": false
-      }
-    },
-    "web": {
-      "bundler": "metro"
+      "associatedDomains": [
+        "applinks:mytrabzon.app",
+        "applinks:www.litxtech.com"
+      ]
     },
     "plugins": [
+<<<<<<< HEAD
       [
         "expo-router",
         {
@@ -97,8 +105,10 @@
         }
       ],
       "expo-dev-client",
+=======
+      "expo-router",
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
       "expo-font",
-      "expo-web-browser",
       [
         "expo-image-picker",
         {
@@ -116,16 +126,30 @@
         {
           "appleTeamId": "9W6CR7KXM7"
         }
-      ]
+      ],
+      [
+        "expo-dev-client",
+        {
+          "android": {
+            "package": "com.litxtech.mytrabzon"
+          }
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          }
+        }
+      ],
+      "./plugins/withFollyFix.js"
     ],
     "experiments": {
       "typedRoutes": true,
       "tsconfigPaths": true
     },
     "extra": {
-      "router": {
-        "origin": "https://rork.com/"
-      },
       "eas": {
         "projectId": "368ac56e-da84-480e-b163-f04077df7fa6"
       },
@@ -146,6 +170,9 @@
     "primaryColor": "#DC2626",
     "privacyPolicy": "https://www.litxtech.com/privacy-policy",
     "termsOfService": "https://www.litxtech.com/terms-of-service",
+    "supportUrl": "https://www.litxtech.com/support",
+    "childSafetyPolicy": "https://www.litxtech.com/child-safety-policy",
+    "communityPolicy": "https://www.litxtech.com/community-policy",
     "icon": "./assets/images/icon.png",
     "owner": "mytrabzon"
   }

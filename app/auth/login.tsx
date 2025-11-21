@@ -1,18 +1,20 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+<<<<<<< HEAD
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView, ScrollView, Alert, Linking, Modal } from 'react-native';
+=======
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView, ScrollView, Alert } from 'react-native';
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 import { useRouter, usePathname } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Mail, Lock, PhoneCall, X } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
-import * as AppleAuthentication from 'expo-apple-authentication';
 import { makeRedirectUri } from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import { PolicyConsentModal } from '@/components/PolicyConsentModal';
 
-WebBrowser.maybeCompleteAuthSession();
-
-type AuthMode = 'login' | 'register' | 'magic' | 'forgot' | 'phone' | 'phone-password-setup' | 'phone-forgot';
+type AuthMode = 'login' | 'register' | 'forgot' | 'phone' | 'phone-register' | 'phone-password-setup' | 'phone-forgot';
 
 export default function LoginScreen() {
   const [mode, setMode] = useState<AuthMode>('login');
@@ -26,18 +28,94 @@ export default function LoginScreen() {
   const [phonePasswordConfirm, setPhonePasswordConfirm] = useState('');
   const [phoneUserId, setPhoneUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [oauthLoading, setOauthLoading] = useState(false);
+  const [policiesAccepted, setPoliciesAccepted] = useState(false);
+  const [showPolicyModal, setShowPolicyModal] = useState(false);
   const isNavigatingRef = useRef(false); // Navigation flag - duplicate call'ları önlemek için
   const router = useRouter();
   const pathname = usePathname(); // Mevcut path'i takip et
   
   // Policy'leri çek
   const { data: policies } = (trpc as any).admin.getPolicies.useQuery();
+  const { data: requiredPolicies } = (trpc as any).user.getRequiredPolicies.useQuery();
+  const consentMutation = (trpc as any).user.consentToPolicies.useMutation();
   
+<<<<<<< HEAD
   const [selectedPolicy, setSelectedPolicy] = useState<any>(null);
   const [policyModalVisible, setPolicyModalVisible] = useState(false);
 
   const handlePolicyPress = (policyType: string) => {
+=======
+  // Kullanıcı dostu hata mesajları için yardımcı fonksiyon
+  const getFriendlyErrorMessage = (error: any): string => {
+    const errorMessage = error?.message || error?.error || '';
+    const lowerMessage = errorMessage.toLowerCase();
+
+    // Email ile ilgili hatalar
+    if (lowerMessage.includes('invalid login credentials') || lowerMessage.includes('invalid_credentials')) {
+      return 'Email veya şifre hatalı. Lütfen bilgilerinizi kontrol edin.';
+    }
+    if (lowerMessage.includes('email not confirmed') || lowerMessage.includes('email_not_confirmed')) {
+      return 'Email adresinizi doğrulamanız gerekiyor. Email kutunuzu kontrol edin.';
+    }
+    if (lowerMessage.includes('user not found') || lowerMessage.includes('user_not_found')) {
+      return 'Bu email adresi ile kayıtlı kullanıcı bulunamadı.';
+    }
+    if (lowerMessage.includes('email already registered') || lowerMessage.includes('already_registered')) {
+      return 'Bu email adresi zaten kullanılıyor. Giriş yapmayı deneyin.';
+    }
+
+    // Şifre ile ilgili hatalar
+    if (lowerMessage.includes('password') && lowerMessage.includes('weak')) {
+      return 'Şifreniz çok zayıf. Daha güçlü bir şifre seçin.';
+    }
+    if (lowerMessage.includes('password') && lowerMessage.includes('too short')) {
+      return 'Şifreniz en az 6 karakter olmalıdır.';
+    }
+
+    // Network hataları
+    if (lowerMessage.includes('network') || lowerMessage.includes('fetch') || lowerMessage.includes('connection')) {
+      return 'İnternet bağlantınızı kontrol edin ve tekrar deneyin.';
+    }
+    if (lowerMessage.includes('timeout') || lowerMessage.includes('timed out')) {
+      return 'İstek zaman aşımına uğradı. Lütfen tekrar deneyin.';
+    }
+
+    // Rate limit hataları
+    if (lowerMessage.includes('rate limit') || lowerMessage.includes('too many')) {
+      return 'Çok fazla deneme yaptınız. Lütfen birkaç dakika sonra tekrar deneyin.';
+    }
+
+    // Magic link hataları
+    if (lowerMessage.includes('magic link') || lowerMessage.includes('otp')) {
+      return 'Doğrulama linki gönderilemedi. Lütfen tekrar deneyin.';
+    }
+
+    // SMS hataları
+    if (lowerMessage.includes('sms') || lowerMessage.includes('phone')) {
+      return 'SMS gönderilemedi. Telefon numaranızı kontrol edin ve tekrar deneyin.';
+    }
+
+    // Genel hatalar
+    if (lowerMessage.includes('server error') || lowerMessage.includes('internal error')) {
+      return 'Sunucu hatası oluştu. Lütfen daha sonra tekrar deneyin.';
+    }
+    if (lowerMessage.includes('unauthorized') || lowerMessage.includes('permission')) {
+      return 'Bu işlem için yetkiniz bulunmuyor.';
+    }
+
+    // Bilinmeyen hatalar için genel mesaj
+    if (errorMessage) {
+      // Eğer mesaj zaten Türkçe ve kullanıcı dostu görünüyorsa direkt kullan
+      if (errorMessage.length < 100 && !errorMessage.includes('Error') && !errorMessage.includes('error')) {
+        return errorMessage;
+      }
+    }
+
+    return 'Bir sorun oluştu. Lütfen tekrar deneyin.';
+  };
+
+  const handlePolicyPress = (policyType: 'terms' | 'privacy') => {
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     if (policies) {
       const policy = policies.find((p: any) => p.policy_type === policyType && p.is_active);
       if (policy) {
@@ -60,6 +138,48 @@ export default function LoginScreen() {
     []
   );
 
+  // Profil güncelleme fonksiyonu - email ve telefon bilgilerini otomatik ekle
+  const updateProfileWithAuthInfo = useCallback(async (userId: string, email?: string, phone?: string, isNewUser: boolean = false) => {
+    try {
+      const updateData: any = {};
+      
+      // Email varsa ve farklıysa ekle
+      if (email) {
+        updateData.email = email;
+      }
+      
+      // Telefon varsa ve farklıysa ekle
+      if (phone) {
+        updateData.phone = phone;
+      }
+      
+      // Yeni kullanıcılar için "beni göster" ayarını açık yap
+      if (isNewUser) {
+        updateData.show_in_directory = true;
+      }
+      
+      // Eğer güncellenecek bir şey varsa
+      if (Object.keys(updateData).length > 0) {
+        console.log('📝 [updateProfile] Updating profile with:', updateData);
+        
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update(updateData)
+          .eq('id', userId);
+        
+        if (updateError) {
+          console.error('❌ [updateProfile] Error updating profile:', updateError);
+          // Hata olsa bile devam et, kritik değil
+        } else {
+          console.log('✅ [updateProfile] Profile updated successfully');
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ [updateProfile] Unexpected error:', error);
+      // Hata olsa bile devam et
+    }
+  }, []);
+
   const checkProfileAndNavigate = useCallback(async (userId: string) => {
     // Duplicate call'ları önle
     if (isNavigatingRef.current) {
@@ -80,7 +200,6 @@ export default function LoginScreen() {
 
       // Loading state'leri kapat
       console.log('🔍 [checkProfileAndNavigate] Closing loading states...');
-      setOauthLoading(false);
       setLoading(false);
       console.log('✅ [checkProfileAndNavigate] Loading states closed');
 
@@ -179,7 +298,6 @@ export default function LoginScreen() {
     } catch (error: any) {
       console.error('❌ [checkProfileAndNavigate] Error in checkProfileAndNavigate:', error);
       console.error('❌ [checkProfileAndNavigate] Error details:', JSON.stringify(error, null, 2));
-      setOauthLoading(false);
       setLoading(false);
       
       // Hata durumunda onboarding'e yönlendir
@@ -210,7 +328,6 @@ export default function LoginScreen() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('🔔 [onAuthStateChange] Auth state changed:', event, 'User ID:', session?.user?.id);
       console.log('🔔 [onAuthStateChange] isNavigatingRef.current:', isNavigatingRef.current);
-      console.log('🔔 [onAuthStateChange] oauthLoading:', oauthLoading);
       
       if (event === 'SIGNED_IN' && session?.user) {
         console.log('✅ [onAuthStateChange] User signed in via OAuth:', session.user.id);
@@ -225,29 +342,16 @@ export default function LoginScreen() {
         }
       } else if (event === 'SIGNED_OUT') {
         console.log('👋 [onAuthStateChange] User signed out');
-        setOauthLoading(false);
         setLoading(false);
         isNavigatingRef.current = false;
         console.log('✅ [onAuthStateChange] Reset states and navigation flag');
-      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-        console.log('🔄 [onAuthStateChange] Token refreshed for user:', session.user.id);
-        // Token yenilendiğinde de kontrol et (sadece OAuth loading durumunda)
-        if (oauthLoading && !isNavigatingRef.current) {
-          console.log('🚀 [onAuthStateChange] Calling checkProfileAndNavigate after token refresh');
-          setOauthLoading(false);
-          setLoading(false);
-          await checkProfileAndNavigate(session.user.id);
-          console.log('✅ [onAuthStateChange] checkProfileAndNavigate completed after token refresh');
-        } else {
-          console.log('⏭️ [onAuthStateChange] Skipping checkProfileAndNavigate after token refresh (oauthLoading:', oauthLoading, ', isNavigatingRef:', isNavigatingRef.current, ')');
-        }
       }
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [checkProfileAndNavigate, oauthLoading]);
+  }, [checkProfileAndNavigate]);
 
   useEffect(() => {
     if (mode !== 'phone') {
@@ -257,11 +361,77 @@ export default function LoginScreen() {
     }
   }, [mode]);
 
+  const handlePolicyAccept = async (policyIds: string[]) => {
+    if (!policyIds || policyIds.length === 0) {
+      console.error('No policy IDs provided');
+      Alert.alert('Hata', 'Politika ID\'leri bulunamadı');
+      return;
+    }
+
+    // Kayıt modunda kullanıcı henüz oluşturulmamış olabilir
+    // Bu durumda sadece checkbox'ı işaretle, kayıt işleminden sonra politika onayı yapılacak
+    if (mode === 'register') {
+      console.log('📝 [login] Register mode: Marking policies as accepted, will be saved after signup');
+      setPoliciesAccepted(true);
+      setShowPolicyModal(false);
+      return;
+    }
+
+    // Giriş modunda veya mevcut kullanıcı için politika onayını kaydet
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Hata', 'Kullanıcı bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
+        setLoading(false);
+        return;
+      }
+
+      console.log('📝 [login] Accepting policies:', policyIds, 'for user:', user.id);
+      await consentMutation.mutateAsync({ 
+        policyIds,
+        userId: user.id,
+      });
+      console.log('✅ [login] Policies accepted successfully');
+      setPoliciesAccepted(true);
+      setShowPolicyModal(false);
+    } catch (error: any) {
+      console.error('❌ [login] Error accepting policies:', error);
+      const errorMessage = error?.message || 'Politika onayı sırasında bir hata oluştu';
+      Alert.alert('Hata', errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleEmailAuth = async () => {
     const trimmedEmail = email.trim().toLowerCase();
+    const trimmedPassword = password.trim();
     
-    if (!trimmedEmail || !password) {
-      Alert.alert('Hata', 'Lütfen tüm alanları doldurun');
+    console.log('🔍 [login] handleEmailAuth called:', {
+      mode,
+      email: trimmedEmail,
+      emailLength: trimmedEmail.length,
+      passwordLength: password.length,
+      trimmedPasswordLength: trimmedPassword.length,
+      hasEmail: !!trimmedEmail && trimmedEmail.length > 0,
+      hasPassword: !!trimmedPassword && trimmedPassword.length > 0,
+    });
+    
+    // Email ve password kontrolü - boş string veya sadece boşluk kontrolü
+    if (!trimmedEmail || trimmedEmail.length === 0) {
+      console.warn('⚠️ [login] Email validation failed');
+      Alert.alert('Hata', 'Lütfen email adresinizi girin');
+      return;
+    }
+    
+    if (!trimmedPassword || trimmedPassword.length === 0) {
+      console.warn('⚠️ [login] Password validation failed:', {
+        passwordLength: password.length,
+        trimmedPasswordLength: trimmedPassword.length,
+        passwordValue: password,
+      });
+      Alert.alert('Hata', 'Lütfen şifrenizi girin');
       return;
     }
 
@@ -271,42 +441,168 @@ export default function LoginScreen() {
       return;
     }
 
-    setLoading(true);
-    try {
-      let result;
-      if (mode === 'login') {
-        result = await supabase.auth.signInWithPassword({ email: trimmedEmail, password });
-      } else {
-        // Email confirmation için web callback sayfası kullan (oradan deep link'e yönlendirecek)
-        const deepLinkUrl = getRedirectUrl('auth/callback');
-        const emailRedirectTo = Platform.select({
-          web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : deepLinkUrl,
-          default: deepLinkUrl,
-        });
-
-        result = await supabase.auth.signUp({ 
-          email: trimmedEmail, 
-          password,
-          options: {
-            emailRedirectTo,
-          }
-        });
+    // Kayıt modunda politika onayı kontrolü
+    if (mode === 'register') {
+      if (requiredPolicies?.policies && requiredPolicies.policies.length > 0 && !policiesAccepted) {
+        Alert.alert('Uyarı', 'Devam etmek için politikaları kabul etmeniz gerekmektedir');
+        setShowPolicyModal(true);
+        return;
       }
+      
+      // Kayıt modunda email doğrulaması ile kayıt yap
+      setLoading(true);
+      try {
+        console.log('📝 [register] Creating user with email:', trimmedEmail);
+        
+        // Supabase emailRedirectTo için web URL kullanmalıyız (custom scheme kabul etmez)
+        // Web callback sayfası mobil uygulamaya yönlendirecek
+        const webRedirectUrl = Platform.select({
+          web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://litxtech.com/auth/callback',
+          default: 'https://litxtech.com/auth/callback',
+        });
+        
+        const deepLinkUrl = getRedirectUrl('auth/callback');
+        
+        console.log('📧 [register] Web redirect URL:', webRedirectUrl);
+        console.log('📧 [register] Deep link URL:', deepLinkUrl);
+        
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: trimmedEmail,
+          password: trimmedPassword,
+          options: {
+            emailRedirectTo: webRedirectUrl, // Web URL kullan (Supabase custom scheme kabul etmez)
+            // Email doğrulaması gerekli - Supabase Dashboard'da "Enable email confirmations" açık olmalı
+            // Email gönderilmesi için Supabase Dashboard > Authentication > Email Templates ayarlanmalı
+            // ÖNEMLİ: Supabase Dashboard > Authentication > URL Configuration > Redirect URLs listesine
+            // "https://litxtech.com/auth/callback" eklenmeli
+          },
+        });
 
-      if (result.error) {
-        // Email confirmation hatası - kayıt modunda kullanıcıyı onboarding'e yönlendir
-        if (mode === 'register' && result.data?.user && 
-            (result.error.message?.includes('Email not confirmed') || result.error.message?.includes('email_not_confirmed'))) {
-          // Kullanıcı oluşturuldu, email confirmation beklenmeden onboarding'e yönlendir
+        if (signUpError) {
+          console.error('❌ [register] SignUp error:', signUpError);
+          throw signUpError;
+        }
+
+        if (!signUpData.user) {
+          throw new Error('Kullanıcı oluşturulamadı');
+        }
+
+        console.log('✅ [register] User created:', signUpData.user.id);
+        console.log('📧 [register] Email confirmation required:', !signUpData.session);
+        console.log('📧 [register] SignUp response:', {
+          hasUser: !!signUpData.user,
+          hasSession: !!signUpData.session,
+          userEmail: signUpData.user?.email,
+          userConfirmed: signUpData.user?.email_confirmed_at ? 'Yes' : 'No',
+        });
+
+        // Email bilgisini profile ekle (email doğrulanmadan önce bile) ve "beni göster" ayarını aç
+        await updateProfileWithAuthInfo(signUpData.user.id, trimmedEmail, undefined, true);
+
+        // Politika onaylarını kaydet (email doğrulanmadan önce bile)
+        if (policiesAccepted && requiredPolicies?.policies && requiredPolicies.policies.length > 0) {
+          try {
+            const policyIds = requiredPolicies.policies.map((p: any) => p.id);
+            console.log('📝 [register] Saving policies for new user:', signUpData.user.id);
+            await consentMutation.mutateAsync({ 
+              policyIds,
+              userId: signUpData.user.id,
+            });
+            console.log('✅ [register] Policies accepted for new user');
+          } catch (policyError: any) {
+            console.error('❌ [register] Error accepting policies for new user:', policyError);
+            // Politika hatası kayıt işlemini durdurmaz
+          }
+        }
+
+        // Email doğrulaması gerekli
+        if (!signUpData.session) {
+          console.log('📧 [register] No session - email confirmation required');
+          console.log('📧 [register] Email should be sent to:', trimmedEmail);
+          
+          // Email gönderilip gönderilmediğini kontrol et ve manuel olarak gönder
+          try {
+            console.log('📧 [register] Manually resending confirmation email...');
+            const { error: resendError } = await supabase.auth.resend({
+              type: 'signup',
+              email: trimmedEmail,
+              options: {
+                emailRedirectTo: webRedirectUrl, // Web URL kullan
+              },
+            });
+            
+            if (resendError) {
+              console.error('❌ [register] Error resending email:', resendError);
+              // Resend hatası olsa bile kullanıcıya bilgi ver
+            } else {
+              console.log('✅ [register] Confirmation email resent successfully');
+            }
+          } catch (resendErr: any) {
+            console.error('❌ [register] Exception during email resend:', resendErr);
+          }
+          
           Alert.alert(
             'Kayıt Başarılı',
-            'Email adresinize doğrulama linki gönderildi. Şimdi profilini oluşturabilirsin.',
-            [{ text: 'Tamam', onPress: () => router.replace('/auth/onboarding') }]
+            'Email adresinize doğrulama linki gönderildi. Lütfen email kutunuzu kontrol edin.',
+            [{ 
+              text: 'Tamam', 
+              onPress: () => {
+                setMode('login');
+                setEmail('');
+                setPassword('');
+              }
+            }]
           );
-          setLoading(false);
           return;
         }
+
+        // Eğer session varsa (email doğrulaması kapalıysa), direkt giriş yap
+        if (signUpData.session?.user) {
+          console.log('✅ [register] Auto login successful (email confirmation disabled)');
+          await checkProfileAndNavigate(signUpData.session.user.id);
+        }
+      } catch (error: any) {
+        console.error('❌ [register] Error during registration:', error);
+        console.error('❌ [register] Error details:', {
+          message: error?.message,
+          status: error?.status,
+          code: error?.code,
+          name: error?.name,
+        });
         
+        const friendlyMessage = getFriendlyErrorMessage(error);
+        
+        // Daha detaylı hata mesajı göster
+        Alert.alert(
+          'Kayıt Başarısız', 
+          friendlyMessage,
+          [
+            { text: 'Tamam' },
+            ...(error?.message?.includes('email') || error?.message?.includes('Email') ? [] : [
+              {
+                text: 'Detaylar',
+                onPress: () => {
+                  Alert.alert('Hata Detayları', JSON.stringify({
+                    message: error?.message,
+                    code: error?.code,
+                  }, null, 2));
+                },
+              },
+            ]),
+          ]
+        );
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Giriş modunda normal şifre ile giriş yap
+      const result = await supabase.auth.signInWithPassword({ email: trimmedEmail, password: trimmedPassword });
+
+      if (result.error) {
         // Giriş modunda email confirmation hatası
         if (result.error.message?.includes('Email not confirmed') || result.error.message?.includes('email_not_confirmed')) {
           Alert.alert(
@@ -334,7 +630,8 @@ export default function LoginScreen() {
                     if (resendError) throw resendError;
                     Alert.alert('Başarılı', 'Doğrulama emaili tekrar gönderildi!');
                   } catch (resendErr: any) {
-                    Alert.alert('Hata', resendErr.message || 'Email gönderilemedi');
+                    const friendlyMessage = getFriendlyErrorMessage(resendErr);
+                    Alert.alert('Email Gönderilemedi', friendlyMessage);
                   }
                 },
               },
@@ -347,17 +644,12 @@ export default function LoginScreen() {
         throw result.error;
       }
 
-      if (mode === 'register') {
-        // Kayıt başarılı - kullanıcıyı onboarding'e yönlendir
-        if (result.data.user) {
-          // Email confirmation beklemeden onboarding'e yönlendir
-          router.replace('/auth/onboarding');
-        } else {
-          Alert.alert('Başarılı', 'Kayıt başarılı! Email adresinizi kontrol edin.');
-        }
-      } else {
-        checkProfileAndNavigate(result.data.user?.id || '');
+      // Giriş başarılı - email bilgisini profile ekle
+      const userId = result.data.user?.id || '';
+      if (userId) {
+        await updateProfileWithAuthInfo(userId, trimmedEmail, undefined);
       }
+      checkProfileAndNavigate(userId);
     } catch (error: any) {
       console.error('Error during auth:', error);
       Alert.alert('Hata', error.message || 'Bir hata oluştu');
@@ -366,7 +658,7 @@ export default function LoginScreen() {
     }
   };
 
-  const handleMagicLink = async () => {
+  const handleSendEmailCode = async () => {
     const trimmedEmail = email.trim().toLowerCase();
     
     if (!trimmedEmail) {
@@ -382,62 +674,102 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      // Magic link için web callback sayfası kullan (oradan deep link'e yönlendirecek)
-      const deepLinkUrl = getRedirectUrl('auth/callback');
-      const emailRedirectTo = Platform.select({
-        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : deepLinkUrl,
-        default: deepLinkUrl,
-      });
-
-      const { error } = await supabase.auth.signInWithOtp({ 
+      // Magic link gönder - mobil uygulamada kalması için deep link kullan
+      const redirectUrl = getRedirectUrl('auth/callback');
+      
+      console.log('📧 [magic-link] Sending magic link to:', trimmedEmail);
+      console.log('📧 [magic-link] Redirect URL:', redirectUrl);
+      console.log('📧 [magic-link] Mode:', mode, 'isRegister:', mode === 'register');
+      
+      const { error } = await supabase.auth.signInWithOtp({
         email: trimmedEmail,
         options: {
-          emailRedirectTo,
-        }
+          shouldCreateUser: mode === 'register', // Kayıt modunda kullanıcı oluştur
+          emailRedirectTo: redirectUrl, // Mobil deep link
+        },
       });
-      
-      if (error) throw error;
-      Alert.alert('Başarılı', 'Email adresinize giriş linki gönderildi!');
+
+      if (error) {
+        console.error('❌ [magic-link] Error:', error);
+        throw error;
+      }
+
+      Alert.alert(
+        'Başarılı', 
+        mode === 'register' 
+          ? 'Email adresinize doğrulama linki gönderildi! Linke tıklayarak kaydınızı tamamlayabilirsiniz.'
+          : 'Email adresinize doğrulama linki gönderildi! Linke tıklayarak giriş yapabilirsiniz.'
+      );
     } catch (error: any) {
       console.error('Error sending magic link:', error);
-      Alert.alert('Hata', error.message || 'Bir hata oluştu');
+      const friendlyMessage = getFriendlyErrorMessage(error);
+      Alert.alert('Link Gönderilemedi', friendlyMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleForgotPassword = async () => {
-    const trimmedEmail = email.trim().toLowerCase();
-    
-    if (!trimmedEmail) {
-      Alert.alert('Hata', 'Lütfen email adresinizi girin');
-      return;
-    }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(trimmedEmail)) {
-      Alert.alert('Hata', 'Geçerli bir email adresi girin');
+  const handleForgotPassword = async () => {
+    const input = email.trim();
+    
+    if (!input) {
+      Alert.alert('Hata', 'Lütfen email veya telefon numaranızı girin');
       return;
     }
 
     setLoading(true);
     try {
-      // Platform'a göre redirect URL belirle
-      const redirectUrl = Platform.select({
-        web: typeof window !== 'undefined' ? `${window.location.origin}/auth/reset-password` : getRedirectUrl('auth/reset-password'),
-        default: getRedirectUrl('auth/reset-password'),
-      });
+      // Email mi telefon mu kontrol et
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const isEmail = emailRegex.test(input);
       
-      const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
-        redirectTo: redirectUrl,
-      });
+      if (isEmail) {
+        // Email ile şifre sıfırlama
+        const trimmedEmail = input.toLowerCase();
+        const redirectUrl = Platform.select({
+          web: typeof window !== 'undefined' ? `${window.location.origin}/auth/reset-password` : getRedirectUrl('auth/reset-password'),
+          default: getRedirectUrl('auth/reset-password'),
+        });
+        
+        const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+          redirectTo: redirectUrl,
+        });
+        
+        if (error) throw error;
+        Alert.alert('Başarılı', 'Şifre sıfırlama linki email adresinize gönderildi! Linke tıklayarak şifrenizi sıfırlayabilirsiniz.');
+      } else {
+        // Telefon ile şifre sıfırlama
+        const formatted = normalizePhone(input);
+        if (!formatted) {
+          Alert.alert('Hata', 'Lütfen geçerli bir telefon numarası girin');
+          setLoading(false);
+          return;
+        }
+        
+        // Telefon numarasına OTP gönder
+        const { error } = await supabase.auth.signInWithOtp({
+          phone: formatted,
+          options: {
+            shouldCreateUser: false,
+            channel: 'sms',
+          },
+        });
+        
+        if (error) throw error;
+        
+        // Telefon numarasını state'e kaydet
+        setPhoneNumber(input);
+        setSmsSent(true);
+        setMode('phone-forgot');
+        Alert.alert('Başarılı', 'Telefonunuza doğrulama kodu gönderildi. Lütfen kodu girin.');
+      }
       
-      if (error) throw error;
-      Alert.alert('Başarılı', 'Şifre sıfırlama linki email adresinize gönderildi! Linke tıklayarak şifrenizi sıfırlayabilirsiniz.');
       setMode('login');
     } catch (error: any) {
       console.error('Error resetting password:', error);
-      Alert.alert('Hata', error.message || 'Bir hata oluştu');
+      const friendlyMessage = getFriendlyErrorMessage(error);
+      Alert.alert('Şifre Sıfırlama Hatası', friendlyMessage);
     } finally {
       setLoading(false);
     }
@@ -446,14 +778,38 @@ export default function LoginScreen() {
   const normalizePhone = (raw: string) => {
     let value = raw.trim();
     if (!value) return '';
-    if (value.startsWith('+')) return value;
+    
+    // Sadece rakamları al
     let digits = value.replace(/\D/g, '');
-    if (digits.startsWith('0')) digits = digits.slice(1);
-    if (!digits.startsWith('90')) digits = `90${digits}`;
-    return `+${digits}`;
+    
+    // Boşsa döndür
+    if (!digits) return '';
+    
+    // Eğer zaten +90 ile başlıyorsa, olduğu gibi döndür
+    if (value.startsWith('+90')) {
+      return value.replace(/\D/g, '').replace(/^90/, '+90');
+    }
+    
+    // Eğer 0 ile başlıyorsa, 0'ı kaldır
+    if (digits.startsWith('0')) {
+      digits = digits.slice(1);
+    }
+    
+    // Eğer 90 ile başlıyorsa, + ekle
+    if (digits.startsWith('90')) {
+      return `+${digits}`;
+    }
+    
+    // Eğer 10 haneli numara ise (5330483061 gibi), +90 ekle
+    if (digits.length === 10) {
+      return `+90${digits}`;
+    }
+    
+    // Diğer durumlarda +90 ekle
+    return `+90${digits}`;
   };
 
-  const handleSendSmsCode = async () => {
+  const handleSendSmsCode = async (isRegister: boolean = false) => {
     const formatted = normalizePhone(phoneNumber);
     if (!formatted) {
       Alert.alert('Hata', 'Lütfen geçerli bir telefon numarası girin');
@@ -464,16 +820,22 @@ export default function LoginScreen() {
       const { error } = await supabase.auth.signInWithOtp({
         phone: formatted,
         options: {
-          shouldCreateUser: mode !== 'login',
+          shouldCreateUser: isRegister, // Kayıt modunda kullanıcı oluştur
           channel: 'sms',
         },
       });
       if (error) throw error;
       setSmsSent(true);
-      Alert.alert('Başarılı', 'SMS doğrulama kodu gönderildi. Telefonunuza gelen kodu girin.');
+      Alert.alert(
+        'Başarılı', 
+        isRegister 
+          ? 'SMS doğrulama kodu gönderildi. Telefonunuza gelen kodu girin ve şifrenizi oluşturun.'
+          : 'SMS doğrulama kodu gönderildi. Telefonunuza gelen kodu girin.'
+      );
     } catch (error: any) {
       console.error('Error sending SMS code:', error);
-      Alert.alert('Hata', error?.message || 'SMS kodu gönderilemedi');
+      const friendlyMessage = getFriendlyErrorMessage(error);
+      Alert.alert('SMS Gönderilemedi', friendlyMessage);
     } finally {
       setSmsLoading(false);
     }
@@ -491,30 +853,65 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
+      const userId = phoneUserId || (await supabase.auth.getUser()).data?.user?.id;
+      
+      if (!userId) {
+        throw new Error('Kullanıcı ID bulunamadı');
+      }
+      
+      console.log('📱 [phone-register] Setting password for user:', userId);
+      
       // Şifreyi güncelle
-      const { error } = await supabase.auth.updateUser({
+      const { error: passwordError } = await supabase.auth.updateUser({
         password: phonePassword,
       });
-      if (error) throw error;
+      
+      if (passwordError) {
+        console.error('❌ [phone-register] Password update error:', passwordError);
+        throw passwordError;
+      }
 
       // Metadata'ya has_password ekle
-      await supabase.auth.updateUser({
+      const { error: metadataError } = await supabase.auth.updateUser({
         data: { has_password: true },
       });
-
-      Alert.alert('Başarılı', 'Şifreniz oluşturuldu');
       
-      if (phoneUserId) {
-        await checkProfileAndNavigate(phoneUserId);
-      } else {
-        const { data: userData } = await supabase.auth.getUser();
-        if (userData?.user?.id) {
-          await checkProfileAndNavigate(userData.user.id);
+      if (metadataError) {
+        console.warn('⚠️ [phone-register] Metadata update error (non-critical):', metadataError);
+        // Metadata hatası kritik değil, devam et
+      }
+
+      console.log('✅ [phone-register] Password set successfully');
+      
+      // Telefon numarasını profile ekle (eğer henüz eklenmediyse) ve "beni göster" ayarını aç
+      const formatted = normalizePhone(phoneNumber);
+      if (formatted) {
+        console.log('📱 [phone-register] Updating profile with phone:', formatted);
+        await updateProfileWithAuthInfo(userId, undefined, formatted, true);
+      }
+      
+      // Politika onaylarını kontrol et ve kaydet (eğer kayıt modundaysa)
+      if (requiredPolicies?.policies && requiredPolicies.policies.length > 0) {
+        try {
+          const policyIds = requiredPolicies.policies.map((p: any) => p.id);
+          console.log('📝 [phone-register] Saving policies for new user:', userId);
+          await consentMutation.mutateAsync({ 
+            policyIds,
+            userId: userId,
+          });
+          console.log('✅ [phone-register] Policies accepted for new user');
+        } catch (policyError: any) {
+          console.error('❌ [phone-register] Error accepting policies:', policyError);
+          // Politika hatası kayıt işlemini durdurmaz
         }
       }
+      
+      // Profil kontrolü ve yönlendirme
+      await checkProfileAndNavigate(userId);
     } catch (error: any) {
-      console.error('Error setting password:', error);
-      Alert.alert('Hata', error?.message || 'Şifre oluşturulamadı');
+      console.error('❌ [phone-register] Error setting password:', error);
+      const friendlyMessage = getFriendlyErrorMessage(error);
+      Alert.alert('Kayıt Başarısız', friendlyMessage);
     } finally {
       setLoading(false);
     }
@@ -544,7 +941,8 @@ export default function LoginScreen() {
       Alert.alert('Başarılı', 'Telefonunuza doğrulama kodu gönderildi. Lütfen kodu girin.');
     } catch (error: any) {
       console.error('Error sending forgot password SMS:', error);
-      Alert.alert('Hata', error?.message || 'SMS kodu gönderilemedi');
+      const friendlyMessage = getFriendlyErrorMessage(error);
+      Alert.alert('SMS Gönderilemedi', friendlyMessage);
     } finally {
       setSmsLoading(false);
     }
@@ -589,16 +987,19 @@ export default function LoginScreen() {
 
       Alert.alert('Başarılı', 'Şifreniz başarıyla değiştirildi');
       
-      // Giriş yap
+      // Giriş yap ve telefon numarasını profile ekle
       const resolvedId = data?.session?.user?.id || data?.user?.id;
       if (resolvedId) {
+        // Telefon numarasını profile ekle
+        await updateProfileWithAuthInfo(resolvedId, undefined, formatted);
         await checkProfileAndNavigate(resolvedId);
       } else {
         setMode('login');
       }
     } catch (error: any) {
       console.error('Error resetting password:', error);
-      Alert.alert('Hata', error?.message || 'Şifre değiştirilemedi');
+      const friendlyMessage = getFriendlyErrorMessage(error);
+      Alert.alert('Şifre Değiştirilemedi', friendlyMessage);
     } finally {
       setLoading(false);
     }
@@ -611,46 +1012,57 @@ export default function LoginScreen() {
       return;
     }
     if (!password.trim()) {
-      Alert.alert('Hata', 'Şifre gerekli');
+      Alert.alert('Hata', 'Lütfen şifrenizi girin');
       return;
     }
 
     setLoading(true);
     try {
-      // Önce telefon numarası ile OTP gönder (giriş için)
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        phone: formatted,
-        options: {
-          shouldCreateUser: false,
-          channel: 'sms',
-        },
+      // Telefon numarasını email formatına çevir (Supabase telefon + şifre girişi için)
+      // Format: +905551234567 -> +905551234567@phone.mytrabzon.com
+      const phoneEmail = `${formatted}@phone.mytrabzon.com`;
+      
+      console.log('📱 [phone-login] Attempting login with phone:', formatted);
+      
+      // Telefon numarasını email olarak kullanarak şifre ile giriş yap
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: phoneEmail,
+        password: password.trim(),
       });
-      
-      if (otpError) {
-        // Eğer kullanıcı yoksa, şifre ile giriş yapmayı dene
-        // Telefon + şifre ile giriş için özel bir yöntem gerekebilir
-        // Şimdilik OTP ile devam edelim
-        throw otpError;
+
+      if (error) {
+        console.error('❌ [phone-login] Error:', error);
+        throw error;
       }
-      
-      // OTP gönderildi, kullanıcıdan kodu iste
-      setSmsSent(true);
-      Alert.alert('Bilgi', 'Telefonunuza doğrulama kodu gönderildi. Lütfen kodu girin.');
+
+      if (data?.user) {
+        console.log('✅ [phone-login] Login successful');
+        // Giriş başarılı - telefon numarasını profile ekle
+        await updateProfileWithAuthInfo(data.user.id, undefined, formatted);
+        await checkProfileAndNavigate(data.user.id);
+      }
     } catch (error: any) {
       console.error('Error in phone login:', error);
-      // Eğer kullanıcı yoksa kayıt ekranına yönlendir
-      if (error?.message?.includes('not found') || error?.message?.includes('User not found')) {
-        Alert.alert('Bilgi', 'Bu telefon numarası ile kayıtlı kullanıcı bulunamadı. Lütfen önce kayıt olun.');
-        setMode('phone');
+      const friendlyMessage = getFriendlyErrorMessage(error);
+      
+      // Kullanıcı bulunamadı hatası için özel mesaj
+      if (error?.message?.includes('not found') || 
+          error?.message?.includes('User not found') ||
+          error?.message?.includes('Invalid login credentials') ||
+          error?.message?.includes('invalid_credentials')) {
+        Alert.alert(
+          'Giriş Yapılamadı', 
+          'Telefon numarası veya şifre hatalı. Lütfen bilgilerinizi kontrol edin.'
+        );
       } else {
-        Alert.alert('Hata', error?.message || 'Giriş yapılamadı');
+        Alert.alert('Giriş Yapılamadı', friendlyMessage);
       }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleVerifySmsCode = async () => {
+  const handleVerifySmsCode = async (isRegister: boolean = false) => {
     const formatted = normalizePhone(phoneNumber);
     if (!formatted) {
       Alert.alert('Hata', 'Telefon numarası gerekli');
@@ -667,282 +1079,120 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
+      console.log('📱 [phone-verify] Verifying SMS code for:', formatted);
+      console.log('📱 [phone-verify] Is register mode:', isRegister);
+      
       const { data, error } = await supabase.auth.verifyOtp({
         phone: formatted,
         token: smsCode.trim(),
         type: 'sms',
       });
-      if (error) throw error;
+      
+      if (error) {
+        console.error('❌ [phone-verify] OTP verification error:', error);
+        throw error;
+      }
 
       let resolvedId = data?.session?.user?.id || data?.user?.id;
       if (!resolvedId) {
         const { data: current } = await supabase.auth.getUser();
         resolvedId = current?.user?.id;
       }
-      if (!resolvedId) throw new Error('Kullanıcı doğrulanamadı');
+      if (!resolvedId) {
+        console.error('❌ [phone-verify] User ID not found');
+        throw new Error('Kullanıcı doğrulanamadı');
+      }
       
-      // Kullanıcının şifresi var mı kontrol et
-      const { data: userData } = await supabase.auth.getUser();
-      const hasPassword = userData?.user?.app_metadata?.has_password || false;
+      console.log('✅ [phone-verify] SMS code verified, user ID:', resolvedId);
       
-      // Eğer yeni kullanıcıysa ve şifresi yoksa şifre oluşturma ekranına yönlendir
-      if (!hasPassword && mode === 'phone') {
+      // Telefon numarasını profile ekle
+      await updateProfileWithAuthInfo(resolvedId, undefined, formatted);
+
+      // Kayıt modunda şifre oluşturma ekranına yönlendir
+      if (isRegister) {
+        console.log('📱 [phone-register] Redirecting to password setup');
         setPhoneUserId(resolvedId);
         setMode('phone-password-setup');
         setSmsCode('');
+        setSmsSent(false); // SMS kodunu temizle
+        setLoading(false);
+        return;
+      }
+
+      // Giriş modunda - kullanıcının şifresi var mı kontrol et
+      const { data: userData } = await supabase.auth.getUser();
+      const hasPassword = userData?.user?.app_metadata?.has_password || false;
+      
+      if (!hasPassword && mode === 'phone') {
+        console.log('📱 [phone-login] No password, redirecting to password setup');
+        setPhoneUserId(resolvedId);
+        setMode('phone-password-setup');
+        setSmsCode('');
+        setSmsSent(false);
         setLoading(false);
         return;
       }
       
+      // Giriş başarılı, profil kontrolü ve yönlendirme
       await checkProfileAndNavigate(resolvedId);
     } catch (error: any) {
-      console.error('Error verifying SMS code:', error);
-      Alert.alert('Hata', error?.message || 'Telefon doğrulaması başarısız');
+      console.error('❌ [phone-verify] Error verifying SMS code:', error);
+      const friendlyMessage = getFriendlyErrorMessage(error);
+      Alert.alert('Doğrulama Başarısız', friendlyMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    setOauthLoading(true);
-    try {
-      console.log('🔐 [GoogleLogin] Starting Google OAuth login...');
-
-      // Platforma göre redirect URL belirle
-      const isNative = Platform.OS === 'ios' || Platform.OS === 'android';
-      const redirectUrl = isNative ? getRedirectUrl('auth/callback') : getRedirectUrl('auth/callback');
-
-      console.log('🔐 [GoogleLogin] Platform:', Platform.OS, 'Redirect URL:', redirectUrl);
-
-      // Web'de Supabase'in standart yönlendirmesini kullan
-      if (Platform.OS === 'web') {
-        const { data, error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: redirectUrl,
-            skipBrowserRedirect: false,
-          },
-        });
-
-        if (error) throw error;
-        if (data.url) {
-          window.location.href = data.url;
-        }
-        return;
-      }
-
-      // Native platformlar için Supabase OAuth - direkt deep link'e yönlendir
-      // skipBrowserRedirect: false kullanarak Supabase'in normal redirect akışını kullan
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: redirectUrl,
-          skipBrowserRedirect: true,
-        },
-      });
-
-      if (error) {
-        console.error('🔐 [GoogleLogin] OAuth error:', error);
-        throw error;
-      }
-
-      if (!data?.url) {
-        throw new Error('OAuth URL alınamadı');
-      }
-
-      console.log('🔐 [GoogleLogin] Opening OAuth session:', data.url);
-      const authResult = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-      if (authResult.type === 'cancel' || authResult.type === 'dismiss') {
-        setLoading(false);
-        setOauthLoading(false);
-      }
-      
-      // OAuth başarılı olduğunda onAuthStateChange callback'i tetiklenecek
-      // ve checkProfileAndNavigate çağrılacak
-      // Bu yüzden burada loading state'i kapatmıyoruz - callback ekranında kapatılacak
-      
-    } catch (error: any) {
-      console.error('🔐 [GoogleLogin] Error during Google login:', error);
-      Alert.alert('Hata', error.message || 'Google ile giriş yapılırken bir hata oluştu');
-      setLoading(false);
-      setOauthLoading(false);
-    }
-  };
 
 
-  const handleAppleLogin = async () => {
-    // Apple ile giriş sadece iOS'ta çalışır
-    if (Platform.OS !== 'ios') {
-      Alert.alert('Bilgi', 'Apple ile giriş sadece iOS cihazlarda kullanılabilir');
-      return;
-    }
-
-    setLoading(true);
-    setOauthLoading(true);
-    try {
-      console.log('Starting Apple native login...');
-      
-      // Apple native authentication kullan
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-      });
-
-      console.log('Apple credential received:', {
-        user: credential.user,
-        email: credential.email,
-        identityToken: !!credential.identityToken,
-      });
-
-      if (!credential.identityToken) {
-        throw new Error('Apple identity token alınamadı');
-      }
-
-      // Identity token'ı decode et ve aud claim'ini kontrol et
-      try {
-        const tokenParts = credential.identityToken.split('.');
-        if (tokenParts.length === 3) {
-          // Base64 decode (React Native için)
-          const base64 = tokenParts[1].replace(/-/g, '+').replace(/_/g, '/');
-          const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
-          const decoded = atob(padded);
-          const payload = JSON.parse(decoded);
-          
-          console.log('Apple identity token payload:', {
-            aud: payload.aud,
-            sub: payload.sub,
-            iss: payload.iss,
-            exp: payload.exp,
-          });
-          
-          // Expo Go kontrolü - aud claim'i "host.exp.Exponent" ise development build gerekli
-          if (payload.aud === 'host.exp.Exponent') {
-            Alert.alert(
-              'Development Build Gerekli',
-              'Apple ile giriş için development build kullanmanız gerekiyor. Expo Go\'da çalışmaz.\n\nLütfen EAS Build ile development build oluşturun.'
-            );
-            setLoading(false);
-            setOauthLoading(false);
-            return;
-          }
-          
-          // aud claim'i Service ID olmalı: com.litxtech.mytrabzon.login
-          if (payload.aud && payload.aud !== 'com.litxtech.mytrabzon.login') {
-            console.warn('⚠️ Token audience mismatch!');
-            console.warn('Expected: com.litxtech.mytrabzon.login');
-            console.warn('Got:', payload.aud);
-            console.warn('Supabase Dashboard → Authentication → Providers → Apple → Service ID (Client ID) alanına "' + payload.aud + '" yazılmalı');
-          }
-        }
-      } catch (decodeError) {
-        console.warn('Could not decode identity token:', decodeError);
-      }
-
-      // Supabase'e identity token ile giriş yap
-      // Not: Supabase'de Apple provider yapılandırmasında Service ID (Client ID) olarak
-      // "com.litxtech.mytrabzon.login" ayarlanmış olmalı
-      const { data, error } = await supabase.auth.signInWithIdToken({
-        provider: 'apple',
-        token: credential.identityToken,
-      });
-
-      if (error) {
-        console.error('Supabase Apple sign in error:', error);
-        throw error;
-      }
-
-      if (data.user) {
-        console.log('Apple login successful:', data.user.id);
-        setOauthLoading(false);
-        setLoading(false);
-        await checkProfileAndNavigate(data.user.id);
-      } else {
-        throw new Error('Kullanıcı bilgisi alınamadı');
-      }
-    } catch (error: any) {
-      // Kullanıcı iptal ettiyse hata gösterme
-      if (error.code === 'ERR_CANCELED' || error.code === 'ERR_REQUEST_CANCELED' || error.message?.includes('canceled')) {
-        console.log('Apple giriş iptal edildi');
-      } else {
-        console.error('Error during Apple login:', error);
-        Alert.alert('Hata', error.message || 'Apple ile giriş yapılırken bir hata oluştu');
-      }
-      setLoading(false);
-      setOauthLoading(false);
-    }
-  };
 
 
   const renderForm = () => {
-    if (mode === 'magic') {
-      return (
-        <View style={styles.formContainer}>
-          <Text style={styles.formTitle}>Link ile Giriş</Text>
-          <Text style={styles.formSubtitle}>Email adresinize giriş linki göndereceğiz</Text>
-          
-          <View style={styles.inputContainer}>
-            <PhoneCall size={20} color={COLORS.white} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              placeholderTextColor="rgba(255,255,255,0.6)"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-          </View>
-
-          <TouchableOpacity
-            style={[styles.primaryButton, loading && styles.buttonDisabled]}
-            onPress={handleMagicLink}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <Text style={styles.primaryButtonText}>Link Gönder</Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={() => setMode('login')}>
-            <Text style={styles.linkText}>Geri Dön</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
     if (mode === 'forgot') {
       return (
         <View style={styles.formContainer}>
           <Text style={styles.formTitle}>Şifremi Unuttum</Text>
-          <Text style={styles.formSubtitle}>Şifre sıfırlama linki göndereceğiz</Text>
+          <Text style={styles.formSubtitle}>Email veya telefon numaranızla şifre sıfırlama linki göndereceğiz</Text>
           
           <View style={styles.inputContainer}>
             <Mail size={20} color={COLORS.white} style={styles.inputIcon} />
             <TextInput
               style={styles.input}
-              placeholder="Email"
+              placeholder="Email veya Telefon (5xx xxx xx xx)"
               placeholderTextColor="rgba(255,255,255,0.6)"
               value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
+              onChangeText={(text) => {
+                setEmail(text);
+                // Eğer telefon numarası formatındaysa phoneNumber'a da ekle
+                if (/^[0-9+\s-]+$/.test(text) && !text.includes('@')) {
+                  setPhoneNumber(text);
+                }
+              }}
+              keyboardType="default"
               autoCapitalize="none"
             />
           </View>
 
           <TouchableOpacity
             style={[styles.primaryButton, loading && styles.buttonDisabled]}
-            onPress={handleForgotPassword}
-            disabled={loading}
+            onPress={async () => {
+              const input = email.trim();
+              // Email mi telefon mu kontrol et
+              if (input.includes('@')) {
+                // Email ile şifre sıfırlama
+                await handleForgotPassword();
+              } else {
+                // Telefon ile şifre sıfırlama
+                await handlePhoneForgotPassword();
+              }
+            }}
+            disabled={loading || !email.trim()}
           >
             {loading ? (
               <ActivityIndicator color={COLORS.white} />
             ) : (
-              <Text style={styles.primaryButtonText}>Link Gönder</Text>
+              <Text style={styles.primaryButtonText}>Şifre Sıfırlama Linki Gönder</Text>
             )}
           </TouchableOpacity>
 
@@ -956,94 +1206,44 @@ export default function LoginScreen() {
     if (mode === 'phone') {
       return (
         <View style={styles.formContainer}>
-          <View style={styles.betaBadge}>
-            <Text style={styles.betaText}>📱 Telefon ile giriş</Text>
-            <Text style={styles.betaSubtext}>Numaranı doğrulayarak giriş yap</Text>
-          </View>
+          <Text style={styles.betaText}>Telefon ile giriş</Text>
 
           <View style={styles.inputContainer}>
-            <Mail size={20} color={COLORS.white} style={styles.inputIcon} />
+            <PhoneCall size={20} color={COLORS.white} style={styles.inputIcon} />
             <TextInput
               style={styles.input}
-              placeholder="+90 5xx xxx xx xx"
+              placeholder="5xx xxx xx xx"
               placeholderTextColor="rgba(255,255,255,0.6)"
               keyboardType="phone-pad"
               value={phoneNumber}
               onChangeText={setPhoneNumber}
+              autoCapitalize="none"
             />
-          </View>
-
-          <Text style={styles.phoneInfoText}>
-            Telefon numaranı girip SMS doğrulama kodu iste. Kod geldikten sonra aşağıya girerek giriş yapabilirsin.
-          </Text>
-
-          <TouchableOpacity
-            style={[styles.secondaryButton, (smsLoading || !phoneNumber.trim()) && styles.buttonDisabled]}
-            onPress={handleSendSmsCode}
-            disabled={smsLoading || !phoneNumber.trim()}
-          >
-            {smsLoading ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <Text style={styles.secondaryButtonText}>
-                {smsSent ? 'Kodu Yeniden Gönder' : 'SMS Kodu Gönder'}
-              </Text>
-            )}
-          </TouchableOpacity>
-
-          {smsSent && (
-            <View style={styles.inputContainer}>
-              <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="SMS Kodu"
-                placeholderTextColor="rgba(255,255,255,0.6)"
-                keyboardType="number-pad"
-                value={smsCode}
-                onChangeText={setSmsCode}
-              />
-            </View>
-          )}
-
-          <TouchableOpacity
-            style={[styles.primaryButton, (!smsSent || !smsCode.trim() || loading) && styles.buttonDisabled]}
-            onPress={handleVerifySmsCode}
-            disabled={!smsSent || !smsCode.trim() || loading}
-          >
-            {loading ? (
-              <ActivityIndicator color={COLORS.primary} />
-            ) : (
-              <Text style={styles.primaryButtonText}>Telefonla Giriş Yap</Text>
-            )}
-          </TouchableOpacity>
-
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>veya</Text>
-            <View style={styles.dividerLine} />
           </View>
 
           <View style={styles.inputContainer}>
             <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
             <TextInput
               style={styles.input}
-              placeholder="Şifre (varsa)"
+              placeholder="Şifre"
               placeholderTextColor="rgba(255,255,255,0.6)"
               value={password}
               onChangeText={setPassword}
               secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
             />
           </View>
 
           <TouchableOpacity
-            style={[styles.secondaryButton, (!phoneNumber.trim() || !password.trim() || loading) && styles.buttonDisabled]}
+            style={[styles.primaryButton, (!phoneNumber.trim() || !password.trim() || loading) && styles.buttonDisabled]}
             onPress={handlePhoneLogin}
             disabled={!phoneNumber.trim() || !password.trim() || loading}
           >
             {loading ? (
               <ActivityIndicator color={COLORS.white} />
             ) : (
-              <Text style={styles.secondaryButtonText}>Şifre ile Giriş Yap</Text>
+              <Text style={styles.primaryButtonText}>Giriş Yap</Text>
             )}
           </TouchableOpacity>
 
@@ -1052,7 +1252,87 @@ export default function LoginScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => setMode('login')}>
-            <Text style={styles.linkText}>Geri dön</Text>
+            <Text style={styles.linkText}>Email ile giriş yap</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (mode === 'phone-register') {
+      return (
+        <View style={styles.formContainer}>
+          <Text style={styles.betaText}>Telefon ile kayıt ol</Text>
+
+          <View style={styles.inputContainer}>
+            <PhoneCall size={20} color={COLORS.white} style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="5xx xxx xx xx"
+              placeholderTextColor="rgba(255,255,255,0.6)"
+              keyboardType="phone-pad"
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
+              autoCapitalize="none"
+              editable={!smsSent}
+            />
+          </View>
+
+          {!smsSent ? (
+            <>
+              <TouchableOpacity
+                style={[styles.primaryButton, (smsLoading || !phoneNumber.trim()) && styles.buttonDisabled]}
+                onPress={() => handleSendSmsCode(true)}
+                disabled={smsLoading || !phoneNumber.trim()}
+              >
+                {smsLoading ? (
+                  <ActivityIndicator color={COLORS.white} />
+                ) : (
+                  <Text style={styles.primaryButtonText}>SMS Kodu Gönder</Text>
+                )}
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <View style={styles.inputContainer}>
+                <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="SMS Kodu"
+                  placeholderTextColor="rgba(255,255,255,0.6)"
+                  keyboardType="number-pad"
+                  value={smsCode}
+                  onChangeText={setSmsCode}
+                  maxLength={6}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.primaryButton, (!smsCode.trim() || loading) && styles.buttonDisabled]}
+                onPress={() => handleVerifySmsCode(true)}
+                disabled={!smsCode.trim() || loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color={COLORS.white} />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Kodu Doğrula</Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={() => {
+                  setSmsSent(false);
+                  setSmsCode('');
+                }}
+                disabled={loading}
+              >
+                <Text style={styles.secondaryButtonText}>Farklı Numara Kullan</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          <TouchableOpacity onPress={() => setMode('register')}>
+            <Text style={styles.linkText}>Email ile kayıt ol</Text>
           </TouchableOpacity>
         </View>
       );
@@ -1061,8 +1341,7 @@ export default function LoginScreen() {
     if (mode === 'phone-password-setup') {
       return (
         <View style={styles.formContainer}>
-          <Text style={styles.formTitle}>Şifre Oluştur</Text>
-          <Text style={styles.formSubtitle}>Hesabınızı güvence altına almak için bir şifre oluşturun</Text>
+          <Text style={styles.betaText}>Şifre Belirle</Text>
 
           <View style={styles.inputContainer}>
             <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
@@ -1096,7 +1375,7 @@ export default function LoginScreen() {
             {loading ? (
               <ActivityIndicator color={COLORS.white} />
             ) : (
-              <Text style={styles.primaryButtonText}>Şifre Oluştur</Text>
+              <Text style={styles.primaryButtonText}>Kayıt Ol</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -1113,7 +1392,7 @@ export default function LoginScreen() {
             <PhoneCall size={20} color={COLORS.white} style={styles.inputIcon} />
             <TextInput
               style={styles.input}
-              placeholder="+90 5xx xxx xx xx"
+              placeholder="5xx xxx xx xx"
               placeholderTextColor="rgba(255,255,255,0.6)"
               keyboardType="phone-pad"
               value={phoneNumber}
@@ -1197,10 +1476,7 @@ export default function LoginScreen() {
     return (
       <View style={styles.formContainer}>
         {/* Beta Sürümü Mesajı */}
-        <View style={styles.betaBadge}>
-          <Text style={styles.betaText}>🚀 Beta Sürümü</Text>
-          <Text style={styles.betaSubtext}>Yakında tam sürüm kullanıma sunulacak</Text>
-        </View>
+        <Text style={styles.betaText}>Yakında tam sürüm kullanıma sunulacak</Text>
 
         <Text style={styles.formTitle}>
           {mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
@@ -1226,14 +1502,39 @@ export default function LoginScreen() {
             placeholder="Şifre"
             placeholderTextColor="rgba(255,255,255,0.6)"
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(text) => {
+              console.log('🔑 [login] Password changed:', text.length, 'characters');
+              setPassword(text);
+            }}
             secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
           />
         </View>
 
         {mode === 'login' && (
           <TouchableOpacity onPress={() => setMode('forgot')}>
             <Text style={styles.forgotText}>Şifremi unuttum</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Politika Onay Checkbox (Sadece Kayıt Modunda) */}
+        {mode === 'register' && requiredPolicies?.policies && requiredPolicies.policies.length > 0 && (
+          <TouchableOpacity
+            style={styles.policyCheckboxContainer}
+            onPress={() => setShowPolicyModal(true)}
+            activeOpacity={0.7}
+          >
+            <View style={[
+              styles.checkbox,
+              policiesAccepted && styles.checkboxChecked,
+              { borderColor: COLORS.white }
+            ]}>
+              {policiesAccepted && <Text style={styles.checkmark}>✓</Text>}
+            </View>
+            <Text style={styles.policyCheckboxText}>
+              Kullanım Koşulları ve Gizlilik Politikası&apos;nı kabul ediyorum
+            </Text>
           </TouchableOpacity>
         )}
 
@@ -1251,55 +1552,106 @@ export default function LoginScreen() {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.googleButton, (loading || oauthLoading) && styles.buttonDisabled]}
-          onPress={handleGoogleLogin}
-          disabled={loading || oauthLoading}
-        >
-          {oauthLoading ? (
-            <ActivityIndicator color={COLORS.white} />
-          ) : (
-            <Text style={styles.googleButtonText}>
-              Google ile {mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
-            </Text>
-          )}
-        </TouchableOpacity>
+        <View style={styles.alternativeButtonsContainer}>
+          {/* Apple Sign In/Up (Sadece iOS) - Özel buton */}
+          {Platform.OS === 'ios' && (
+            <TouchableOpacity
+              style={[styles.magicLinkButton, loading && styles.buttonDisabled]}
+              onPress={async () => {
+                try {
+                  setLoading(true);
+                  const credential = await AppleAuthentication.signInAsync({
+                    requestedScopes: [
+                      AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+                      AppleAuthentication.AppleAuthenticationScope.EMAIL,
+                    ],
+                  });
 
-        {Platform.OS === 'ios' && (
-          <TouchableOpacity
-            style={[styles.appleButton, (loading || oauthLoading) && styles.buttonDisabled]}
-            onPress={handleAppleLogin}
-            disabled={loading || oauthLoading}
-          >
-            {oauthLoading ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <Text style={styles.appleButtonText}>
-                Apple ile {mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
+                  if (credential.identityToken) {
+                    const { data, error } = await supabase.auth.signInWithIdToken({
+                      provider: 'apple',
+                      token: credential.identityToken,
+                    });
+
+                    if (error) throw error;
+
+                    if (data.user) {
+                      // Politika onaylarını kontrol et ve kaydet
+                      if (requiredPolicies?.policies && requiredPolicies.policies.length > 0) {
+                        try {
+                          const policyIds = requiredPolicies.policies.map((p: any) => p.id);
+                          await consentMutation.mutateAsync({ 
+                            policyIds,
+                            userId: data.user.id,
+                          });
+                          console.log('✅ [login] Policies accepted for Apple user');
+                        } catch (policyError: any) {
+                          console.error('❌ [login] Error accepting policies for Apple user:', policyError);
+                        }
+                      }
+                      
+                      checkProfileAndNavigate(data.user.id);
+                    }
+                  }
+                } catch (e: any) {
+                  if (e.code === 'ERR_REQUEST_CANCELED') {
+                    // Kullanıcı iptal etti, sessizce devam et
+                    console.log('Apple Sign In cancelled');
+                  } else {
+                    console.error('Apple Sign In error:', e);
+                    const friendlyMessage = getFriendlyErrorMessage(e);
+                    Alert.alert('Giriş Yapılamadı', friendlyMessage);
+                  }
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              disabled={loading}
+            >
+              <Text style={styles.magicLinkButtonText}>
+                {mode === 'login' ? 'Apple ile Giriş' : 'Apple ile Kayıt'}
               </Text>
-            )}
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[styles.magicLinkButton, loading && styles.buttonDisabled]}
+            onPress={handleSendEmailCode}
+            disabled={loading}
+          >
+            <Text style={styles.magicLinkButtonText}>
+              {mode === 'login' ? 'Magic Link ile Giriş' : 'Magic Link ile Kayıt'}
+            </Text>
           </TouchableOpacity>
-        )}
 
-        <TouchableOpacity
-          style={[styles.magicLinkButton, loading && styles.buttonDisabled]}
-          onPress={() => setMode('magic')}
-          disabled={loading}
-        >
-          <Text style={styles.magicLinkButtonText}>Link ile Giriş</Text>
-        </TouchableOpacity>
+          {mode === 'login' && (
+            <TouchableOpacity
+              style={[styles.magicLinkButton, loading && styles.buttonDisabled]}
+              onPress={() => {
+                setMode('phone');
+                setSmsSent(false);
+                setSmsCode('');
+              }}
+              disabled={loading}
+            >
+              <Text style={styles.magicLinkButtonText}>Telefon ile Giriş</Text>
+            </TouchableOpacity>
+          )}
 
-        <TouchableOpacity
-          style={[styles.magicLinkButton, loading && styles.buttonDisabled]}
-          onPress={() => {
-            setMode('phone');
-            setSmsSent(false);
-            setSmsCode('');
-          }}
-          disabled={loading}
-        >
-          <Text style={styles.magicLinkButtonText}>Telefon ile Giriş</Text>
-        </TouchableOpacity>
+          {mode === 'register' && (
+            <TouchableOpacity
+              style={[styles.magicLinkButton, loading && styles.buttonDisabled]}
+              onPress={() => {
+                setMode('phone-register');
+                setPhoneNumber('');
+                setSmsSent(false);
+                setSmsCode('');
+              }}
+              disabled={loading}
+            >
+              <Text style={styles.magicLinkButtonText}>Telefon ile Kayıt Ol</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         <TouchableOpacity onPress={() => setMode(mode === 'login' ? 'register' : 'login')}>
           <Text style={styles.switchText}>
@@ -1323,6 +1675,7 @@ export default function LoginScreen() {
           {renderForm()}
 
           <View style={styles.footer}>
+<<<<<<< HEAD
             {/* Politikalar - Sıralı ve Düzenli */}
             {policies && policies.length > 0 && (() => {
               const policyTypeLabels: Record<string, string> = {
@@ -1370,6 +1723,8 @@ export default function LoginScreen() {
               );
             })()}
             
+=======
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
             <Text style={styles.terms}>
               Devam ederek{' '}
               <Text 
@@ -1391,6 +1746,7 @@ export default function LoginScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
+<<<<<<< HEAD
       {/* Policy Modal */}
       <Modal
         visible={policyModalVisible}
@@ -1447,6 +1803,24 @@ export default function LoginScreen() {
           </View>
         </View>
       </Modal>
+=======
+      {/* Politika Onay Modalı */}
+      {requiredPolicies?.policies && requiredPolicies.policies.length > 0 && (
+        <PolicyConsentModal
+          visible={showPolicyModal}
+          policies={requiredPolicies.policies}
+          onAccept={() => {
+            const policyIds = requiredPolicies.policies.map((p: any) => p.id);
+            handlePolicyAccept(policyIds);
+          }}
+          onReject={() => {
+            // Zorunlu olduğu için reddetme seçeneği yok
+            Alert.alert('Uyarı', 'Politikaları kabul etmeden devam edemezsiniz');
+          }}
+          required={true}
+        />
+      )}
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     </SafeAreaView>
   );
 }
@@ -1468,6 +1842,7 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: SPACING.xl,
     paddingHorizontal: SPACING.xs,
+    alignItems: 'center' as const,
   },
   formTitle: {
     fontSize: FONT_SIZES.xl,
@@ -1530,15 +1905,20 @@ const styles = StyleSheet.create({
     }),
   },
   primaryButton: {
-    backgroundColor: COLORS.white,
-    paddingVertical: SPACING.md + 2,
+    backgroundColor: COLORS.secondary,
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
     borderRadius: 12,
     alignItems: 'center' as const,
+    justifyContent: 'center' as const,
     marginBottom: SPACING.md,
+    marginHorizontal: -SPACING.xl,
+    minHeight: 60,
+    width: '100%',
   },
   primaryButtonText: {
-    color: COLORS.primary,
-    fontSize: FONT_SIZES.md,
+    color: COLORS.white,
+    fontSize: FONT_SIZES.lg,
     fontWeight: '600' as const,
     flexWrap: 'wrap',
     textAlign: 'center' as const,
@@ -1567,11 +1947,10 @@ const styles = StyleSheet.create({
       lineHeight: FONT_SIZES.md * 1.2,
     }),
   },
-  googleButton: {
-    backgroundColor: '#4285F4',
-    paddingVertical: SPACING.md,
-    borderRadius: 12,
+  alternativeButtonsContainer: {
+    width: '100%',
     alignItems: 'center' as const,
+<<<<<<< HEAD
     marginBottom: SPACING.sm,
     borderWidth: 1,
     borderColor: '#357AE8',
@@ -1606,15 +1985,21 @@ const styles = StyleSheet.create({
       includeFontPadding: false,
       lineHeight: FONT_SIZES.md * 1.2,
     }),
+=======
+    marginTop: SPACING.md,
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   },
   magicLinkButton: {
-    backgroundColor: '#9B59B6',
+    backgroundColor: 'rgba(255,255,255,0.15)',
     paddingVertical: SPACING.md,
     borderRadius: 12,
     alignItems: 'center' as const,
+    justifyContent: 'center' as const,
     marginBottom: SPACING.sm,
     borderWidth: 1,
-    borderColor: '#8E44AD',
+    borderColor: 'rgba(255,255,255,0.2)',
+    width: '100%',
+    minHeight: 48,
   },
   magicLinkButtonText: {
     color: COLORS.white,
@@ -1640,6 +2025,7 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.3)',
   },
+<<<<<<< HEAD
   dividerText: {
     color: COLORS.white,
     marginHorizontal: SPACING.md,
@@ -1649,6 +2035,8 @@ const styles = StyleSheet.create({
       lineHeight: FONT_SIZES.sm * 1.3,
     }),
   },
+=======
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   switchText: {
     color: COLORS.white,
     fontSize: FONT_SIZES.sm,
@@ -1673,11 +2061,17 @@ const styles = StyleSheet.create({
       lineHeight: FONT_SIZES.sm * 1.3,
     }),
   },
+  dividerText: {
+    color: COLORS.white,
+    marginHorizontal: SPACING.md,
+    opacity: 0.7,
+  },
   footer: {
     marginTop: SPACING.xxl,
     alignItems: 'center' as const,
     paddingHorizontal: SPACING.md,
   },
+<<<<<<< HEAD
   policiesContainer: {
     flexDirection: 'row' as const,
     flexWrap: 'wrap' as const,
@@ -1713,6 +2107,8 @@ const styles = StyleSheet.create({
     marginHorizontal: SPACING.xs,
     lineHeight: FONT_SIZES.xs * 1.4,
   },
+=======
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   terms: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.white,
@@ -1728,16 +2124,8 @@ const styles = StyleSheet.create({
   termsLink: {
     textDecorationLine: 'underline' as const,
   },
-  betaBadge: {
-    backgroundColor: 'rgba(255, 193, 7, 0.2)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 193, 7, 0.5)',
-    borderRadius: 12,
-    padding: SPACING.md,
-    marginBottom: SPACING.lg,
-    alignItems: 'center' as const,
-  },
   betaText: {
+<<<<<<< HEAD
     fontSize: FONT_SIZES.md,
     fontWeight: '700' as const,
     color: '#FFC107',
@@ -1748,14 +2136,21 @@ const styles = StyleSheet.create({
     }),
   },
   betaSubtext: {
+=======
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     fontSize: FONT_SIZES.sm,
+    fontWeight: '400' as const,
     color: COLORS.white,
-    opacity: 0.9,
+    opacity: 0.6,
     textAlign: 'center' as const,
+<<<<<<< HEAD
     ...(Platform.OS === 'android' && {
       includeFontPadding: false,
       lineHeight: FONT_SIZES.sm * 1.3,
     }),
+=======
+    marginBottom: SPACING.lg,
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   },
   phoneInfoText: {
     color: COLORS.white,
@@ -1768,6 +2163,7 @@ const styles = StyleSheet.create({
     }),
     textAlign: 'left' as const,
   },
+<<<<<<< HEAD
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -1821,5 +2217,44 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
     fontStyle: 'italic' as const,
+=======
+  appleButton: {
+    width: '100%',
+    height: 44, // Küçültüldü (50'den 44'e)
+    marginBottom: SPACING.md,
+  },
+  policyCheckboxContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginBottom: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: COLORS.white,
+    marginRight: SPACING.sm,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: 'transparent',
+  },
+  checkboxChecked: {
+    backgroundColor: COLORS.white,
+    borderColor: COLORS.white,
+  },
+  checkmark: {
+    color: COLORS.primary,
+    fontSize: 16,
+    fontWeight: '700' as const,
+  },
+  policyCheckboxText: {
+    flex: 1,
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    opacity: 0.9,
+    flexWrap: 'wrap',
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   },
 });

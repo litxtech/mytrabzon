@@ -5,6 +5,7 @@
   "markdownlint.ignore": [
     "**/*.md"
   ],
+<<<<<<< HEAD
   "java.configuration.updateBuildConfiguration": "disabled",
   "files.exclude": {
     "**/.git": true,
@@ -71,4 +72,7 @@
     "!Split",
     "!Join sequence"
   ]
+=======
+  "java.configuration.updateBuildConfiguration": "interactive"
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 }

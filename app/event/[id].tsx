@@ -1,15 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
+  FlatList,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Modal,
+  Dimensions,
+  Keyboard,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { OptimizedImage } from '@/components/OptimizedImage';
@@ -24,22 +27,35 @@ import {
   Send,
   ArrowLeft,
   AlertCircle,
+<<<<<<< HEAD
   MoreVertical,
+=======
+  Trash2,
+  MoreVertical,
+  Edit3,
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { formatTimeAgo } from '@/lib/time-utils';
 import { VideoPlayer } from '@/components/VideoPlayer';
-import { Footer } from '@/components/Footer';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const [commentText, setCommentText] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
+  const [menuVisibleCommentId, setMenuVisibleCommentId] = useState<string | null>(null);
+  const [showFullScreenImage, setShowFullScreenImage] = useState(false);
+  const [showFullScreenVideo, setShowFullScreenVideo] = useState(false);
+  const utils = trpc.useUtils();
+  const commentInputRef = useRef<TextInput>(null);
+  const flatListRef = useRef<FlatList>(null);
 
   const { data: eventsData, isLoading, refetch } = trpc.event.getEvents.useQuery({
     limit: 100,
@@ -65,7 +81,32 @@ export default function EventDetailScreen() {
   const addCommentMutation = (trpc as any).event.addEventComment.useMutation({
     onSuccess: () => {
       setCommentText('');
+      Keyboard.dismiss(); // Klavyeyi kapat
+      commentInputRef.current?.blur(); // Input'u blur et
       refetch();
+      // Comments query'yi de invalidate et
+      (utils as any).event.getEventComments.invalidate({ event_id: id! });
+      // FlatList'i en alta kaydır
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    },
+    onError: (error: any) => {
+      console.error('Add comment error:', error);
+      const errorMessage = error?.message || error?.data?.message || 'Yorum eklenirken bir hata oluştu';
+      Alert.alert('Hata', errorMessage);
+    },
+  });
+
+  const deleteEventMutation = trpc.event.deleteEvent.useMutation({
+    onSuccess: async () => {
+      Alert.alert('Başarılı', 'Olay silindi');
+      await utils.event.getEvents.invalidate();
+      router.back();
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Olay silinemedi';
+      Alert.alert('Hata', message);
     },
   });
 
@@ -141,16 +182,116 @@ export default function EventDetailScreen() {
   };
 
   const handleAddComment = async () => {
-    if (!commentText.trim() || !event) return;
+    if (!commentText.trim()) {
+      Alert.alert('Uyarı', 'Lütfen bir yorum yazın');
+      return;
+    }
+    
+    if (!event || !event.id) {
+      Alert.alert('Hata', 'Olay bulunamadı');
+      return;
+    }
+
+    if (!user) {
+      Alert.alert('Hata', 'Yorum yapmak için giriş yapmanız gerekiyor');
+      return;
+    }
+
+    if (addCommentMutation.isPending) {
+      return; // Zaten gönderiliyor
+    }
+
+    // Klavyeyi kapat ve input'u blur et
+    Keyboard.dismiss();
+    commentInputRef.current?.blur();
+
     try {
       await addCommentMutation.mutateAsync({
         event_id: event.id,
         content: commentText.trim(),
       });
-    } catch (error) {
+    } catch (error: any) {
+      // Error handling mutation'ın onError'ında yapılıyor
       console.error('Comment error:', error);
-      Alert.alert('Hata', 'Yorum eklenirken bir hata oluştu');
     }
+  };
+
+  const deleteCommentMutation = (trpc as any).event.deleteEventComment?.useMutation({
+    onSuccess: () => {
+      Keyboard.dismiss(); // Klavyeyi kapat
+      setMenuVisibleCommentId(null);
+      refetch();
+    },
+    onError: (error: any) => {
+      Alert.alert('Hata', error.message || 'Yorum silinemedi. Lütfen tekrar deneyin.');
+    },
+  });
+
+  const updateCommentMutation = (trpc as any).event.updateEventComment?.useMutation({
+    onSuccess: () => {
+      setEditingCommentId(null);
+      setEditingCommentText('');
+      setMenuVisibleCommentId(null);
+      refetch();
+    },
+    onError: (error: any) => {
+      Alert.alert('Hata', error.message || 'Yorum güncellenemedi. Lütfen tekrar deneyin.');
+    },
+  });
+
+  const handleDeleteComment = (commentId: string) => {
+    if (!deleteCommentMutation) {
+      Alert.alert('Hata', 'Yorum silme özelliği henüz aktif değil');
+      return;
+    }
+    Alert.alert(
+      'Yorumu Sil',
+      'Bu yorumu silmek istediğinize emin misiniz?',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: () => deleteCommentMutation.mutate({ commentId }),
+        },
+      ]
+    );
+  };
+
+  const handleEditComment = (commentId: string, currentContent: string) => {
+    setEditingCommentId(commentId);
+    setEditingCommentText(currentContent);
+    setMenuVisibleCommentId(null);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingCommentId || !editingCommentText.trim() || !updateCommentMutation) return;
+    updateCommentMutation.mutate({
+      commentId: editingCommentId,
+      content: editingCommentText.trim(),
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCommentId(null);
+    setEditingCommentText('');
+  };
+
+  const handleDeleteEvent = () => {
+    if (!event) return;
+
+    Alert.alert(
+      'Olayı Sil',
+      'Bu olayı tüm ilçelerden kaldırmak istediğinize emin misiniz?',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: () => deleteEventMutation.mutate({ event_id: event.id }),
+        },
+      ]
+    );
   };
 
   if (isLoading) {
@@ -185,11 +326,254 @@ export default function EventDetailScreen() {
   const firstMedia = event.media_urls && event.media_urls.length > 0 ? event.media_urls[0] : null;
   const isVideo = firstMedia?.match(/\.(mp4|mov|avi|webm)$/i);
 
+  // Yorum Item Render
+  const renderComment = ({ item: comment }: { item: any }) => {
+    const isEditing = editingCommentId === comment.id;
+    const isOwner = comment.user_id === user?.id;
+    
+    return (
+      <TouchableOpacity 
+        style={styles.commentCard}
+        activeOpacity={0.9}
+        onPress={() => {
+          Keyboard.dismiss();
+          setMenuVisibleCommentId(null);
+        }}
+      >
+        <TouchableOpacity
+          onPress={() => {
+            if (comment.user?.id) {
+              router.push(`/profile/${comment.user.id}` as any);
+            }
+          }}
+          activeOpacity={0.7}
+        >
+          <Image
+            source={{
+              uri: comment.user?.avatar_url || 'https://via.placeholder.com/32',
+            }}
+            style={styles.commentAvatar}
+          />
+        </TouchableOpacity>
+        <View style={styles.commentContent}>
+          <View style={styles.commentAuthorContainer}>
+            <TouchableOpacity
+              onPress={() => {
+                if (comment.user?.id) {
+                  router.push(`/profile/${comment.user.id}` as any);
+                }
+              }}
+              activeOpacity={0.7}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+            >
+              <Text style={styles.commentAuthor}>
+                {comment.user?.full_name || 'İsimsiz'}
+              </Text>
+              {comment.user?.verified && <VerifiedBadgeIcon size={14} />}
+            </TouchableOpacity>
+            {isOwner && !isEditing && deleteCommentMutation && (
+              <TouchableOpacity
+                style={styles.commentMenuButton}
+                onPress={() => setMenuVisibleCommentId(menuVisibleCommentId === comment.id ? null : comment.id)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <MoreVertical size={16} color={COLORS.textLight} />
+              </TouchableOpacity>
+            )}
+          </View>
+          {comment.user?.username && (
+            <View style={styles.commentUsernameContainer}>
+              <Text style={styles.commentUsername}>
+                @{comment.user.username}
+              </Text>
+            </View>
+          )}
+          {isEditing ? (
+            <View style={styles.editContainer}>
+              <TextInput
+                style={styles.editInput}
+                value={editingCommentText}
+                onChangeText={setEditingCommentText}
+                multiline
+                maxLength={1000}
+                autoFocus
+                textAlignVertical="top"
+              />
+              <View style={styles.editActions}>
+                <TouchableOpacity
+                  style={[styles.editButton, styles.cancelButton]}
+                  onPress={handleCancelEdit}
+                >
+                  <Text style={styles.editButtonText}>İptal</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.editButton, styles.saveButton]}
+                  onPress={handleSaveEdit}
+                  disabled={!editingCommentText.trim() || (updateCommentMutation?.isPending || false)}
+                >
+                  {updateCommentMutation?.isPending ? (
+                    <ActivityIndicator size="small" color={COLORS.white} />
+                  ) : (
+                    <Text style={[styles.editButtonText, { color: COLORS.white }]}>Kaydet</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <>
+              <View style={styles.commentTextContainer}>
+                <Text style={styles.commentText}>
+                  {comment.content}
+                </Text>
+              </View>
+              <Text style={styles.commentTime}>
+                {new Date(comment.created_at).toLocaleDateString('tr-TR', {
+                  day: 'numeric',
+                  month: 'short',
+                })}
+              </Text>
+            </>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  // Header Component (Event Detayları)
+  const renderListHeader = () => (
+    <>
+      {/* Event Header */}
+      <View style={[styles.eventHeader, { backgroundColor: theme.colors.card }]}>
+        <TouchableOpacity
+          onPress={() => event.user_id && router.push(`/profile/${event.user_id}` as any)}
+          activeOpacity={0.7}
+          style={styles.authorRow}
+        >
+          <Image
+            source={{
+              uri: event.user?.avatar_url || 'https://via.placeholder.com/40',
+            }}
+            style={styles.avatar}
+          />
+          <View style={styles.authorInfo}>
+            <View style={styles.authorNameRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[styles.authorName, { color: theme.colors.text }]}>
+                  {event.user?.full_name || 'Bilinmeyen'}
+                </Text>
+                {event.user?.verified && <VerifiedBadgeIcon size={16} />}
+              </View>
+              <View style={[styles.eventBadge, { backgroundColor: severityColor + '20' }]}>
+                <AlertCircle size={14} color={severityColor} />
+                <Text style={[styles.eventBadgeText, { color: severityColor }]}>Olay Var</Text>
+              </View>
+            </View>
+            <Text style={[styles.eventMeta, { color: theme.colors.textLight }]}>
+              {event.district} • {formatTimeAgo(event.created_at || event.start_date)}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* Event Content */}
+      <View style={[styles.eventContent, { backgroundColor: theme.colors.card }]}>
+        <Text style={[styles.eventTitle, { color: theme.colors.text }]}>{event.title}</Text>
+        {event.description && (
+          <Text style={[styles.eventDescription, { color: theme.colors.text }]}>
+            {event.description}
+          </Text>
+        )}
+      </View>
+
+      {/* Media */}
+      {firstMedia && (
+        <View style={styles.mediaContainer}>
+          {isVideo ? (
+            <VideoPlayer
+              videoUrl={firstMedia}
+              postId={event.id}
+              isLiked={event.is_liked || false}
+              likeCount={event.like_count || 0}
+              commentCount={event.comment_count || 0}
+              shareCount={0}
+              onLike={handleLike}
+              onComment={() => {
+                commentInputRef.current?.focus();
+              }}
+              onShare={handleShare}
+              onTag={() => {}}
+              autoPlay={false}
+              previewMode={true}
+              onFullScreen={() => {
+                setShowFullScreenVideo(true);
+              }}
+            />
+          ) : (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setShowFullScreenImage(true)}
+            >
+              <OptimizedImage
+                source={firstMedia}
+                isThumbnail={false}
+                style={styles.eventImage}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* Actions */}
+      <View style={[styles.actions, { backgroundColor: theme.colors.card }]}>
+        <TouchableOpacity style={styles.actionButton} onPress={handleLike}>
+          <Heart 
+            size={24} 
+            color={event.is_liked ? theme.colors.error : theme.colors.textLight}
+            fill={event.is_liked ? theme.colors.error : 'transparent'}
+          />
+          <Text style={[styles.actionText, { color: event.is_liked ? theme.colors.error : theme.colors.textLight }]}>
+            {formatCount(event.like_count || 0)}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionButton}>
+          <MessageCircle size={24} color={theme.colors.textLight} />
+          <Text style={[styles.actionText, { color: theme.colors.textLight }]}>
+            {formatCount(event.comment_count || 0)}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
+          <Share2 size={24} color={theme.colors.textLight} />
+          <Text style={[styles.actionText, { color: theme.colors.textLight }]}>Paylaş</Text>
+        </TouchableOpacity>
+        {event.user_id === user?.id && (
+          <TouchableOpacity
+            style={[styles.actionButton, styles.deleteButton]}
+            onPress={handleDeleteEvent}
+            disabled={deleteEventMutation.isPending}
+          >
+            <Trash2 size={24} color={theme.colors.error} />
+            <Text style={[styles.actionText, { color: theme.colors.error }]}>
+              {deleteEventMutation.isPending ? 'Siliniyor...' : 'Sil'}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Comments Section Title */}
+      <View style={styles.commentsSection}>
+        <Text style={styles.commentsTitle}>
+          Yorumlar ({commentsData?.comments?.length || 0})
+        </Text>
+      </View>
+    </>
+  );
+
   return (
     <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: theme.colors.background, paddingTop: insets.top }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      enabled={Platform.OS === 'ios'}
     >
       <Stack.Screen
         options={{
@@ -215,169 +599,182 @@ export default function EventDetailScreen() {
         }}
       />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Event Header */}
-        <View style={[styles.eventHeader, { backgroundColor: theme.colors.card }]}>
-          <TouchableOpacity
-            onPress={() => event.user_id && router.push(`/profile/${event.user_id}` as any)}
-            activeOpacity={0.7}
-            style={styles.authorRow}
-          >
-            <Image
-              source={{
-                uri: event.user?.avatar_url || 'https://via.placeholder.com/40',
-              }}
-              style={styles.avatar}
-            />
-            <View style={styles.authorInfo}>
-              <View style={styles.authorNameRow}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={[styles.authorName, { color: theme.colors.text }]}>
-                    {event.user?.full_name || 'Bilinmeyen'}
-                  </Text>
-                  {event.user?.verified && <VerifiedBadgeIcon size={16} />}
-                </View>
-                <View style={[styles.eventBadge, { backgroundColor: severityColor + '20' }]}>
-                  <AlertCircle size={14} color={severityColor} />
-                  <Text style={[styles.eventBadgeText, { color: severityColor }]}>Olay Var</Text>
-                </View>
-              </View>
-              <Text style={[styles.eventMeta, { color: theme.colors.textLight }]}>
-                {event.district} • {formatTimeAgo(event.created_at || event.start_date)}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        {/* Event Content */}
-        <View style={[styles.eventContent, { backgroundColor: theme.colors.card }]}>
-          <Text style={[styles.eventTitle, { color: theme.colors.text }]}>{event.title}</Text>
-          {event.description && (
-            <Text style={[styles.eventDescription, { color: theme.colors.text }]}>
-              {event.description}
-            </Text>
-          )}
-        </View>
-
-        {/* Media */}
-        {firstMedia && (
-          <View style={styles.mediaContainer}>
-            {isVideo ? (
-              <VideoPlayer
-                videoUrl={firstMedia}
-                postId={event.id}
-                isLiked={false}
-                likeCount={0}
-                commentCount={0}
-                shareCount={0}
-                onLike={handleLike}
-                onComment={() => {}}
-                onShare={handleShare}
-                onTag={() => {}}
-                autoPlay={false}
-                previewMode={true}
-              />
-            ) : (
-              <OptimizedImage
-                source={firstMedia}
-                isThumbnail={false}
-                style={styles.eventImage}
-              />
-            )}
-          </View>
-        )}
-
-        {/* Actions */}
-        <View style={[styles.actions, { backgroundColor: theme.colors.card }]}>
-          <TouchableOpacity style={styles.actionButton} onPress={handleLike}>
-            <Heart 
-              size={24} 
-              color={event.is_liked ? theme.colors.error : theme.colors.textLight}
-              fill={event.is_liked ? theme.colors.error : 'transparent'}
-            />
-            <Text style={[styles.actionText, { color: event.is_liked ? theme.colors.error : theme.colors.textLight }]}>
-              {formatCount(event.like_count || 0)}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
-            <MessageCircle size={24} color={theme.colors.textLight} />
-            <Text style={[styles.actionText, { color: theme.colors.textLight }]}>
-              {formatCount(event.comment_count || 0)}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
-            <Share2 size={24} color={theme.colors.textLight} />
-            <Text style={[styles.actionText, { color: theme.colors.textLight }]}>Paylaş</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Comments Section */}
-        <View style={[styles.commentsSection, { backgroundColor: theme.colors.card }]}>
-          <Text style={[styles.commentsTitle, { color: theme.colors.text }]}>Yorumlar</Text>
-          <View style={styles.commentInputContainer}>
-            <TextInput
-              style={[styles.commentInput, { backgroundColor: theme.colors.background, color: theme.colors.text }]}
-              placeholder="Yorum yaz..."
-              placeholderTextColor={theme.colors.textLight}
-              value={commentText}
-              onChangeText={setCommentText}
-              multiline
-            />
-            <TouchableOpacity
-              style={[styles.sendButton, { backgroundColor: COLORS.primary }]}
-              onPress={handleAddComment}
-              disabled={!commentText.trim()}
-            >
-              <Send size={20} color={COLORS.white} />
-            </TouchableOpacity>
-          </View>
-          {commentsData?.comments && commentsData.comments.length > 0 ? (
-            <ScrollView style={styles.commentsList}>
-              {commentsData.comments.map((comment: any) => (
-                <View key={comment.id} style={styles.commentItem}>
-                  <TouchableOpacity
-                    onPress={() => comment.user?.id && router.push(`/profile/${comment.user.id}` as any)}
-                    activeOpacity={0.7}
-                  >
-                    <Image
-                      source={{ uri: comment.user?.avatar_url || 'https://via.placeholder.com/32' }}
-                      style={styles.commentAvatar}
-                    />
-                  </TouchableOpacity>
-                  <View style={styles.commentContent}>
-                    <TouchableOpacity
-                      onPress={() => comment.user?.id && router.push(`/profile/${comment.user.id}` as any)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.commentAuthor, { color: theme.colors.text }]}>
-                        {comment.user?.full_name || 'Bilinmeyen'}
-                      </Text>
-                    </TouchableOpacity>
-                    <Text style={[styles.commentText, { color: theme.colors.text }]}>
-                      {comment.content}
-                    </Text>
-                    <Text style={[styles.commentTime, { color: theme.colors.textLight }]}>
-                      {formatTimeAgo(comment.created_at)}
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
-          ) : (
+      {/* Ana İçerik */}
+      <View style={styles.contentWrapper}>
+        <FlatList
+          ref={flatListRef}
+          data={commentsData?.comments || []}
+          renderItem={renderComment}
+          keyExtractor={(item) => item.id}
+          ListHeaderComponent={renderListHeader}
+          contentContainerStyle={{ paddingBottom: 120 }} // Input için boşluk
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          showsVerticalScrollIndicator={true}
+          style={{ flex: 1 }}
+          ListEmptyComponent={
             <View style={styles.emptyComments}>
               <Text style={[styles.emptyCommentsText, { color: theme.colors.textLight }]}>
                 Henüz yorum yok. İlk yorumu sen yap!
               </Text>
             </View>
-          )}
-        </View>
-      </ScrollView>
+          }
+        />
 
-      <Footer />
+        {/* Comment Input - En Altta Sabit */}
+        {!showFullScreenImage && !showFullScreenVideo && (
+          <View style={[styles.commentInputContainer, { 
+            paddingBottom: Math.max(insets.bottom, SPACING.sm),
+            backgroundColor: theme.colors.card,
+            borderTopColor: theme.colors.border,
+          }]}>
+            <Image
+              source={{
+                uri: (profile?.avatar_url as string | undefined) || 'https://via.placeholder.com/32',
+              }}
+              style={styles.commentInputAvatar}
+            />
+            <TextInput
+              ref={commentInputRef}
+              style={[styles.commentInput, {
+                backgroundColor: theme.colors.background,
+                color: theme.colors.text,
+              }]}
+              placeholder="Yorum yaz..."
+              placeholderTextColor={theme.colors.textLight}
+              value={commentText}
+              onChangeText={setCommentText}
+              multiline
+              maxLength={1000}
+              textAlignVertical="top"
+              blurOnSubmit={true}
+              returnKeyType="send"
+              onSubmitEditing={handleAddComment}
+            />
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                !commentText.trim() && styles.sendButtonDisabled,
+              ]}
+              onPress={handleAddComment}
+              disabled={!commentText.trim() || addCommentMutation.isPending}
+            >
+              {addCommentMutation.isPending ? (
+                <ActivityIndicator size="small" color={COLORS.white} />
+              ) : (
+                <Send size={20} color={COLORS.white} />
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
+      {/* Tam Ekran Görsel Modal */}
+      <Modal
+        visible={showFullScreenImage}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowFullScreenImage(false)}
+        statusBarTranslucent={true}
+      >
+        <KeyboardAvoidingView
+          style={styles.fullScreenModal}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
+          <TouchableOpacity
+            style={styles.fullScreenBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowFullScreenImage(false)}
+          >
+            <View style={styles.fullScreenImageContainer}>
+              {firstMedia && !isVideo && (
+                <OptimizedImage
+                  source={firstMedia}
+                  isThumbnail={false}
+                  style={styles.fullScreenImage}
+                  contentFit="contain"
+                />
+              )}
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.fullScreenCloseButton}
+            onPress={() => setShowFullScreenImage(false)}
+          >
+            <Text style={styles.fullScreenCloseText}>✕</Text>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Tam Ekran Video Modal */}
+      {showFullScreenVideo && firstMedia && isVideo && (
+        <Modal
+          visible={showFullScreenVideo}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => {
+            Keyboard.dismiss();
+            setShowFullScreenVideo(false);
+          }}
+          statusBarTranslucent={true}
+        >
+          <VideoPlayer
+            videoUrl={firstMedia}
+            postId={event.id}
+            isLiked={event.is_liked || false}
+            likeCount={event.like_count || 0}
+            commentCount={event.comment_count || 0}
+            shareCount={0}
+            onLike={handleLike}
+            onComment={() => {}}
+            onShare={handleShare}
+            onTag={() => {}}
+            onClose={() => {
+              Keyboard.dismiss();
+              setShowFullScreenVideo(false);
+            }}
+            autoPlay={true}
+            previewMode={false}
+          />
+        </Modal>
+      )}
+
+      {/* Yorum Menü Modal */}
+      {menuVisibleCommentId && deleteCommentMutation && (
+        <View style={styles.menuOverlay} onTouchEnd={() => setMenuVisibleCommentId(null)}>
+          <View style={styles.menuContainer}>
+            {updateCommentMutation && (
+              <>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    const comment = commentsData?.comments?.find((c: any) => c.id === menuVisibleCommentId);
+                    if (comment) {
+                      handleEditComment(comment.id, comment.content);
+                    }
+                  }}
+                >
+                  <Edit3 size={18} color={COLORS.text} />
+                  <Text style={styles.menuItemText}>Düzenle</Text>
+                </TouchableOpacity>
+                <View style={styles.menuDivider} />
+              </>
+            )}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                if (menuVisibleCommentId) {
+                  handleDeleteComment(menuVisibleCommentId);
+                }
+              }}
+            >
+              <Trash2 size={18} color={COLORS.error} />
+              <Text style={[styles.menuItemText, { color: COLORS.error }]}>Sil</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -386,15 +783,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  contentWrapper: {
+    flex: 1,
+  },
   centerContent: {
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 100,
   },
   headerButton: {
     padding: SPACING.xs,
@@ -478,56 +872,32 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
+  deleteButton: {
+    borderWidth: 1,
+    borderColor: COLORS.error,
+    borderRadius: 999,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    flex: undefined,
+  },
   actionText: {
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
   },
   commentsSection: {
+    backgroundColor: COLORS.white,
     padding: SPACING.md,
-    marginTop: SPACING.md,
   },
   commentsTitle: {
     fontSize: FONT_SIZES.lg,
-    fontWeight: '700',
+    fontWeight: '700' as const,
+    color: COLORS.text,
     marginBottom: SPACING.md,
   },
-  commentInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: SPACING.sm,
+  commentCard: {
+    flexDirection: 'row' as const,
     marginBottom: SPACING.md,
-  },
-  commentInput: {
-    flex: 1,
-    borderRadius: 20,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    fontSize: FONT_SIZES.md,
-    maxHeight: 100,
-  },
-  sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyComments: {
-    padding: SPACING.xl,
-    alignItems: 'center',
-  },
-  emptyCommentsText: {
-    fontSize: FONT_SIZES.sm,
-    textAlign: 'center',
-  },
-  commentsList: {
-    maxHeight: 300,
-  },
-  commentItem: {
-    flexDirection: 'row',
-    padding: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
   },
   commentAvatar: {
     width: 32,
@@ -537,18 +907,209 @@ const styles = StyleSheet.create({
   },
   commentContent: {
     flex: 1,
+    flexShrink: 1,
+    backgroundColor: COLORS.background,
+    padding: SPACING.sm,
+    borderRadius: 12,
+  },
+  commentAuthorContainer: {
+    flex: 1,
+    flexShrink: 1,
+    marginBottom: 2,
   },
   commentAuthor: {
     fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
+    fontWeight: '600' as const,
+    color: COLORS.text,
+  },
+  commentUsernameContainer: {
+    flex: 1,
+    flexShrink: 1,
+    marginBottom: 2,
+  },
+  commentUsername: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+  },
+  commentTextContainer: {
+    flex: 1,
+    flexShrink: 1,
     marginBottom: 4,
   },
   commentText: {
     fontSize: FONT_SIZES.sm,
-    marginBottom: 4,
+    color: COLORS.text,
+    lineHeight: 18,
   },
   commentTime: {
     fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+  },
+  commentInputContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: COLORS.white,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    gap: SPACING.sm,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 10,
+    zIndex: 100,
+  },
+  fullScreenModal: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+  },
+  fullScreenBackdrop: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  fullScreenImageContainer: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  fullScreenImage: {
+    width: '100%',
+    height: '100%',
+  },
+  fullScreenCloseButton: {
+    position: 'absolute' as const,
+    top: 50,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    zIndex: 1000,
+  },
+  fullScreenCloseText: {
+    color: COLORS.white,
+    fontSize: 24,
+    fontWeight: '700' as const,
+  },
+  commentInputAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  commentInput: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: Platform.OS === 'ios' ? SPACING.sm : SPACING.xs,
+    borderRadius: 20,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    maxHeight: 100,
+    minHeight: 40,
+  },
+  sendButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  sendButtonDisabled: {
+    backgroundColor: COLORS.border,
+  },
+  emptyComments: {
+    padding: SPACING.xl,
+    alignItems: 'center',
+  },
+  emptyCommentsText: {
+    fontSize: FONT_SIZES.sm,
+    textAlign: 'center',
+  },
+  commentMenuButton: {
+    marginLeft: 'auto',
+    padding: SPACING.xs,
+  },
+  menuOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    zIndex: 1000,
+  },
+  menuContainer: {
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    paddingVertical: SPACING.xs,
+    minWidth: 150,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  menuItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  menuItemText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '500' as const,
+    color: COLORS.text,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: SPACING.xs,
+  },
+  editContainer: {
+    marginTop: SPACING.xs,
+  },
+  editInput: {
+    backgroundColor: COLORS.background,
+    borderRadius: 8,
+    padding: SPACING.sm,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    minHeight: 60,
+    maxHeight: 120,
+    marginBottom: SPACING.xs,
+    textAlignVertical: 'top' as const,
+  },
+  editActions: {
+    flexDirection: 'row' as const,
+    justifyContent: 'flex-end' as const,
+    gap: SPACING.sm,
+  },
+  editButton: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: 8,
+    minWidth: 70,
+    alignItems: 'center' as const,
+  },
+  cancelButton: {
+    backgroundColor: COLORS.border,
+  },
+  saveButton: {
+    backgroundColor: COLORS.primary,
+  },
+  editButtonText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600' as const,
+    color: COLORS.text,
   },
   errorText: {
     fontSize: FONT_SIZES.lg,
@@ -565,4 +1126,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

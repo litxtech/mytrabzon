@@ -28,6 +28,7 @@ import {
   MapPin,
   Users,
   Star,
+<<<<<<< HEAD
   Instagram,
   Twitter,
   Facebook,
@@ -37,6 +38,9 @@ import {
   Venus,
   Mars,
   Link as LinkIcon,
+=======
+  Target,
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CallButtons } from '@/components/CallButtons';
@@ -381,6 +385,7 @@ export default function UserProfileScreen() {
 
           <View style={styles.nameRow}>
             <Text style={styles.name}>{profile.full_name || 'İsimsiz'}</Text>
+            {/* GenderIcon component removed */}
             {profile.verified && <VerifiedBadgeIcon size={20} />}
             {profile.supporter_badge && profile.supporter_badge_visible && (
               <SupporterBadge 
@@ -507,7 +512,7 @@ export default function UserProfileScreen() {
             </View>
             <TouchableOpacity
               style={styles.statItem}
-              onPress={() => setFollowersModalVisible(true)}
+              onPress={() => router.push(`/profile/followers?id=${id}` as any)}
               activeOpacity={0.7}
             >
               <Text style={styles.statNumber}>{followersCount}</Text>
@@ -515,7 +520,7 @@ export default function UserProfileScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.statItem}
-              onPress={() => setFollowingModalVisible(true)}
+              onPress={() => router.push(`/profile/following?id=${id}` as any)}
               activeOpacity={0.7}
             >
               <Text style={styles.statNumber}>{followingCount}</Text>
@@ -556,6 +561,21 @@ export default function UserProfileScreen() {
                 targetUserAvatar={profile.avatar_url}
                 variant="compact"
               />
+              <TouchableOpacity
+                style={styles.skorumButton}
+                onPress={() => {
+                  // Skorum bilgisini göster
+                  const karmaScore = profile.karma_score || 50;
+                  const karmaLevel = profile.karma_level || 'neutral';
+                  Alert.alert(
+                    'Skorum',
+                    `${profile.full_name || 'Kullanıcı'} karma skoru: ${karmaScore}\nSeviye: ${karmaLevel === 'noble' ? 'Asil' : karmaLevel === 'good' ? 'İyi' : karmaLevel === 'neutral' ? 'Nötr' : karmaLevel === 'bad' ? 'Kötü' : 'Yasaklı'}`
+                  );
+                }}
+                activeOpacity={0.7}
+              >
+                <Target size={18} color={COLORS.white} />
+              </TouchableOpacity>
             </View>
           )}
 
@@ -723,10 +743,8 @@ export default function UserProfileScreen() {
                           useNativeControls={false}
                         />
                       ) : (
-                        <OptimizedImage
-                          source={firstMedia.path}
-                          thumbnail={firstMedia.thumbnail}
-                          isThumbnail={true}
+                        <Image
+                          source={{ uri: firstMedia.path }}
                           style={styles.postImage}
                         />
                       )
@@ -789,7 +807,7 @@ export default function UserProfileScreen() {
                 <Text style={styles.modalCloseText}>✕</Text>
               </TouchableOpacity>
             </View>
-            <FollowersList userId={id!} />
+            {id ? <FollowersList userId={id} /> : null}
           </View>
         </View>
       </Modal>
@@ -814,7 +832,7 @@ export default function UserProfileScreen() {
                 <Text style={styles.modalCloseText}>✕</Text>
               </TouchableOpacity>
             </View>
-            <FollowingList userId={id!} />
+            {id ? <FollowingList userId={id} /> : null}
           </View>
         </View>
       </Modal>
@@ -825,10 +843,20 @@ export default function UserProfileScreen() {
 // Takipçiler Listesi Component
 function FollowersList({ userId }: { userId: string }) {
   const router = useRouter();
-  const { data, isLoading } = trpc.user.getFollowers.useQuery(
+  const { data, isLoading, error } = trpc.user.getFollowers.useQuery(
     { user_id: userId, limit: 100, offset: 0 },
     { enabled: !!userId }
   );
+
+  // Debug log
+  React.useEffect(() => {
+    if (error) {
+      console.error('FollowersList error:', error);
+    }
+    if (data) {
+      console.log('FollowersList data:', data?.followers?.length || 0, 'followers');
+    }
+  }, [data, error]);
 
   if (isLoading) {
     return (
@@ -881,10 +909,20 @@ function FollowersList({ userId }: { userId: string }) {
 // Takip Edilenler Listesi Component
 function FollowingList({ userId }: { userId: string }) {
   const router = useRouter();
-  const { data, isLoading } = trpc.user.getFollowing.useQuery(
+  const { data, isLoading, error } = trpc.user.getFollowing.useQuery(
     { user_id: userId, limit: 100, offset: 0 },
     { enabled: !!userId }
   );
+
+  // Debug log
+  React.useEffect(() => {
+    if (error) {
+      console.error('FollowingList error:', error);
+    }
+    if (data) {
+      console.log('FollowingList data:', data?.following?.length || 0, 'following');
+    }
+  }, [data, error]);
 
   if (isLoading) {
     return (
@@ -1035,6 +1073,27 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.lg,
     paddingHorizontal: SPACING.lg,
   },
+  socialMediaContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+    justifyContent: 'center',
+  },
+  socialMediaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: SPACING.xs,
+  },
+  socialMediaButtonText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '500',
+    color: COLORS.text,
+  },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -1152,6 +1211,14 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     backgroundColor: COLORS.primary,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  skorumButton: {
+    width: 44,
+    height: 44,
+    backgroundColor: COLORS.secondary,
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',

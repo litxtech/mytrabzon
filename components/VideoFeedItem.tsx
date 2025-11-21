@@ -12,19 +12,25 @@ import {
   StyleSheet,
   TouchableOpacity,
   Dimensions,
-  Animated,
   PanResponder,
   Pressable,
+  Modal,
+  Share,
+  ActivityIndicator,
 } from 'react-native';
 import { Video, ResizeMode, Audio } from 'expo-av';
-import { Heart, MessageCircle, Share2, Bookmark, X } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, Bookmark, VolumeX } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import { Image } from 'expo-image';
-import { CommentSheet } from './CommentSheet';
+import { CommentSheetExpoGo, CommentSheetExpoGoRef } from './CommentSheetExpoGo';
 import VerifiedBadgeIcon from './VerifiedBadge';
+
+// Expo Go için CommentSheetExpoGo kullan (her zaman çalışır)
+const CommentSheet = CommentSheetExpoGo;
+type CommentSheetRef = CommentSheetExpoGoRef;
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -33,20 +39,25 @@ interface VideoFeedItemProps {
   isActive: boolean;
   isViewable: boolean;
   index: number;
+  onCommentsChange?: (isOpen: boolean) => void;
 }
 
-export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedItemProps) {
+export function VideoFeedItem({ post, isActive, isViewable, index, onCommentsChange }: VideoFeedItemProps) {
   const router = useRouter();
   const { theme } = useTheme();
   const videoRef = useRef<Video>(null);
   const [isMuted] = useState(true);
-  const [showComments, setShowComments] = useState(false);
   const [isLiked, setIsLiked] = useState(post.is_liked || false);
   const [likeCount, setLikeCount] = useState(post.like_count || 0);
   const [isLoading, setIsLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
+<<<<<<< HEAD
   const [isVideoReady, setIsVideoReady] = useState(false);
   const commentSheetY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+=======
+  const [showShareModal, setShowShareModal] = useState(false);
+  const commentSheetRef = useRef<CommentSheetRef>(null);
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   const lastTap = useRef(0);
   const isMountedRef = useRef(true);
 
@@ -54,13 +65,31 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
   const videoUrl = firstMedia?.path;
   const isEvent = post.isEvent || false;
 
+  const utils = trpc.useUtils();
+  
   const likePostMutation = trpc.post.likePost.useMutation({
-    onSuccess: () => {
+    onMutate: async () => {
+      // Optimistic update: Beğeniyi hemen güncelle
+      const previousLiked = isLiked;
+      const previousCount = likeCount;
+      
       setIsLiked(!isLiked);
       setLikeCount((prev: number) => (isLiked ? prev - 1 : prev + 1));
+      
+      return { previousLiked, previousCount };
     },
-    onError: (error) => {
+    onError: (error, variables, context) => {
+      // Hata durumunda geri al
+      if (context) {
+        setIsLiked(context.previousLiked);
+        setLikeCount(context.previousCount);
+      }
       console.error('Like post error:', error);
+    },
+    onSuccess: () => {
+      // Cache'i invalidate et
+      utils.post.getPosts.invalidate();
+      utils.post.getPostDetail.invalidate({ postId: post.id });
     },
   });
 
@@ -70,13 +99,21 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
       // Event'ler için upvotes - downvotes kullanılıyor
       setLikeCount((prev: number) => (isLiked ? prev - 1 : prev + 1));
     },
+<<<<<<< HEAD
     onError: (error: any) => {
+=======
+    onError: (error: unknown) => {
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
       console.error('Like event error:', error);
     },
   });
 
+  const [audioSessionReady, setAudioSessionReady] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
+
   // Audio session'ı aktif et
   useEffect(() => {
+<<<<<<< HEAD
     Audio.setAudioModeAsync({
       allowsRecordingIOS: false,
       staysActiveInBackground: false,
@@ -87,6 +124,34 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
       // Sessizce geç
     });
   }, []);
+=======
+    let mounted = true;
+    
+    const initAudio = async () => {
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          staysActiveInBackground: false,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
+        if (mounted) {
+          setAudioSessionReady(true);
+          // Audio session activated silently
+        }
+      } catch (error) {
+        // Sessizce geç veya logla, crash olmasın
+        console.warn('⚠️ Audio session activation warning:', error);
+        // Hata olsa bile devam et, bazı durumlarda çalışabilir
+        if (mounted) {
+          setAudioSessionReady(true);
+        }
+      }
+    };
+
+    initAudio();
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 
   // Component unmount olduğunda flag'i güncelle
   useEffect(() => {
@@ -96,8 +161,15 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
     };
   }, []);
 
+  // Video yüklendiğinde hazır olduğunu işaretle
+  const handleVideoLoad = () => {
+    setVideoReady(true);
+    setIsLoading(false);
+  };
+
   // Sadece aktif video oynatılır - diğerleri durur
   useEffect(() => {
+<<<<<<< HEAD
     // Video hazır değilse bekle
     if (!isVideoReady || !videoUrl) return;
 
@@ -157,9 +229,93 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
 
     return () => clearTimeout(timer);
   }, [isActive, videoUrl, isVideoReady]);
+=======
+    if (isActive && videoRef.current && videoUrl && videoUrl.trim() !== '' && audioSessionReady && videoReady) {
+      const playVideo = async () => {
+        try {
+          // Video referansının hala geçerli olduğundan emin ol
+          if (!videoRef.current) {
+            console.warn('⚠️ Video ref is null, skipping play');
+            return;
+          }
+          
+          // Video URL'inin geçerli olduğundan emin ol
+          if (!videoUrl || videoUrl.trim() === '') {
+            console.warn('⚠️ Video URL is invalid, skipping play');
+            return;
+          }
 
-  // Sadece aktif video sesli olmalı
+          // Audio session'ı tekrar aktif et (garanti olsun)
+          try {
+            await Audio.setAudioModeAsync({
+              allowsRecordingIOS: false,
+              staysActiveInBackground: false,
+              playsInSilentModeIOS: true,
+              shouldDuckAndroid: true,
+              playThroughEarpieceAndroid: false,
+            });
+          } catch (audioError) {
+            // Audio session hatası kritik değil, devam et
+            console.warn('⚠️ Audio session re-activation warning:', audioError);
+          }
+
+          // Kısa bir gecikme ekle (audio session'ın aktif olması için)
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          // Tekrar kontrol et - video hala mevcut mu?
+          if (videoRef.current) {
+            try {
+              await videoRef.current.playAsync();
+              setIsPlaying(true);
+            } catch (playError: any) {
+              // "audio session not activated" hatası için tekrar dene
+              if (playError?.message?.includes('audio session')) {
+                console.warn('⚠️ Audio session hatası, tekrar deneniyor...');
+                // Audio session'ı tekrar aktif et ve tekrar dene
+                try {
+                  await Audio.setAudioModeAsync({
+                    allowsRecordingIOS: false,
+                    staysActiveInBackground: false,
+                    playsInSilentModeIOS: true,
+                    shouldDuckAndroid: true,
+                    playThroughEarpieceAndroid: false,
+                  });
+                  await new Promise(resolve => setTimeout(resolve, 200));
+                  if (videoRef.current) {
+                    await videoRef.current.playAsync();
+                    setIsPlaying(true);
+                  }
+                } catch (retryError) {
+                  console.warn('⚠️ Video play retry failed:', retryError);
+                  setIsLoading(false);
+                }
+              } else {
+                console.warn('⚠️ Video play warning:', playError);
+                setIsLoading(false);
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ Video play error:', error);
+          setIsLoading(false);
+        }
+      };
+
+      playVideo();
+    } else if (!isActive && videoRef.current && videoReady) {
+      // Aktif değilse durdur - video hazır olduğunda
+      videoRef.current.pauseAsync().catch((err) => {
+        // Ignore pause errors - video null olabilir
+        console.warn('⚠️ Video pause warning:', err);
+      });
+      setIsPlaying(false);
+    }
+  }, [isActive, videoUrl, audioSessionReady, videoReady]);
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
+
+  // Sadece aktif video sesli olmalı - video hazır olduğunda
   useEffect(() => {
+<<<<<<< HEAD
     // Video hazır değilse bekle
     if (!isVideoReady) return;
 
@@ -177,6 +333,15 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
 
     return () => clearTimeout(timer);
   }, [isActive, isVideoReady]);
+=======
+    if (videoRef.current && videoReady && videoUrl && videoUrl.trim() !== '') {
+      videoRef.current.setIsMutedAsync(!isActive).catch((error) => {
+        // Video henüz hazır değilse veya null ise sessizce geç
+        console.warn('⚠️ Video mute operation warning:', error);
+      });
+    }
+  }, [isActive, videoReady, videoUrl]);
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 
   const handleLike = () => {
     if (isEvent) {
@@ -189,29 +354,14 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
   };
 
   const handleComment = () => {
-    setShowComments(true);
-    Animated.spring(commentSheetY, {
-      toValue: SCREEN_HEIGHT * 0.5, // Ekranın %50'si - yarıya kadar açılır, video hala görünür
-      useNativeDriver: true,
-      tension: 50,
-      friction: 7,
-    }).start();
-  };
-
-  const handleCloseComments = () => {
-    Animated.spring(commentSheetY, {
-      toValue: SCREEN_HEIGHT,
-      useNativeDriver: true,
-      tension: 50,
-      friction: 7,
-    }).start(() => {
-      setShowComments(false);
-    });
+    commentSheetRef.current?.present();
+    onCommentsChange?.(true);
   };
 
   // Video üzerine tıklama - çift tıklama beğeni, tek tıklama pause/play
-  const handleVideoPress = () => {
-    if (showComments) return; // Yorum paneli açıksa video tıklamalarını engelle
+  const handleVideoPress = async () => {
+    if (!videoUrl || videoUrl.trim() === '') return; // Video URL geçersizse işlem yapma
+    if (!videoRef.current) return; // Video ref null ise işlem yapma
     
     const now = Date.now();
     const DOUBLE_TAP_DELAY = 300;
@@ -221,6 +371,7 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
       handleLike();
     } else {
       // Tek tıklama - pause/play toggle
+<<<<<<< HEAD
       if (!videoRef.current || !isVideoReady || !isMountedRef.current) return;
 
       try {
@@ -237,33 +388,82 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
         }
       } catch {
         // Sessizce geç
+=======
+      if (videoRef.current && videoReady && videoUrl && videoUrl.trim() !== '') {
+        if (isPlaying) {
+          // Video hazır olduğunda pause
+          videoRef.current.pauseAsync().catch((error) => {
+            // Video null olabilir, sessizce geç
+            console.warn('⚠️ Video pause warning:', error);
+          });
+          setIsPlaying(false);
+        } else {
+          // Play için audio session kontrolü
+          try {
+            // Audio session'ı aktif et
+            await Audio.setAudioModeAsync({
+              allowsRecordingIOS: false,
+              staysActiveInBackground: false,
+              playsInSilentModeIOS: true,
+              shouldDuckAndroid: true,
+              playThroughEarpieceAndroid: false,
+            });
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Video referansını tekrar kontrol et
+            if (videoRef.current && videoReady) {
+              try {
+                await videoRef.current.playAsync();
+                setIsPlaying(true);
+              } catch (playError: any) {
+                // "audio session not activated" hatası için tekrar dene
+                if (playError?.message?.includes('audio session')) {
+                  console.warn('⚠️ Audio session hatası, tekrar deneniyor...');
+                  try {
+                    await Audio.setAudioModeAsync({
+                      allowsRecordingIOS: false,
+                      staysActiveInBackground: false,
+                      playsInSilentModeIOS: true,
+                      shouldDuckAndroid: true,
+                      playThroughEarpieceAndroid: false,
+                    });
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    if (videoRef.current && videoReady) {
+                      await videoRef.current.playAsync();
+                      setIsPlaying(true);
+                    }
+                  } catch (retryError) {
+                    console.warn('⚠️ Video play retry failed:', retryError);
+                  }
+                } else {
+                  console.warn('⚠️ Video play warning:', playError);
+                }
+              }
+            }
+          } catch (audioError) {
+            console.warn('⚠️ Audio session activation error:', audioError);
+          }
+        }
+      } else {
+        console.warn('⚠️ Video ref is null or not ready, cannot toggle play/pause');
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
       }
     }
     lastTap.current = now;
   };
 
-  // Yorum paneli için pan responder (aşağı çekme)
-  const panResponder = useRef(
+  // Video container için pan responder (sola swipe ile çıkış)
+  const videoPanResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => showComments,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return showComments && Math.abs(gestureState.dy) > 10;
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        // Sola swipe (dx < 0)
+        return gestureState.dx < -30 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
       },
-      onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) {
-          commentSheetY.setValue(SCREEN_HEIGHT * 0.5 + gestureState.dy);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 100) {
-          handleCloseComments();
-        } else {
-          Animated.spring(commentSheetY, {
-            toValue: SCREEN_HEIGHT * 0.5,
-            useNativeDriver: true,
-            tension: 50,
-            friction: 7,
-          }).start();
+      onPanResponderRelease: (evt, gestureState) => {
+        // Sola yeterince çekildiyse çık (eşik: -80px)
+        if (gestureState.dx < -80 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5) {
+          router.back();
         }
       },
     })
@@ -277,23 +477,27 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
   const authorAvatar = post.author?.avatar_url || 'https://via.placeholder.com/40';
 
   return (
-    <View style={[styles.container, { height: SCREEN_HEIGHT }]}>
-      {videoUrl && (
-        <Pressable 
-          style={styles.videoContainer}
-          onPress={handleVideoPress}
-          disabled={showComments}
-        >
+    <View style={[styles.container, { height: SCREEN_HEIGHT }]} {...videoPanResponder.panHandlers}>
+      <Pressable 
+        style={styles.videoContainer}
+        onPress={handleVideoPress}
+      >
+        {videoUrl && videoUrl.trim() !== '' && typeof videoUrl === 'string' ? (
           <Video
+            key={`video-${post.id}-${index}-${videoUrl.substring(0, 20)}`}
             ref={videoRef}
-            source={{ uri: videoUrl, overrideFileExtensionAndroid: 'mp4' }}
+            source={{ 
+              uri: videoUrl.trim(),
+              overrideFileExtensionAndroid: 'mp4' 
+            }}
             style={styles.video}
             resizeMode={ResizeMode.COVER}
             isLooping
             isMuted={isMuted}
-            shouldPlay={isActive}
+            shouldPlay={isActive && videoReady && !isLoading}
             useNativeControls={false}
             onError={(error) => {
+<<<<<<< HEAD
               // Hataları sessizce geç - console'a yazma
               if (isMountedRef.current) {
                 setIsLoading(false);
@@ -320,15 +524,39 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
                 setIsVideoReady(true);
                 setIsLoading(false);
               }
+=======
+              console.error('VideoFeedItem Video error:', error);
+              setIsLoading(false);
+              setVideoReady(false);
+            }}
+            onLoadStart={() => {
+              setIsLoading(true);
+              setVideoReady(false);
+            }}
+            onLoad={() => {
+              setIsLoading(false);
+              setVideoReady(true);
+              handleVideoLoad();
+            }}
+            onReadyForDisplay={() => {
+              // Video görüntülenmeye hazır olduğunda
+              setIsLoading(false);
+              setVideoReady(true);
+>>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
             }}
           />
-          {isLoading && (
-            <View style={styles.loadingOverlay}>
-              <View style={styles.loadingIndicator} />
-            </View>
-          )}
-        </Pressable>
-      )}
+        ) : (
+          <View style={[styles.video, { justifyContent: 'center', alignItems: 'center' }]}>
+            <ActivityIndicator size="large" color={COLORS.white} />
+            <Text style={{ color: COLORS.white, marginTop: 10 }}>Video yükleniyor...</Text>
+          </View>
+        )}
+        {isLoading && (
+          <View style={styles.loadingOverlay}>
+            <View style={styles.loadingIndicator} />
+          </View>
+        )}
+      </Pressable>
 
       {/* Overlay - Kullanıcı bilgisi ve içerik */}
       <View style={styles.overlay} pointerEvents="box-none">
@@ -402,34 +630,81 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
         </View>
       </View>
 
-      {/* Yorum Paneli (Bottom Sheet) - Şeffaf, video izlenirken */}
-      {showComments && (
-        <Animated.View
-          style={[
-            styles.commentSheet,
-            {
-              transform: [{ translateY: commentSheetY }],
-              backgroundColor: 'rgba(0, 0, 0, 0.7)', // Daha şeffaf - video daha görünür
-            },
-          ]}
-          {...panResponder.panHandlers}
+      {/* Yorum Paneli - BottomSheetModal */}
+      <CommentSheet
+        ref={commentSheetRef}
+        postId={post.id}
+        initialCount={post.comment_count || 0}
+        onClose={() => onCommentsChange?.(false)}
+      />
+
+      {/* Paylaş Modal */}
+      <Modal
+        visible={showShareModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowShareModal(false)}
+      >
+        <Pressable
+          style={styles.shareModalOverlay}
+          onPress={() => setShowShareModal(false)}
         >
-          {/* Drag Handle */}
-          <View style={styles.dragHandleContainer}>
-            <View style={[styles.dragHandle, { backgroundColor: theme.colors.textLight }]} />
-          </View>
-          
-          <View style={[styles.commentSheetHeader, { borderBottomColor: theme.colors.border }]}>
-            <Text style={[styles.commentSheetTitle, { color: theme.colors.text }]}>
-              Yorumlar ({post.comment_count || 0})
+          <View style={[styles.shareModalContent, { backgroundColor: theme.colors.card }]}>
+            <Text style={[styles.shareModalTitle, { color: theme.colors.text }]}>
+              Paylaş
             </Text>
-            <TouchableOpacity onPress={handleCloseComments}>
-              <X size={24} color={theme.colors.text} />
+            
+            <TouchableOpacity
+              style={[styles.shareOption, { borderBottomColor: theme.colors.border }]}
+              onPress={async () => {
+                setShowShareModal(false);
+                try {
+                  await Share.share({
+                    message: 'Bu videoyu izle!',
+                    url: videoUrl || '',
+                  });
+                } catch (error) {
+                  console.error('Share error:', error);
+                }
+              }}
+            >
+              <Share2 size={24} color={theme.colors.text} />
+              <Text style={[styles.shareOptionText, { color: theme.colors.text }]}>
+                Normal Paylaş
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.shareOption}
+              onPress={async () => {
+                setShowShareModal(false);
+                try {
+                  await Share.share({
+                    message: '🔇 Sessiz video - Bu videoyu izle!',
+                    url: videoUrl || '',
+                  });
+                } catch (error) {
+                  console.error('Share error:', error);
+                }
+              }}
+            >
+              <VolumeX size={24} color={theme.colors.text} />
+              <Text style={[styles.shareOptionText, { color: theme.colors.text }]}>
+                Sessiz Paylaş
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.shareCancelButton, { backgroundColor: theme.colors.background }]}
+              onPress={() => setShowShareModal(false)}
+            >
+              <Text style={[styles.shareCancelText, { color: theme.colors.text }]}>
+                İptal
+              </Text>
             </TouchableOpacity>
           </View>
-          <CommentSheet postId={post.id} />
-        </Animated.View>
-      )}
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -437,11 +712,17 @@ export function VideoFeedItem({ post, isActive, isViewable, index }: VideoFeedIt
 const styles = StyleSheet.create({
   container: {
     width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
     backgroundColor: '#000',
   },
   videoContainer: {
     width: '100%',
     height: '100%',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   video: {
     width: '100%',
@@ -506,43 +787,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     fontWeight: '600',
   },
-  commentSheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: SCREEN_HEIGHT * 0.6, // Maksimum yükseklik
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 15,
-    // Blur efekti için overlay
-  },
-  dragHandleContainer: {
-    alignItems: 'center',
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.xs,
-  },
-  dragHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    opacity: 0.5,
-  },
-  commentSheetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: SPACING.md,
-    borderBottomWidth: 1,
-  },
-  commentSheetTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '700',
-  },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#000',
@@ -557,6 +801,49 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: COLORS.white,
     borderTopColor: 'transparent',
+  },
+
+  // Paylaş Modal
+  shareModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  shareModalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: SPACING.xl,
+    paddingTop: SPACING.md,
+  },
+  shareModalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.md,
+  },
+  shareOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderBottomWidth: 1,
+    gap: SPACING.md,
+  },
+  shareOptionText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '500',
+  },
+  shareCancelButton: {
+    marginTop: SPACING.md,
+    marginHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  shareCancelText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
   },
 });
 

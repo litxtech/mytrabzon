@@ -34,8 +34,30 @@ export const getNotificationsProcedure = protectedProcedure
         throw new Error(error.message);
       }
 
+      // Gönderen kişilerin verified durumlarını ekle
+      const notificationsWithSenderInfo = await Promise.all(
+        (data || []).map(async (notification: any) => {
+          // Eğer data içinde sender_id varsa, o kullanıcının verified durumunu kontrol et
+          if (notification.data?.sender_id) {
+            const { data: senderProfile } = await supabase
+              .from('profiles')
+              .select('verified')
+              .eq('id', notification.data.sender_id)
+              .single();
+
+            if (senderProfile) {
+              notification.data = {
+                ...notification.data,
+                sender_verified: senderProfile.verified || false,
+              };
+            }
+          }
+          return notification;
+        })
+      );
+
       return {
-        notifications: data || [],
+        notifications: notificationsWithSenderInfo || [],
         total: count || 0,
         hasMore: count ? input.offset + input.limit < count : false,
       };

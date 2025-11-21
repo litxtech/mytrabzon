@@ -233,15 +233,19 @@ export default function MatchDetailScreen() {
           </View>
         )}
 
-        {/* Rezervasyon Butonu - Sadece organizatör değilse göster */}
+        {/* Rezervasyon Butonu - Duruma göre farklı mesajlar */}
         {match.organizer_id !== user?.id && match.status !== 'completed' && match.status !== 'cancelled' && (
           <View style={styles.reservationCard}>
             <View style={styles.reservationHeader}>
               <AlertCircle size={20} color={COLORS.primary} />
-              <Text style={styles.reservationTitle}>Rezervasyon Yap</Text>
+              <Text style={styles.reservationTitle}>
+                {match.status === 'looking_for_opponent' ? 'Rakip Takım Olarak Katıl' : 'Oyuncu Olarak Katıl'}
+              </Text>
             </View>
             <Text style={styles.reservationText}>
-              Bu maç için rezervasyon yaparak organizatöre mesaj gönderebilirsiniz.
+              {match.status === 'looking_for_opponent' 
+                ? 'Rakip takım olarak rezervasyon yaparak organizatörle iletişime geçebilirsiniz.'
+                : 'Oyuncu olarak rezervasyon yaparak organizatörle iletişime geçebilirsiniz.'}
             </Text>
             <TouchableOpacity
               style={[styles.reservationButton, createReservationMutation.isPending && styles.reservationButtonDisabled]}
@@ -253,20 +257,32 @@ export default function MatchDetailScreen() {
               ) : (
                 <>
                   <MessageCircle size={18} color={COLORS.white} />
-                  <Text style={styles.reservationButtonText}>Rezervasyon Yap</Text>
+                  <Text style={styles.reservationButtonText}>
+                    {match.status === 'looking_for_opponent' ? 'Rakip Takım Olarak Katıl' : 'Oyuncu Olarak Katıl'}
+                  </Text>
                 </>
               )}
             </TouchableOpacity>
           </View>
         )}
 
-        {/* Rakip Aranıyor Durumu */}
+        {/* Durum Bilgilendirme Kartları */}
         {match.status === 'looking_for_opponent' && (
           <View style={styles.opponentSearchCard}>
             <AlertCircle size={24} color={COLORS.warning} />
-            <Text style={styles.opponentSearchTitle}>Halısaha Rakibi Aranıyor</Text>
+            <Text style={styles.opponentSearchTitle}>🏆 Rakip Takım Aranıyor</Text>
             <Text style={styles.opponentSearchText}>
               {match.organizer?.full_name || 'Organizatör'} rakip takım arıyor. Rezervasyon yaparak iletişime geçebilirsiniz.
+            </Text>
+          </View>
+        )}
+
+        {match.status === 'looking_for_players' && match.missing_players_count > 0 && (
+          <View style={styles.opponentSearchCard}>
+            <AlertCircle size={24} color={COLORS.error} />
+            <Text style={styles.opponentSearchTitle}>👥 Oyuncu Aranıyor</Text>
+            <Text style={styles.opponentSearchText}>
+              {match.missing_players_count} oyuncu eksik. Oyuncu olarak rezervasyon yaparak katılabilirsiniz.
             </Text>
           </View>
         )}

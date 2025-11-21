@@ -70,6 +70,15 @@ export const getStatsProcedure = protectedProcedure
       .select("*", { count: "exact", head: true })
       .eq("status", "pending");
     
+    // Okunmamış profil değişiklikleri (son 24 saatte)
+    const yesterday = new Date();
+    yesterday.setHours(yesterday.getHours() - 24);
+    const { count: unreadProfileChanges } = await supabase
+      .from("profile_change_logs")
+      .select("*", { count: "exact", head: true })
+      .gte("changed_at", yesterday.toISOString())
+      .is("admin_viewed_at", null);
+    
     return {
       todayRegistrations: todayRegistrations || 0,
       todayReports: todayReports || 0,
@@ -79,6 +88,7 @@ export const getStatsProcedure = protectedProcedure
       blueTickUsers: blueTickUsers || 0,
       pendingTickets: pendingTickets || 0,
       pendingReports: pendingReports || 0,
+      unreadProfileChanges: unreadProfileChanges || 0,
     };
   });
 

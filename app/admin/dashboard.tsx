@@ -24,6 +24,7 @@ import {
   Shield,
   Bell,
   Car,
+  Phone,
 } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { trpc } from '../../lib/trpc';
@@ -227,6 +228,7 @@ export default function AdminDashboardScreen() {
       icon: Ticket,
       route: '/admin/support',
       color: COLORS.warning,
+      badge: stats?.pendingTickets || 0, // Yeni ticket sayısı badge'i
     },
     {
       id: 'rides',
@@ -251,6 +253,15 @@ export default function AdminDashboardScreen() {
       icon: Bell,
       route: '/admin/send-notification',
       color: COLORS.warning,
+    },
+    {
+      id: 'contacts',
+      title: 'Telefon ve Mailler',
+      description: 'Kullanıcı telefon ve email bilgileri',
+      icon: Phone,
+      route: '/admin/contacts',
+      color: COLORS.primary,
+      badge: stats?.unreadProfileChanges || 0, // Okunmamış profil değişiklikleri badge'i
     },
   ];
 
@@ -343,6 +354,7 @@ export default function AdminDashboardScreen() {
           <View style={styles.quickActionsList}>
             {quickActions.map((action) => {
               const IconComponent = action.icon;
+              const badgeCount = (action as any).badge;
               return (
                 <TouchableOpacity
                   key={action.id}
@@ -351,6 +363,11 @@ export default function AdminDashboardScreen() {
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: action.color + '20' }]}>
                     <IconComponent size={28} color={action.color} />
+                    {badgeCount > 0 && (
+                      <View style={styles.badge}>
+                        <Text style={styles.badgeText}>{badgeCount > 99 ? '99+' : badgeCount}</Text>
+                      </View>
+                    )}
                   </View>
                   <View style={styles.quickActionContent}>
                     <Text style={styles.quickActionTitle}>{action.title}</Text>
@@ -505,5 +522,24 @@ const styles = StyleSheet.create({
   quickActionDescription: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
+  },
+  badge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: COLORS.error,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    borderWidth: 2,
+    borderColor: COLORS.background,
+  },
+  badgeText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '700',
   },
 });
