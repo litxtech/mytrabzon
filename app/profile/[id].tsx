@@ -11,6 +11,7 @@ import {
   FlatList,
   Modal,
   Linking,
+  TextInput,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Video, ResizeMode } from 'expo-av';
@@ -38,6 +39,10 @@ import {
   Mars,
   Link as LinkIcon,
   Target,
+  MoreVertical,
+  Ban,
+  Flag,
+  X,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CallButtons } from '@/components/CallButtons';
@@ -119,6 +124,34 @@ export default function UserProfileScreen() {
   const [showRideHistory, setShowRideHistory] = useState(false);
   const [followersModalVisible, setFollowersModalVisible] = useState(false);
   const [followingModalVisible, setFollowingModalVisible] = useState(false);
+  const [showMenuModal, setShowMenuModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState<string>('');
+  const [reportDescription, setReportDescription] = useState('');
+  
+  // Engelle ve şikayet mutation'ları
+  const blockUserMutation = (trpc as any).chat.blockUser.useMutation({
+    onSuccess: () => {
+      Alert.alert('Başarılı', 'Kullanıcı engellendi');
+      setShowMenuModal(false);
+    },
+    onError: (error: any) => {
+      Alert.alert('Hata', error.message || 'Kullanıcı engellenemedi');
+    },
+  });
+
+  const reportUserMutation = trpc.user.reportUser.useMutation({
+    onSuccess: () => {
+      Alert.alert('Başarılı', 'Şikayetiniz admin paneline iletildi. Teşekkürler!');
+      setShowReportModal(false);
+      setReportReason('');
+      setReportDescription('');
+    },
+    onError: (error: any) => {
+      Alert.alert('Hata', error.message || 'Şikayet gönderilemedi');
+    },
+  });
+
   const { data: driverRides, isLoading: driverRidesLoading } = trpc.ride.getDriverRides.useQuery(
     { driver_id: id!, includePast: true },
     { enabled: !!id }
@@ -355,7 +388,14 @@ export default function UserProfileScreen() {
               >
                 <Settings size={24} color={COLORS.text} />
               </TouchableOpacity>
-            ) : null,
+            ) : (
+              <TouchableOpacity
+                onPress={() => setShowMenuModal(true)}
+                style={styles.headerButton}
+              >
+                <MoreVertical size={24} color={COLORS.text} />
+              </TouchableOpacity>
+            ),
         }}
       />
 
@@ -830,6 +870,173 @@ export default function UserProfileScreen() {
               </TouchableOpacity>
             </View>
             {id ? <FollowingList userId={id} /> : null}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Menü Modal */}
+      <Modal
+        visible={showMenuModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMenuModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowMenuModal(false)}
+        >
+          <View style={styles.menuModalContent}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowMenuModal(false);
+                Alert.alert(
+                  'Kullanıcıyı Engelle',
+                  `${profile?.full_name || 'Bu kullanıcıyı'} engellemek istediğinizden emin misiniz? Engellediğiniz kullanıcı size mesaj gönderemez ve sizi göremez.`,
+                  [
+                    { text: 'İptal', style: 'cancel' },
+                    {
+                      text: 'Engelle',
+                      style: 'destructive',
+                      onPress: () => {
+                        if (id) {
+                          blockUserMutation.mutate({ blockedUserId: id });
+                        }
+                      },
+                    },
+                  ]
+                );
+              }}
+            >
+              <Ban size={20} color={COLORS.error} />
+              <Text style={styles.menuItemText}>Engelle</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowMenuModal(false);
+                setShowReportModal(true);
+              }}
+            >
+              <Flag size={20} color={COLORS.warning} />
+              <Text style={styles.menuItemText}>Şikayet Et</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuItem, styles.menuItemCancel]}
+              onPress={() => setShowMenuModal(false)}
+            >
+              <Text style={styles.menuItemCancelText}>İptal</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Şikayet Modal */}
+      <Modal
+        visible={showReportModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowReportModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.reportModalContent}>
+            <View style={styles.reportModalHeader}>
+              <Text style={styles.reportModalTitle}>Kullanıcıyı Şikayet Et</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowReportModal(false);
+                  setReportReason('');
+                  setReportDescription('');
+                }}
+              >
+                <X size={24} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Şikayet Edilen Kullanıcı Bilgileri */}
+            {profile && (
+              <View style={styles.reportedUserInfo}>
+                <Image
+                  source={{ uri: profile.avatar_url || 'https://via.placeholder.com/50' }}
+                  style={styles.reportedUserAvatar}
+                />
+                <View style={styles.reportedUserDetails}>
+                  <Text style={styles.reportedUserName}>{profile.full_name || 'İsimsiz'}</Text>
+                  {profile.username && (
+                    <Text style={styles.reportedUserUsername}>@{profile.username}</Text>
+                  )}
+                  {profile.district && (
+                    <Text style={styles.reportedUserDistrict}>{profile.district}</Text>
+                  )}
+                </View>
+              </View>
+            )}
+
+            <ScrollView style={styles.reportScrollView} showsVerticalScrollIndicator={false}>
+              <Text style={styles.reportLabel}>Şikayet Nedeni *</Text>
+              <View style={styles.reportReasonsContainer}>
+                {[
+                  { value: 'spam', label: 'Spam / Gereksiz İçerik' },
+                  { value: 'harassment', label: 'Taciz / Rahatsız Edici' },
+                  { value: 'inappropriate', label: 'Uygunsuz İçerik' },
+                  { value: 'fake', label: 'Sahte Hesap' },
+                  { value: 'other', label: 'Diğer' },
+                ].map((r) => (
+                  <TouchableOpacity
+                    key={r.value}
+                    style={[
+                      styles.reportReasonChip,
+                      reportReason === r.value && styles.reportReasonChipSelected,
+                    ]}
+                    onPress={() => setReportReason(r.value)}
+                  >
+                    <Text
+                      style={[
+                        styles.reportReasonText,
+                        reportReason === r.value && styles.reportReasonTextSelected,
+                      ]}
+                    >
+                      {r.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.reportLabel}>Açıklama (Opsiyonel)</Text>
+              <TextInput
+                style={[styles.reportInput, styles.reportTextArea]}
+                placeholder="Şikayetinizi detaylı olarak açıklayın..."
+                placeholderTextColor={COLORS.textLight}
+                value={reportDescription}
+                onChangeText={setReportDescription}
+                multiline
+                numberOfLines={6}
+                textAlignVertical="top"
+              />
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[
+                styles.reportSubmitButton,
+                (!reportReason || reportUserMutation.isPending) && styles.reportSubmitButtonDisabled,
+              ]}
+              onPress={() => {
+                if (!id || !reportReason) return;
+                reportUserMutation.mutate({
+                  reported_user_id: id,
+                  reason: reportReason as any,
+                  description: reportDescription.trim() || undefined,
+                });
+              }}
+              disabled={!reportReason || reportUserMutation.isPending}
+            >
+              {reportUserMutation.isPending ? (
+                <ActivityIndicator size="small" color={COLORS.white} />
+              ) : (
+                <Text style={styles.reportSubmitButtonText}>Şikayet Et</Text>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1521,6 +1728,155 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
     textAlign: 'center',
     marginTop: SPACING.xs,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  menuModalContent: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: SPACING.md,
+    width: '80%',
+    maxWidth: 300,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  menuItemCancel: {
+    borderBottomWidth: 0,
+    marginTop: SPACING.sm,
+  },
+  menuItemText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    fontWeight: '500',
+  },
+  menuItemCancelText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textLight,
+    textAlign: 'center',
+  },
+  reportModalContent: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    width: '90%',
+    maxWidth: 500,
+    maxHeight: '80%',
+    padding: SPACING.lg,
+  },
+  reportModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  reportModalTitle: {
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  reportedUserInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+    borderRadius: 12,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
+    gap: SPACING.md,
+  },
+  reportedUserAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+  reportedUserDetails: {
+    flex: 1,
+  },
+  reportedUserName: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  reportedUserUsername: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+    marginTop: 2,
+  },
+  reportedUserDistrict: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+    marginTop: 2,
+  },
+  reportScrollView: {
+    maxHeight: 400,
+  },
+  reportLabel: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  reportReasonsContainer: {
+    gap: SPACING.sm,
+  },
+  reportReasonChip: {
+    padding: SPACING.md,
+    borderRadius: 12,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  reportReasonChipSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  reportReasonText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  reportReasonTextSelected: {
+    color: COLORS.white,
+  },
+  reportInput: {
+    backgroundColor: COLORS.background,
+    borderRadius: 12,
+    padding: SPACING.md,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  reportTextArea: {
+    minHeight: 120,
+    paddingTop: SPACING.md,
+  },
+  reportSubmitButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: 12,
+    marginTop: SPACING.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportSubmitButtonDisabled: {
+    opacity: 0.5,
+  },
+  reportSubmitButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
   },
 });
 

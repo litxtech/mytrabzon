@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -19,25 +19,30 @@ import { trpc } from '@/lib/trpc';
 export default function DeleteAccountScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user, signOut } = useAuth();
+  const params = useLocalSearchParams();
+  const { user, signOut, loading: authLoading } = useAuth();
   const { theme } = useTheme();
   const [loading, setLoading] = useState(false);
+  const [needsLogin, setNeedsLogin] = useState(false);
+  
+  // Giriş kontrolü - eğer giriş yapılmamışsa giriş sayfasına yönlendir
+  useEffect(() => {
+    if (!authLoading && !user) {
+      setNeedsLogin(true);
+      // Giriş sayfasına yönlendir, geri dönüş için returnUrl ekle
+      router.replace({
+        pathname: '/auth/login',
+        params: { returnUrl: '/profile/delete-account' },
+      } as any);
+    }
+  }, [user, authLoading, router]);
 
-  const deleteAccountMutation = trpc.user.deleteAccount.useMutation({
+  const deleteAccountMutation = trpc.user.requestAccountDeletion.useMutation({
     onSuccess: async () => {
-      Alert.alert(
-        'Hesap Silme İsteği Alındı',
-        'Hesabınız anında gizlendi ve 30 gün içinde kalıcı olarak silinecektir. Bu süre içinde giriş yaparsanız hesabınızı geri yükleyebilirsiniz.',
-        [
-          {
-            text: 'Tamam',
-            onPress: async () => {
-              await signOut();
-              router.replace('/auth/login');
-            }
-          }
-        ]
-      );
+      // Hesap silme başarılı - direkt çıkış yap ve giriş sayfasına yönlendir
+      // Alert göstermeden direkt işlem yap
+      await signOut();
+      router.replace('/auth/login');
     },
     onError: (error) => {
       Alert.alert('Hata', error.message || 'Hesap silme işlemi sırasında bir hata oluştu.');

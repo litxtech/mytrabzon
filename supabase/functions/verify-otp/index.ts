@@ -104,16 +104,44 @@ app.post("/", async (c) => {
         return c.json({ error: authError.message }, 400);
       }
 
+      if (!authData.user) {
+        return c.json({ error: "User creation failed" }, 500);
+      }
+
+      // OTP kodunu kullanıldı olarak işaretle
       await supabase
         .from("otp_codes")
         .update({ used_at: new Date().toISOString() })
         .eq("id", otpData.id);
+
+      // Session oluştur
+      const { data: sessionData, error: sessionError } = await supabase.auth.admin.createSession({
+        user_id: authData.user.id,
+      });
+
+      if (sessionError) {
+        console.error("Session creation error", sessionError);
+        // Session oluşturulamazsa bile kullanıcı oluşturuldu, devam et
+        return c.json({
+          success: true,
+          user: {
+            id: authData.user.id,
+            email: authData.user.email,
+          },
+          session: null,
+          warning: "Session could not be created, user may need to sign in",
+        });
+      }
 
       return c.json({
         success: true,
         user: {
           id: authData.user.id,
           email: authData.user.email,
+        },
+        session: {
+          access_token: sessionData.session?.access_token,
+          refresh_token: sessionData.session?.refresh_token,
         },
       });
     } else {
@@ -124,16 +152,40 @@ app.post("/", async (c) => {
         return c.json({ error: "user_not_found", message: "Kullanıcı bulunamadı" }, 404);
       }
 
+      // OTP kodunu kullanıldı olarak işaretle
       await supabase
         .from("otp_codes")
         .update({ used_at: new Date().toISOString() })
         .eq("id", otpData.id);
+
+      // Session oluştur
+      const { data: sessionData, error: sessionError } = await supabase.auth.admin.createSession({
+        user_id: authData.user.id,
+      });
+
+      if (sessionError) {
+        console.error("Session creation error", sessionError);
+        // Session oluşturulamazsa bile kullanıcı bulundu, devam et
+        return c.json({
+          success: true,
+          user: {
+            id: authData.user.id,
+            email: authData.user.email,
+          },
+          session: null,
+          warning: "Session could not be created, user may need to sign in",
+        });
+      }
 
       return c.json({
         success: true,
         user: {
           id: authData.user.id,
           email: authData.user.email,
+        },
+        session: {
+          access_token: sessionData.session?.access_token,
+          refresh_token: sessionData.session?.refresh_token,
         },
       });
     }

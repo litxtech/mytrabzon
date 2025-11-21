@@ -7,7 +7,7 @@
   ],
   "headers": [
     {
-      "source": "/auth/callback.html",
+      "source": "/auth/callback",
       "headers": [
         {
           "key": "Content-Type",
@@ -16,15 +16,12 @@
         {
           "key": "X-Content-Type-Options",
           "value": "nosniff"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
         }
       ]
-    }
-  ],
-  "redirects": [
-    {
-      "source": "/auth/callback",
-      "destination": "/auth/callback.html",
-      "permanent": false
     }
   ]
 }

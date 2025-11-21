@@ -13,6 +13,29 @@ export const addCommentProcedure = protectedProcedure
     const { supabase, user } = ctx;
 
     try {
+      // Önce post'un yazarını al
+      const { data: post } = await supabase
+        .from("posts")
+        .select("author_id")
+        .eq("id", input.post_id)
+        .single();
+
+      if (!post) {
+        throw new Error("Post bulunamadı");
+      }
+
+      // Engelleme kontrolü - post yazarı kullanıcıyı engellemiş mi veya kullanıcı post yazarını engellemiş mi?
+      const { data: blockCheck } = await supabase
+        .from('user_blocks')
+        .select('id')
+        .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`)
+        .or(`blocker_id.eq.${post.author_id},blocked_id.eq.${post.author_id}`)
+        .maybeSingle();
+
+      if (blockCheck) {
+        throw new Error("Bu gönderiye yorum yapamazsınız");
+      }
+
       const { data, error } = await supabase
         .from("comments")
         .insert({

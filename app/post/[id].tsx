@@ -51,6 +51,9 @@ export default function PostDetailScreen() {
   const [editingCommentText, setEditingCommentText] = useState('');
   const [menuVisibleCommentId, setMenuVisibleCommentId] = useState<string | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [isPostExpanded, setIsPostExpanded] = useState(false);
+  const [isEditingPost, setIsEditingPost] = useState(false);
+  const [editingPostText, setEditingPostText] = useState('');
   const commentInputRef = useRef<TextInput>(null);
   const flatListRef = useRef<FlatList>(null);
 
@@ -86,6 +89,13 @@ export default function PostDetailScreen() {
   const { data: post, isLoading, refetch } = trpc.post.getPostDetail.useQuery({
     postId: id!,
   });
+
+  // Post yüklendiğinde editingPostText'i güncelle
+  useEffect(() => {
+    if (post?.content && !isEditingPost) {
+      setEditingPostText(post.content);
+    }
+  }, [post?.content, isEditingPost]);
 
   const { data: commentsData, refetch: refetchComments } = trpc.post.getComments.useQuery({
     post_id: id!,
@@ -180,10 +190,24 @@ export default function PostDetailScreen() {
     onSuccess: async () => {
       Alert.alert('Başarılı', 'Gönderi silindi');
       await utils.post.getPosts.invalidate();
-      router.back();
+      // Otomatik yönlendirme yapma - kullanıcı isterse kendi gidebilir
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : 'Gönderi silinemedi';
+      Alert.alert('Hata', message);
+    },
+  });
+
+  const updatePostMutation = trpc.post.updatePost.useMutation({
+    onSuccess: async () => {
+      Alert.alert('Başarılı', 'Gönderi güncellendi');
+      setIsEditingPost(false);
+      setEditingPostText('');
+      await refetch();
+      await utils.post.getPosts.invalidate();
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Gönderi güncellenemedi';
       Alert.alert('Hata', message);
     },
   });
@@ -515,19 +539,94 @@ export default function PostDetailScreen() {
             </View>
           </TouchableOpacity>
           {post.author_id === user?.id && (
-            <TouchableOpacity 
-              onPress={handleDeletePost}
-              disabled={deletePostMutation.isPending}
-              style={styles.deleteButton}
-            >
-              <Trash2 size={20} color={COLORS.error} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+              {/* Sadece metin postlarında (medya yoksa) düzenle butonu göster */}
+              {(!post.media || post.media.length === 0) && (
+                <TouchableOpacity 
+                  onPress={() => {
+                    setIsEditingPost(true);
+                    setEditingPostText(post.content || '');
+                  }}
+                  style={styles.editButton}
+                >
+                  <Edit3 size={20} color={COLORS.primary} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity 
+                onPress={handleDeletePost}
+                disabled={deletePostMutation.isPending}
+                style={styles.deleteButton}
+              >
+                <Trash2 size={20} color={COLORS.error} />
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
         {post.content && post.content.trim() !== '' && (
           <View style={styles.postContentContainer}>
-            <Text style={styles.postContent}>{post.content}</Text>
+            {isEditingPost ? (
+              <>
+                <TextInput
+                  style={styles.postEditInput}
+                  value={editingPostText}
+                  onChangeText={setEditingPostText}
+                  multiline
+                  autoFocus
+                  placeholder="Gönderi içeriği..."
+                  placeholderTextColor={COLORS.textLight}
+                />
+                <View style={styles.editActions}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setIsEditingPost(false);
+                      setEditingPostText('');
+                    }}
+                    style={styles.cancelEditButton}
+                  >
+                    <Text style={styles.cancelEditText}>İptal</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (editingPostText.trim()) {
+                        updatePostMutation.mutate({
+                          postId: post.id,
+                          content: editingPostText.trim(),
+                        });
+                      }
+                    }}
+                    disabled={!editingPostText.trim() || updatePostMutation.isPending}
+                    style={[styles.saveEditButton, (!editingPostText.trim() || updatePostMutation.isPending) && styles.saveEditButtonDisabled]}
+                  >
+                    {updatePostMutation.isPending ? (
+                      <ActivityIndicator size="small" color={COLORS.white} />
+                    ) : (
+                      <Text style={styles.saveEditText}>Kaydet</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text 
+                  style={styles.postContent}
+                  numberOfLines={isPostExpanded ? undefined : 15}
+                  ellipsizeMode="tail"
+                >
+                  {post.content}
+                </Text>
+                {post.content.length > 500 && (
+                  <TouchableOpacity
+                    onPress={() => setIsPostExpanded(!isPostExpanded)}
+                    style={styles.readMoreButton}
+                  >
+                    <Text style={styles.readMoreText}>
+                      {isPostExpanded ? 'Daha az göster' : 'Devamını gör'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
           </View>
         )}
 
@@ -923,6 +1022,65 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     padding: SPACING.xs,
+  },
+  editButton: {
+    padding: SPACING.xs,
+  },
+  postEditInput: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    lineHeight: Platform.OS === 'android' ? FONT_SIZES.md * 1.4 : 22,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    padding: SPACING.md,
+    backgroundColor: COLORS.background,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+    }),
+  },
+  editActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: SPACING.md,
+    marginTop: SPACING.md,
+  },
+  cancelEditButton: {
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+  },
+  cancelEditText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textLight,
+    fontWeight: '600',
+  },
+  saveEditButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 8,
+    minWidth: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveEditButtonDisabled: {
+    opacity: 0.5,
+  },
+  saveEditText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.white,
+    fontWeight: '600',
+  },
+  readMoreButton: {
+    marginTop: SPACING.xs,
+    paddingVertical: SPACING.xs,
+  },
+  readMoreText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    fontWeight: '600',
   },
   actionText: {
     fontSize: FONT_SIZES.md,

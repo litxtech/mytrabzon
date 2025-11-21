@@ -46,18 +46,44 @@ export const getFollowersProcedure = publicProcedure
       // Takipçi ID'lerini al
       const followerIds = followsData.map((f: any) => f.follower_id);
 
-      // Profil detaylarını al
-      const { data: profiles, error: profilesError } = await supabase
-        .from("profiles")
-        .select("id, full_name, username, avatar_url, verified, supporter_badge, supporter_badge_color, supporter_badge_visible")
-        .in("id", followerIds);
+      // Engellenen kullanıcıları filtrele - eğer kullanıcı giriş yaptıysa
+      let filteredFollowerIds = followerIds;
+      if (ctx.user) {
+        const { data: blockedUsers } = await supabase
+          .from('user_blocks')
+          .select('blocked_id, blocker_id')
+          .or(`blocker_id.eq.${input.user_id},blocked_id.eq.${input.user_id}`);
+        
+        let blockedUserIds: string[] = [];
+        if (blockedUsers) {
+          // Hem engellediğimiz hem de bizi engelleyen kullanıcıları filtrele
+          blockedUserIds = blockedUsers.map((b: any) => 
+            b.blocker_id === input.user_id ? b.blocked_id : b.blocker_id
+          );
+        }
 
-      if (profilesError) {
-        console.error("Get profiles error:", profilesError);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Profil bilgileri yüklenirken hata oluştu: ${profilesError.message}`,
-        });
+        // Engellenen kullanıcıları takipçiler listesinden çıkar
+        if (blockedUserIds.length > 0) {
+          filteredFollowerIds = followerIds.filter((id: string) => !blockedUserIds.includes(id));
+        }
+      }
+
+      // Profil detaylarını al
+      let profiles: any[] = [];
+      if (filteredFollowerIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from("profiles")
+          .select("id, full_name, username, avatar_url, verified, supporter_badge, supporter_badge_color, supporter_badge_visible")
+          .in("id", filteredFollowerIds);
+        
+        if (profilesError) {
+          console.error("Get profiles error:", profilesError);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Profil bilgileri yüklenirken hata oluştu: ${profilesError.message}`,
+          });
+        }
+        profiles = profilesData || [];
       }
 
       // Profilleri ID'ye göre map'le
@@ -70,7 +96,7 @@ export const getFollowersProcedure = publicProcedure
         .eq("following_id", input.user_id);
 
       return {
-        followers: followerIds.map((id: string) => {
+        followers: filteredFollowerIds.map((id: string) => {
           const profile = profilesMap.get(id);
           return {
             id,

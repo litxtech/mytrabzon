@@ -1,6 +1,10 @@
 # Hizli iOS Release Scripti
 # Sadece en son build'i App Store'a submit eder (yeni build yapmaz)
 
+# UTF-8 encoding ayarla
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 Write-Host "🚀 Hizli iOS App Store Submit" -ForegroundColor Cyan
 Write-Host ""
 

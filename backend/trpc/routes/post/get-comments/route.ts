@@ -41,8 +41,29 @@ export const getCommentsProcedure = publicProcedure
 
       let commentsWithLikes = data || [];
       
+      // Engellenen kullanıcıların yorumlarını filtrele
       if (user) {
-        const commentIds = commentsWithLikes.map(c => c.id);
+        // Engellenen kullanıcıları al
+        const { data: blockedUsers } = await supabase
+          .from('user_blocks')
+          .select('blocked_id, blocker_id')
+          .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
+        
+        let blockedUserIds: string[] = [];
+        if (blockedUsers) {
+          blockedUserIds = blockedUsers.map(b => 
+            b.blocker_id === user.id ? b.blocked_id : b.blocker_id
+          );
+        }
+
+        // Engellenen kullanıcıların yorumlarını filtrele
+        if (blockedUserIds.length > 0) {
+          commentsWithLikes = commentsWithLikes.filter(
+            (comment: any) => !blockedUserIds.includes(comment.user_id)
+          );
+        }
+
+        const commentIds = commentsWithLikes.map((c: any) => c.id);
         if (commentIds.length > 0) {
           const { data: likes } = await supabase
             .from("comment_likes")
@@ -51,7 +72,7 @@ export const getCommentsProcedure = publicProcedure
             .eq("user_id", user.id);
 
           const likedCommentIds = new Set(likes?.map(l => l.comment_id) || []);
-          commentsWithLikes = commentsWithLikes.map(comment => ({
+          commentsWithLikes = commentsWithLikes.map((comment: any) => ({
             ...comment,
             is_liked: likedCommentIds.has(comment.id)
           }));

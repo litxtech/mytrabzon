@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView, ScrollView, Alert, Linking, Modal } from 'react-native';
-import { useRouter, usePathname } from 'expo-router';
+import { useRouter, usePathname, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -32,12 +32,16 @@ export default function LoginScreen() {
   const [phonePasswordConfirm, setPhonePasswordConfirm] = useState('');
   const [phoneUserId, setPhoneUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [policiesAccepted, setPoliciesAccepted] = useState(false);
   const [showPolicyModal, setShowPolicyModal] = useState(false);
   const [guestLoading, setGuestLoading] = useState(false);
   const isNavigatingRef = useRef(false); // Navigation flag - duplicate call'ları önlemek için
   const router = useRouter();
   const pathname = usePathname(); // Mevcut path'i takip et
+  const params = useLocalSearchParams();
+  const returnUrl = params.returnUrl as string | undefined; // Giriş sonrası yönlendirilecek URL
   const { signInAsGuest } = useAuth();
   
   // Policy'leri çek (hata durumunda sessizce handle et)
@@ -634,6 +638,20 @@ Toprak Travel Tourism – Turkey`;
     const errorMessage = error?.message || error?.error || '';
     const lowerMessage = errorMessage.toLowerCase();
 
+    // Email servisi hataları
+    if (lowerMessage.includes('email_service_unavailable') || 
+        error?.error === 'email_service_unavailable') {
+      return 'Email servisi şu anda kullanılamıyor. Lütfen birkaç dakika sonra tekrar deneyin.';
+    }
+    if (lowerMessage.includes('email_send_failed') || 
+        error?.error === 'email_send_failed') {
+      return 'Email gönderilemedi. Lütfen email adresinizi kontrol edip tekrar deneyin.';
+    }
+    if (lowerMessage.includes('otp_limit') || 
+        error?.error === 'otp_limit') {
+      return 'Çok fazla doğrulama kodu istedin. Lütfen 10 dakika sonra tekrar deneyin.';
+    }
+
     // Email ile ilgili hatalar
     if (lowerMessage.includes('invalid login credentials') || lowerMessage.includes('invalid_credentials')) {
       return 'Email veya şifre hatalı. Lütfen bilgilerinizi kontrol edin.';
@@ -771,7 +789,7 @@ Toprak Travel Tourism – Turkey`;
       }
       
       // Eğer güncellenecek bir şey varsa
-      if (updateData && typeof updateData === 'object' && Object.keys(updateData).length > 0) {
+      if (updateData && typeof updateData === 'object' && !Array.isArray(updateData) && Object.keys(updateData).length > 0) {
         console.log('📝 [updateProfile] Updating profile with:', updateData);
         
         try {
@@ -820,12 +838,19 @@ Toprak Travel Tourism – Turkey`;
       setLoading(false);
       console.log('✅ [checkProfileAndNavigate] Loading states closed');
 
-      // Navigation path'ini belirle
-      const hasProfile = !!profile;
-      const hasFullName = !!(profile as any)?.full_name;
-      const targetPath = !hasProfile || !hasFullName
-        ? '/auth/onboarding' 
-        : '/(tabs)/feed';
+      // Navigation path'ini belirle - önce returnUrl kontrol et
+      let targetPath: string;
+      if (returnUrl) {
+        // returnUrl varsa oraya yönlendir
+        targetPath = returnUrl;
+      } else {
+        // returnUrl yoksa normal akış
+        const hasProfile = !!profile;
+        const hasFullName = !!(profile as any)?.full_name;
+        targetPath = !hasProfile || !hasFullName
+          ? '/auth/onboarding' 
+          : '/(tabs)/profile';
+      }
       
       console.log('🚀 [checkProfileAndNavigate] Navigating to:', targetPath);
       console.log('🚀 [checkProfileAndNavigate] Profile exists:', hasProfile, 'Has full_name:', hasFullName);
@@ -1150,7 +1175,7 @@ Toprak Travel Tourism – Turkey`;
         return;
       }
 
-      setLoading(true);
+      setAppleLoading(true);
       console.log('🍎 [Apple] Starting Apple Sign In...');
 
       // Apple Sign In başlat
@@ -1175,7 +1200,6 @@ Toprak Travel Tourism – Turkey`;
       const { data, error } = await supabase.auth.signInWithIdToken({
         provider: 'apple',
         token: credential.identityToken,
-        nonce: credential.nonce || undefined,
       });
 
       if (error) {
@@ -1222,33 +1246,35 @@ Toprak Travel Tourism – Turkey`;
 
       Alert.alert('Hata', error.message || 'Apple ile giriş başarısız');
     } finally {
-      setLoading(false);
+      setAppleLoading(false);
     }
   };
 
-  // Google Sign In Handler (Android)
+  // Google Sign In Handler (iOS & Android)
   const handleGoogleSignIn = async () => {
     try {
-      if (Platform.OS !== 'android') {
-        return;
-      }
-
-      setLoading(true);
+      setGoogleLoading(true);
       console.log('🔵 [Google] Starting Google Sign In...');
 
       const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://xcvcplwimicylaxghiak.supabase.co';
-      const redirectUrl = makeRedirectUri({
+      
+      // Deep link URL (mobil uygulama için)
+      const deepLinkUrl = makeRedirectUri({
         scheme: 'mytrabzon',
         path: 'auth/callback',
       });
+      
+      // Web callback URL (Vercel'deki callback.html'e yönlendirir, o da deep link'e yönlendirir)
+      const webCallbackUrl = 'https://www.litxtech.com/auth/callback';
 
-      console.log('🔵 [Google] Redirect URL:', redirectUrl);
+      console.log('🔵 [Google] Deep link URL:', deepLinkUrl);
+      console.log('🔵 [Google] Web callback URL:', webCallbackUrl);
 
-      // Google OAuth başlat
+      // Google OAuth başlat - web callback URL kullan (Vercel'deki callback.html deep link'e yönlendirir)
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: redirectUrl,
+          redirectTo: webCallbackUrl, // Web URL kullan, Vercel'deki callback.html deep link'e yönlendirir
           skipBrowserRedirect: true, // Uygulama içinde kal, ayarlara yönlendirme olmadan
         },
       });
@@ -1265,12 +1291,13 @@ Toprak Travel Tourism – Turkey`;
       console.log('🔵 [Google] Opening OAuth URL in-app...');
       
       // expo-web-browser ile uygulama içinde aç (ayarlara yönlendirme olmadan)
-      const { WebBrowser } = await import('expo-web-browser');
+      const WebBrowser = await import('expo-web-browser');
       
       // OAuth URL'ini uygulama içinde aç
+      // redirectUrl olarak web callback URL kullan (Vercel'deki callback.html deep link'e yönlendirir)
       const result = await WebBrowser.openAuthSessionAsync(
         data.url,
-        redirectUrl
+        webCallbackUrl
       );
 
       console.log('🔵 [Google] OAuth result:', result.type);
@@ -1308,14 +1335,14 @@ Toprak Travel Tourism – Turkey`;
         }
       } else if (result.type === 'cancel') {
         console.log('🔵 [Google] User canceled sign in');
-        setLoading(false);
+        setGoogleLoading(false);
         return;
       } else {
         throw new Error('Google ile giriş iptal edildi veya başarısız oldu');
       }
     } catch (error: any) {
       console.error('❌ [Google] Sign in error:', error);
-      setLoading(false);
+      setGoogleLoading(false);
       Alert.alert('Hata', error.message || 'Google ile giriş başarısız');
     }
   };
@@ -1405,7 +1432,7 @@ Toprak Travel Tourism – Turkey`;
     }
   };
 
-  // Email kayıt için doğrulama kodu gönder
+  // Email kayıt için magic link gönder
   const handleSendEmailVerificationCode = async () => {
     try {
       // Güvenli email validation
@@ -1421,7 +1448,7 @@ Toprak Travel Tourism – Turkey`;
         return;
       }
 
-      // Email uzunluk kontrolü (çok uzun email'ler çökme riski)
+      // Email uzunluk kontrolü
       if (trimmedEmail.length > 254) {
         Alert.alert('Hata', 'Email adresi çok uzun. Lütfen geçerli bir email adresi girin');
         return;
@@ -1436,230 +1463,53 @@ Toprak Travel Tourism – Turkey`;
       setLoading(true);
       
       try {
-        console.log('📧 [email-register] Sending verification code to:', trimmedEmail);
+        // Magic link gönder - web callback URL kullan (oradan deep link'e yönlendirecek)
+        const webCallbackUrl = 'https://www.litxtech.com/auth/callback';
         
-        // send-otp Edge Function'ını kullanarak kod gönder (link değil, kod gönder)
-        const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://xcvcplwimicylaxghiak.supabase.co';
-        const sendOtpUrl = `${supabaseUrl}/functions/v1/send-otp`;
+        console.log('📧 [email-register] Sending magic link to:', trimmedEmail);
+        console.log('📧 [email-register] Web callback URL:', webCallbackUrl);
         
-        console.log('📧 [email-register] Calling send-otp function:', sendOtpUrl);
-        
-        // Timeout ile kod gönderme
-        const emailPromise = fetch(sendOtpUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+        const { error } = await supabase.auth.signInWithOtp({
+          email: trimmedEmail,
+          options: {
+            shouldCreateUser: true, // Kayıt modu
+            emailRedirectTo: webCallbackUrl, // Web callback URL - oradan deep link'e yönlendirecek
           },
-          body: JSON.stringify({ email: trimmedEmail }),
         });
 
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Kod gönderme işlemi zaman aşımına uğradı')), 30000)
+        if (error) {
+          console.error('❌ [email-register] Error:', error);
+          throw error;
+        }
+
+        Alert.alert(
+          'Başarılı',
+          'Email adresinize doğrulama linki gönderildi! Linke tıklayarak kayıt işleminizi tamamlayabilirsiniz.'
         );
-
-        const response = await Promise.race([emailPromise, timeoutPromise]) as Response;
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          console.error('❌ [email-register] Error:', errorData);
-          throw new Error(errorData.message || errorData.error || 'Kod gönderilemedi');
-        }
-
-        const result = await response.json().catch(() => ({}));
-        
-        if (result.error) {
-          console.error('❌ [email-register] Error:', result.error);
-          throw new Error(result.message || result.error || 'Kod gönderilemedi');
-        }
-
-        setEmailCodeSent(true);
-        Alert.alert('Başarılı', 'Email adresinize doğrulama kodu gönderildi. Lütfen kodunuzu girin.');
       } catch (error: any) {
-        console.error('Error sending email verification code:', error);
+        console.error('❌ [email-register] Error sending magic link:', error);
         
-        // Hata mesajını güvenli şekilde göster
-        let errorMessage = 'Kod gönderilemedi';
+        let errorMessage = 'Email gönderilemedi';
         try {
           errorMessage = getFriendlyErrorMessage(error);
         } catch (e) {
           errorMessage = error?.message || 'Bir hata oluştu. Lütfen tekrar deneyin.';
         }
         
-        Alert.alert('Kod Gönderilemedi', errorMessage);
+        Alert.alert('Email Gönderilemedi', errorMessage);
       } finally {
         setLoading(false);
       }
     } catch (error: any) {
-      console.error('❌ [email-register] Unexpected error in handleSendEmailVerificationCode:', error);
+      console.error('❌ [email-register] Unexpected error:', error);
       setLoading(false);
       Alert.alert('Hata', 'Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.');
     }
   };
 
-  // Email doğrulama kodunu doğrula
-  const handleVerifyEmailCode = async () => {
-    try {
-      // Güvenli validation
-      if (!email || typeof email !== 'string' || !emailCode || typeof emailCode !== 'string') {
-        Alert.alert('Hata', 'Lütfen email ve doğrulama kodunu girin');
-        return;
-      }
-
-      const trimmedEmail = email.trim().toLowerCase();
-      const trimmedCode = emailCode.trim();
-      
-      if (!trimmedEmail || trimmedEmail.length === 0) {
-        Alert.alert('Hata', 'Email adresi gerekli');
-        return;
-      }
-      
-      if (!trimmedCode || trimmedCode.length === 0) {
-        Alert.alert('Hata', 'Lütfen doğrulama kodunu girin');
-        return;
-      }
-
-      // Email uzunluk kontrolü
-      if (trimmedEmail.length > 254) {
-        Alert.alert('Hata', 'Geçersiz email adresi');
-        return;
-      }
-
-      // Kod uzunluk kontrolü (6 haneli kod bekleniyor)
-      if (trimmedCode.length > 10) {
-        Alert.alert('Hata', 'Geçersiz doğrulama kodu');
-        return;
-      }
-
-      setLoading(true);
-      
-      try {
-        console.log('📧 [email-register] Verifying code for:', trimmedEmail);
-        
-        // Şifre kontrolü - email kayıt için şifre gerekli
-        const trimmedPassword = password?.trim() || '';
-        if (!trimmedPassword || trimmedPassword.length < 6) {
-          Alert.alert('Hata', 'Şifre en az 6 karakter olmalıdır');
-          setLoading(false);
-          return;
-        }
-        
-        // verify-otp Edge Function'ını kullanarak kodu doğrula
-        const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://xcvcplwimicylaxghiak.supabase.co';
-        const verifyOtpUrl = `${supabaseUrl}/functions/v1/verify-otp`;
-        
-        console.log('📧 [email-register] Calling verify-otp function:', verifyOtpUrl);
-        
-        // Timeout ile doğrulama
-        const verifyPromise = fetch(verifyOtpUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-          },
-          body: JSON.stringify({ 
-            email: trimmedEmail,
-            code: trimmedCode,
-            password: trimmedPassword, // Şifreyi gönder
-            isRegister: true, // Kayıt modu
-          }),
-        });
-
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Doğrulama işlemi zaman aşımına uğradı')), 30000)
-        );
-
-        const response = await Promise.race([verifyPromise, timeoutPromise]) as Response;
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          console.error('❌ [email-register] Verification error:', errorData);
-          throw new Error(errorData.message || errorData.error || 'Kod doğrulanamadı');
-        }
-
-        const result = await response.json().catch(() => ({}));
-        
-        if (result.error) {
-          console.error('❌ [email-register] Verification error:', result.error);
-          throw new Error(result.message || result.error || 'Kod doğrulanamadı');
-        }
-
-        console.log('✅ [email-register] Email code verified, user created');
-        
-        // Kullanıcı ID'sini güvenli şekilde kaydet
-        const userId = result.user?.id;
-        if (!userId || typeof userId !== 'string' || userId.length === 0) {
-          throw new Error('Kullanıcı oluşturulamadı');
-        }
-        
-        setPhoneUserId(userId);
-        setEmailCodeVerified(true);
-        
-        // Kullanıcı oluşturuldu, şimdi session oluştur (şifre ile giriş yap)
-        try {
-          console.log('📧 [email-register] Creating session for user:', userId);
-          const { data: sessionData, error: sessionError } = await supabase.auth.signInWithPassword({
-            email: trimmedEmail,
-            password: trimmedPassword,
-          });
-          
-          if (sessionError) {
-            console.error('❌ [email-register] Session creation error:', sessionError);
-            throw sessionError;
-          }
-          
-          if (!sessionData.session) {
-            throw new Error('Session oluşturulamadı');
-          }
-          
-          console.log('✅ [email-register] Session created successfully');
-          
-          // Email bilgisini profile ekle (hata olsa bile devam et)
-          try {
-            await updateProfileWithAuthInfo(userId, trimmedEmail, undefined, true);
-          } catch (profileError: any) {
-            console.warn('⚠️ [email-register] Profile update warning (non-critical):', profileError);
-            // Profil güncelleme hatası kritik değil, devam et
-          }
-          
-          // Metadata'ya has_password ekle
-          try {
-            await supabase.auth.updateUser({
-              data: { has_password: true },
-            });
-          } catch (metadataError: any) {
-            console.warn('⚠️ [email-register] Metadata update warning (non-critical):', metadataError);
-          }
-          
-          Alert.alert('Başarılı', 'Email doğrulandı ve hesabınız oluşturuldu. Şimdi bilgilerinizi tamamlayın.');
-        } catch (sessionError: any) {
-          console.error('❌ [email-register] Session creation failed:', sessionError);
-          // Session oluşturulamazsa bile devam et (kullanıcı oluşturuldu)
-          Alert.alert('Başarılı', 'Email doğrulandı. Şimdi bilgilerinizi tamamlayın.');
-        }
-      } catch (error: any) {
-        console.error('Error verifying email code:', error);
-        
-        let errorMessage = 'Doğrulama başarısız';
-        try {
-          errorMessage = getFriendlyErrorMessage(error);
-        } catch (e) {
-          errorMessage = error?.message || 'Bir hata oluştu. Lütfen tekrar deneyin.';
-        }
-        
-        Alert.alert('Doğrulama Başarısız', errorMessage);
-      } finally {
-        setLoading(false);
-      }
-    } catch (error: any) {
-      console.error('❌ [email-register] Unexpected error in handleVerifyEmailCode:', error);
-      setLoading(false);
-      Alert.alert('Hata', 'Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.');
-    }
-  };
 
   // Email kayıt için bilgileri tamamla (politika onayları ve profil bilgileri)
-  // Not: Kullanıcı zaten verify-otp ile oluşturuldu ve şifre ayarlandı
+  // Not: Kullanıcı magic link ile doğrulandı, callback'te session oluşturuldu
   const handleCompleteEmailRegistration = async () => {
     const trimmedEmail = email.trim().toLowerCase();
 
@@ -1977,17 +1827,31 @@ Toprak Travel Tourism – Turkey`;
 
     setSmsLoading(true);
     try {
-      // Telefon numarasına OTP gönder
+      // Telefon numarasına OTP gönder - signInWithOtp kullan (shouldCreateUser: false ile)
+      // Not: Supabase'de telefon ile şifre sıfırlama için özel endpoint yok, signInWithOtp kullanmak zorundayız
       const { error } = await supabase.auth.signInWithOtp({
         phone: formatted,
-
         options: {
-          shouldCreateUser: false,
+          shouldCreateUser: false, // Yeni kullanıcı oluşturma - şifre unuttum için
           channel: 'sms',
         },
       });
       
-      if (error) throw error;
+      if (error) {
+        // "Signups not allowed" hatası - kullanıcı yoksa veya telefon ile kayıt kapalıysa
+        if (error.message?.includes('Signups not allowed') || 
+            error.message?.includes('signups') ||
+            error.message?.includes('not allowed')) {
+          Alert.alert(
+            'Kullanıcı Bulunamadı',
+            'Bu telefon numarası ile kayıtlı bir hesap bulunamadı. Lütfen telefon numaranızı kontrol edin veya kayıt olun.'
+          );
+          return;
+        }
+        
+        // Diğer hatalar
+        throw error;
+      }
       
       setSmsSent(true);
       Alert.alert('Başarılı', 'Telefonunuza doğrulama kodu gönderildi. Lütfen kodu girin.');
@@ -2060,32 +1924,21 @@ Toprak Travel Tourism – Turkey`;
         // Telefon numarasını profile ekle
         await updateProfileWithAuthInfo(user.id, undefined, formatted);
         
+        // State'leri temizle
+        setPhoneNumber('');
+        setSmsSent(false);
+        setSmsCode('');
+        setSmsVerified(false);
+        setPhonePassword('');
+        setPhonePasswordConfirm('');
+        setPhoneUserId(null);
+        
         // Loading'i kapat
         setLoading(false);
         
-        // Başarı mesajı göster ve uygulamaya yönlendir
-        Alert.alert(
-          'Şifre Değiştirildi ✅',
-          'Şifreniz başarıyla değiştirildi. Uygulamaya yönlendiriliyorsunuz...',
-          [
-            {
-              text: 'Tamam',
-              onPress: async () => {
-                // State'leri temizle
-                setPhoneNumber('');
-                setSmsSent(false);
-                setSmsCode('');
-                setSmsVerified(false);
-                setPhonePassword('');
-                setPhonePasswordConfirm('');
-                setPhoneUserId(null);
-                
-                // Profil kontrolü ve yönlendirme
-                await checkProfileAndNavigate(user.id);
-              }
-            }
-          ]
-        );
+        // Otomatik olarak uygulamaya yönlendir (Alert göstermeden)
+        console.log('✅ [phone-forgot] Password reset successful, navigating to app...');
+        await checkProfileAndNavigate(user.id);
       } else {
         // Loading'i kapat
         setLoading(false);
@@ -2734,73 +2587,45 @@ Toprak Travel Tourism – Turkey`;
           <Text style={styles.betaText}>Yakında tam sürüm kullanıma sunulacak</Text>
           <Text style={styles.formTitle}>E-posta ile Kayıt Ol</Text>
           
-          {!emailCodeSent && !emailCodeVerified && (
-            <>
-              <View style={styles.inputContainer}>
-                <Mail size={20} color={COLORS.white} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="E-posta adresiniz"
-                  placeholderTextColor="rgba(255,255,255,0.6)"
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              </View>
+          <View style={styles.inputContainer}>
+            <Mail size={20} color={COLORS.white} style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="E-posta adresiniz"
+              placeholderTextColor="rgba(255,255,255,0.6)"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+          </View>
 
-              <TouchableOpacity
-                style={[styles.primaryButton, (!email.trim() || loading) && styles.buttonDisabled]}
-                onPress={handleSendEmailVerificationCode}
-                disabled={!email.trim() || loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color={COLORS.white} />
-                ) : (
-                  <Text style={styles.primaryButtonText}>Doğrulama Kodu Gönder</Text>
-                )}
-              </TouchableOpacity>
-            </>
-          )}
+          <TouchableOpacity
+            style={[styles.primaryButton, (!email.trim() || loading) && styles.buttonDisabled]}
+            onPress={handleSendEmailVerificationCode}
+            disabled={!email.trim() || loading}
+          >
+            {loading ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <Text style={styles.primaryButtonText}>Doğrulama Linki Gönder</Text>
+            )}
+          </TouchableOpacity>
 
-          {emailCodeSent && !emailCodeVerified && (
-            <>
-              <View style={styles.inputContainer}>
-                <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Doğrulama Kodu"
-                  placeholderTextColor="rgba(255,255,255,0.6)"
-                  value={emailCode}
-                  onChangeText={setEmailCode}
-                  keyboardType="number-pad"
-                  maxLength={6}
-                />
-              </View>
+          <Text style={styles.formSubtitle}>
+            Email adresinize doğrulama linki gönderilecek. Linke tıklayarak kayıt işleminizi tamamlayabilirsiniz.
+          </Text>
+        </View>
+      );
+    }
 
-              <TouchableOpacity
-                style={[styles.primaryButton, (!emailCode.trim() || loading) && styles.buttonDisabled]}
-                onPress={handleVerifyEmailCode}
-                disabled={!emailCode.trim() || loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color={COLORS.white} />
-                ) : (
-                  <Text style={styles.primaryButtonText}>Kodu Doğrula</Text>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={handleSendEmailVerificationCode}
-                disabled={loading}
-              >
-                <Text style={styles.secondaryButtonText}>Kodu Yeniden Gönder</Text>
-              </TouchableOpacity>
-            </>
-          )}
-
-          {emailCodeVerified && (
+    // Email kayıt tamamlama (callback'ten sonra)
+    if (mode === 'register' && registerType === 'email' && emailCodeVerified) {
+      return (
+        <View style={styles.formContainer}>
+          <Text style={styles.formTitle}>Kayıt Tamamla</Text>
+          
+          {(
             <>
               <View style={styles.inputContainer}>
                 <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
@@ -3130,36 +2955,40 @@ Toprak Travel Tourism – Turkey`;
           </Text>
         </TouchableOpacity>
 
-        {/* OAuth Giriş Butonları - Sadece login modunda */}
-        {mode === 'login' && (
+        {/* OAuth Giriş Butonları - Login ve Register modunda */}
+        {(mode === 'login' || mode === 'register') && (
           <>
             {/* Apple Sign In - Sadece iOS'ta */}
             {Platform.OS === 'ios' && (
-              <View style={styles.oauthButtonContainer}>
-                <AppleAuthentication.AppleAuthenticationButton
-                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
-                  cornerRadius={30}
-                  style={styles.appleButton}
-                  onPress={handleAppleSignIn}
-                />
-              </View>
-            )}
-
-            {/* Google Sign In - Sadece Android'de */}
-            {Platform.OS === 'android' && (
               <TouchableOpacity
-                style={[styles.oauthButton, styles.googleButton, loading && styles.buttonDisabled]}
-                onPress={handleGoogleSignIn}
-                disabled={loading}
+                style={[styles.oauthButton, styles.appleButton, appleLoading && styles.buttonDisabled]}
+                onPress={handleAppleSignIn}
+                disabled={appleLoading}
               >
-                {loading ? (
-                  <ActivityIndicator color={COLORS.white} />
+                {appleLoading ? (
+                  <ActivityIndicator color={COLORS.primary} />
                 ) : (
-                  <Text style={styles.googleButtonText}>Google ile Giriş Yap</Text>
+                  <Text style={styles.appleButtonText}>
+                    {mode === 'login' ? 'Apple ile Giriş Yap' : 'Apple ile Kayıt Ol'}
+                  </Text>
                 )}
               </TouchableOpacity>
             )}
+
+            {/* Google Sign In - iOS & Android */}
+            <TouchableOpacity
+              style={[styles.oauthButton, styles.googleButton, googleLoading && styles.buttonDisabled]}
+              onPress={handleGoogleSignIn}
+              disabled={googleLoading}
+            >
+              {googleLoading ? (
+                <ActivityIndicator color={COLORS.white} />
+              ) : (
+                <Text style={styles.googleButtonText}>
+                  {mode === 'login' ? 'Google ile Giriş Yap' : 'Google ile Kayıt Ol'}
+                </Text>
+              )}
+            </TouchableOpacity>
 
             {/* Misafir Olarak Devam Et Butonu */}
             <TouchableOpacity
@@ -3605,8 +3434,18 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
   },
   appleButton: {
-    width: '100%',
-    height: 48,
+    backgroundColor: COLORS.white,
+  },
+  appleButtonText: {
+    color: COLORS.primary,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600' as const,
+    flexWrap: 'wrap',
+    textAlign: 'center' as const,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.md * 1.2,
+    }),
   },
   oauthButton: {
     backgroundColor: COLORS.white,
@@ -3623,15 +3462,6 @@ const styles = StyleSheet.create({
   },
   googleButton: {
     backgroundColor: '#4285F4',
-  },
-  googleButtonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600' as const,
-    ...(Platform.OS === 'android' && {
-      includeFontPadding: false,
-      lineHeight: FONT_SIZES.md * 1.2,
-    }),
   },
   guestButton: {
     backgroundColor: COLORS.white,

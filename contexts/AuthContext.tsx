@@ -408,37 +408,20 @@ export const [AuthContext, useAuth] = createContextHook(() => {
         
         try {
           // Backend fonksiyonu ile misafir kullanıcı oluştur (email confirmation bypass)
-          const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://xcvcplwimicylaxghiak.supabase.co';
-          const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+          console.log('🔄 [Guest] Calling create-guest-user function via supabase.functions.invoke');
           
-          console.log('🔄 [Guest] Calling backend function:', `${supabaseUrl}/functions/v1/create-guest-user`);
-          
-          const response = await fetch(`${supabaseUrl}/functions/v1/create-guest-user`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseAnonKey}`,
-            },
+          const { data: result, error: invokeError } = await supabase.functions.invoke('create-guest-user', {
+            body: {},
           });
-
-          console.log('📡 [Guest] Backend response status:', response.status);
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ [Guest] Backend error response:', errorText);
-            let errorData;
-            try {
-              errorData = JSON.parse(errorText);
-            } catch {
-              errorData = { error: errorText || 'Backend error' };
-            }
-            throw new Error(errorData.error || errorData.message || 'Misafir hesabı oluşturulamadı');
+          
+          if (invokeError) {
+            console.error('❌ [Guest] create-guest-user invoke error:', invokeError);
+            throw new Error(invokeError.message || 'Misafir hesabı oluşturulamadı');
           }
 
-          const result = await response.json();
-          console.log('✅ [Guest] Backend response:', { success: result.success, hasSession: !!result.session, hasUser: !!result.user });
+          console.log('✅ [Guest] Backend response:', { success: result?.success, hasSession: !!result?.session, hasUser: !!result?.user });
           
-          if (!result.success || !result.session || !result.user) {
+          if (!result?.success || !result?.session || !result?.user) {
             console.error('❌ [Guest] Invalid backend response:', result);
             throw new Error('Misafir hesabı oluşturulamadı - geçersiz yanıt');
           }

@@ -16,11 +16,13 @@ import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { DISTRICTS, getDistrictsByCity } from '@/constants/districts';
 import { CITIES, GENDERS, SOCIAL_MEDIA_PLATFORMS, City } from '@/constants/cities';
-import { Camera, Trash2, ChevronDown, Eye, EyeOff, Save, Users } from 'lucide-react-native';
+import { Camera, Trash2, ChevronDown, Eye, EyeOff, Save, Users, MapPin } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { SocialMedia, PrivacySettings } from '@/types/database';
 import { trpc } from '@/lib/trpc';
+import { supabase } from '@/lib/supabase';
+import * as Location from 'expo-location';
 
 type PickerItem<T> = {
   label: string;
@@ -30,29 +32,42 @@ type PickerItem<T> = {
 export default function EditProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { profile, refreshProfile } = useAuth();
+  const { profile, refreshProfile, user } = useAuth();
   const [uploading, setUploading] = useState(false);
   
+  // Guest kullanıcı kontrolü
+  const isGuest = !user?.email || user?.email?.includes('@mytrabzon.guest') || user?.is_anonymous;
+  
+  // Telefon doğrulama state'leri
+  const [phoneVerificationCode, setPhoneVerificationCode] = useState('');
+  const [phoneCodeSent, setPhoneCodeSent] = useState(false);
+  const [phoneVerifying, setPhoneVerifying] = useState(false);
+  const [phoneVerified, setPhoneVerified] = useState(false);
+  const [originalPhone, setOriginalPhone] = useState(profile?.phone || '');
+  
+  // Email doğrulama state'leri
+  const [emailVerifying, setEmailVerifying] = useState(false);
+  const [originalEmail, setOriginalEmail] = useState(profile?.email || '');
+  
   const updateProfileMutation = trpc.user.updateProfile.useMutation({
-    onSuccess: async () => {
+    onSuccess: async (data, variables) => {
       console.log('✅ Profile update successful, refreshing...');
       await refreshProfile();
-      Alert.alert('Başarılı', 'Profil bilgileriniz güncellendi.', [
-        {
-          text: 'Tamam',
-          onPress: () => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace('/(tabs)/profile');
-            }
-          },
-        },
-      ]);
+      // location_opt_in güncellemesi için alert gösterme (optimistic update zaten yapıldı)
+      // Sadece diğer profil güncellemeleri için alert göster
+      const isLocationOnlyUpdate = variables && 'location_opt_in' in variables && typeof variables === 'object' && !Array.isArray(variables) && Object.keys(variables).length === 1;
+      if (!isLocationOnlyUpdate) {
+        Alert.alert('Başarılı', 'Profil bilgileriniz güncellendi.');
+        // Otomatik yönlendirme yapma - kullanıcı aynı sayfada kalsın
+      }
     },
     onError: (error) => {
       console.error('❌ Profile update error:', error);
-      Alert.alert('Hata', `Profil güncellenirken bir hata oluştu: ${error.message}`);
+      // location_opt_in hatası için özel hata yönetimi yapılmış (toggle handler içinde)
+      // Burada sadece genel profil güncellemeleri için hata göster
+      if (!error.message?.includes('location')) {
+        Alert.alert('Hata', `Profil güncellenirken bir hata oluştu: ${error.message}`);
+      }
     },
   });
 
@@ -85,6 +100,186 @@ export default function EditProfileScreen() {
     height: profile?.height?.toString() || '',
     weight: profile?.weight?.toString() || '',
   });
+  
+  // Telefon numarası değiştiğinde kontrol et
+  useEffect(() => {
+    if (formData.phone && formData.phone !== originalPhone && isGuest) {
+      setPhoneCodeSent(false);
+      setPhoneVerified(false);
+      setPhoneVerificationCode('');
+    }
+  }, [formData.phone, originalPhone, isGuest]);
+  
+  // Email değiştiğinde kontrol et
+  useEffect(() => {
+    if (formData.email && formData.email !== originalEmail && isGuest) {
+      setEmailVerifying(false);
+    }
+  }, [formData.email, originalEmail, isGuest]);
+  
+  // Telefon numarasını normalize et
+  const normalizePhone = (raw: string) => {
+    let value = raw.trim();
+    if (!value) return '';
+    
+    let digits = value.replace(/\D/g, '');
+    if (!digits) return '';
+    
+    if (value.startsWith('+90')) {
+      return value.replace(/\D/g, '').replace(/^90/, '+90');
+    }
+    
+    if (digits.startsWith('0')) {
+      digits = digits.slice(1);
+    }
+    
+    if (digits.startsWith('90')) {
+      return `+${digits}`;
+    }
+    
+    if (digits.length === 10) {
+      return `+90${digits}`;
+    }
+    
+    return `+90${digits}`;
+  };
+  
+  // SMS kodu gönder
+  const handleSendPhoneCode = async () => {
+    const formatted = normalizePhone(formData.phone);
+    if (!formatted) {
+      Alert.alert('Hata', 'Lütfen geçerli bir telefon numarası girin');
+      return;
+    }
+    
+    setPhoneVerifying(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: formatted,
+        options: {
+          shouldCreateUser: false,
+          channel: 'sms',
+        },
+      });
+      
+      if (error) {
+        console.error('❌ SMS gönderme hatası:', error);
+        Alert.alert('Hata', error.message || 'SMS kodu gönderilemedi');
+        return;
+      }
+      
+      setPhoneCodeSent(true);
+      Alert.alert('Başarılı', 'SMS kodu gönderildi');
+    } catch (error: any) {
+      console.error('❌ SMS gönderme hatası:', error);
+      Alert.alert('Hata', 'SMS kodu gönderilemedi');
+    } finally {
+      setPhoneVerifying(false);
+    }
+  };
+  
+  // SMS kodunu doğrula
+  const handleVerifyPhoneCode = async () => {
+    const formatted = normalizePhone(formData.phone);
+    if (!formatted) {
+      Alert.alert('Hata', 'Lütfen geçerli bir telefon numarası girin');
+      return;
+    }
+    
+    if (!phoneVerificationCode.trim()) {
+      Alert.alert('Hata', 'Lütfen doğrulama kodunu girin');
+      return;
+    }
+    
+    setPhoneVerifying(true);
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        phone: formatted,
+        token: phoneVerificationCode.trim(),
+        type: 'sms',
+      });
+      
+      if (error) {
+        console.error('❌ SMS doğrulama hatası:', error);
+        Alert.alert('Hata', error.message || 'Doğrulama kodu hatalı');
+        return;
+      }
+      
+      // Telefon numarasını profile kaydet
+      await updateProfileMutation.mutateAsync({ phone: formatted });
+      setPhoneVerified(true);
+      setOriginalPhone(formatted);
+      setFormData({ ...formData, phone: formatted });
+      Alert.alert('Başarılı', 'Telefon numaranız doğrulandı ve kaydedildi');
+      
+      // Profil refresh
+      await refreshProfile();
+      
+      // Telefon numarasını Supabase Auth'a ekle
+      if (user?.id) {
+        try {
+          const { error: updateError } = await supabase.auth.updateUser({
+            phone: formatted,
+          });
+          if (updateError) {
+            console.warn('⚠️ Auth telefon güncelleme hatası:', updateError);
+          } else {
+            console.log('✅ Auth telefon güncellendi');
+          }
+        } catch (authError) {
+          console.warn('⚠️ Auth telefon güncelleme hatası:', authError);
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ SMS doğrulama hatası:', error);
+      Alert.alert('Hata', 'Doğrulama kodu hatalı');
+    } finally {
+      setPhoneVerifying(false);
+    }
+  };
+  
+  // Email doğrulama linki gönder
+  const handleSendEmailVerification = async () => {
+    const trimmedEmail = formData.email.trim().toLowerCase();
+    if (!trimmedEmail) {
+      Alert.alert('Hata', 'Lütfen geçerli bir email adresi girin');
+      return;
+    }
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      Alert.alert('Hata', 'Geçerli bir email adresi girin');
+      return;
+    }
+    
+    setEmailVerifying(true);
+    try {
+      const webCallbackUrl = 'https://www.litxtech.com/auth/callback';
+      const { error } = await supabase.auth.signInWithOtp({
+        email: trimmedEmail,
+        options: {
+          shouldCreateUser: false,
+          emailRedirectTo: webCallbackUrl,
+        },
+      });
+      
+      if (error) {
+        console.error('❌ Email gönderme hatası:', error);
+        Alert.alert('Hata', error.message || 'Email gönderilemedi');
+        return;
+      }
+      
+      Alert.alert(
+        'Email Gönderildi',
+        'Email adresinize doğrulama linki gönderildi. Linke tıklayarak email adresinizi doğrulayabilirsiniz.'
+      );
+    } catch (error: any) {
+      console.error('❌ Email gönderme hatası:', error);
+      Alert.alert('Hata', 'Email gönderilemedi');
+    } finally {
+      setEmailVerifying(false);
+    }
+  };
 
   // Username validation
   const [usernameStatus, setUsernameStatus] = useState<{
@@ -168,6 +363,23 @@ export default function EditProfileScreen() {
   const [showInDirectory, setShowInDirectory] = useState(
     profile?.show_in_directory !== undefined ? profile.show_in_directory : true
   );
+  
+  const [locationOptIn, setLocationOptIn] = useState(
+    profile?.location_opt_in !== undefined ? profile.location_opt_in : false
+  );
+  const [locationOptInSaving, setLocationOptInSaving] = useState(false);
+
+  // Profile refresh edildiğinde locationOptIn'i güncelle (sadece mutation çalışmıyorsa)
+  useEffect(() => {
+    if (profile && !locationOptInSaving) {
+      const newValue = profile.location_opt_in !== undefined ? profile.location_opt_in : false;
+      // Sadece değer gerçekten değiştiyse güncelle (optimistic update'i bozmamak için)
+      if (locationOptIn !== newValue) {
+        setLocationOptIn(newValue);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.location_opt_in, locationOptInSaving]);
 
   const availableDistricts = formData.city ? getDistrictsByCity(formData.city) : DISTRICTS;
 
@@ -280,6 +492,12 @@ export default function EditProfileScreen() {
       return;
     }
 
+    // Guest kullanıcılar için telefon doğrulama kontrolü
+    if (isGuest && formData.phone && formData.phone !== originalPhone && !phoneVerified) {
+      Alert.alert('Doğrulama Gerekli', 'Telefon numaranızı doğrulamak için SMS kodu gönderin ve doğrulayın.');
+      return;
+    }
+
     const updateData = {
       full_name: formData.full_name || undefined,
       username: formData.username && formData.username.length > 0 ? formData.username : undefined,
@@ -288,7 +506,7 @@ export default function EditProfileScreen() {
       district: formData.district || 'Ortahisar',
       age: formData.age ? parseInt(formData.age) : undefined,
       gender: formData.gender || undefined,
-      phone: formData.phone || undefined,
+      phone: phoneVerified ? normalizePhone(formData.phone) : (formData.phone || undefined),
       email: formData.email || profile?.email || '',
       address: formData.address || undefined,
       height: formData.height ? parseInt(formData.height) : undefined,
@@ -296,6 +514,7 @@ export default function EditProfileScreen() {
       social_media: socialMedia,
       privacy_settings: privacy,
       show_in_directory: showInDirectory,
+      location_opt_in: locationOptIn,
     };
 
     console.log('💾 Saving profile with data:', JSON.stringify(updateData, null, 2));
@@ -616,9 +835,63 @@ export default function EditProfileScreen() {
           <View style={styles.inputContainer}>
             <View style={styles.labelRow}>
               <Text style={styles.label}>Telefon</Text>
-              <TouchableOpacity onPress={() => setPrivacy({ ...privacy, show_phone: !privacy.show_phone })}>
-                {privacy.show_phone ? <Eye size={16} color={COLORS.primary} /> : <EyeOff size={16} color={COLORS.textLight} />}
-              </TouchableOpacity>
+              <View style={styles.labelActions}>
+                {formData.phone && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert(
+                        'Telefon Numarasını Sil',
+                        'Telefon numaranızı silmek istediğinizden emin misiniz?',
+                        [
+                          { text: 'İptal', style: 'cancel' },
+                          {
+                            text: 'Sil',
+                            style: 'destructive',
+                            onPress: async () => {
+                              try {
+                                setFormData({ ...formData, phone: '' });
+                                setOriginalPhone('');
+                                setPhoneVerified(false);
+                                setPhoneCodeSent(false);
+                                setPhoneVerificationCode('');
+                                
+                                // Profile'den telefon numarasını sil
+                                await updateProfileMutation.mutateAsync({ phone: null });
+                                
+                                // Supabase Auth'tan telefon numarasını sil
+                                if (user?.id) {
+                                  try {
+                                    const { error: updateError } = await supabase.auth.updateUser({
+                                      phone: null,
+                                    });
+                                    if (updateError) {
+                                      console.warn('⚠️ Auth telefon silme hatası:', updateError);
+                                    }
+                                  } catch (authError) {
+                                    console.warn('⚠️ Auth telefon silme hatası:', authError);
+                                  }
+                                }
+                                
+                                await refreshProfile();
+                                Alert.alert('Başarılı', 'Telefon numaranız silindi');
+                              } catch (error: any) {
+                                console.error('❌ Telefon silme hatası:', error);
+                                Alert.alert('Hata', 'Telefon numarası silinirken bir hata oluştu');
+                              }
+                            },
+                          },
+                        ]
+                      );
+                    }}
+                    style={styles.deleteButton}
+                  >
+                    <Trash2 size={16} color={COLORS.error} />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={() => setPrivacy({ ...privacy, show_phone: !privacy.show_phone })}>
+                  {privacy.show_phone ? <Eye size={16} color={COLORS.primary} /> : <EyeOff size={16} color={COLORS.textLight} />}
+                </TouchableOpacity>
+              </View>
             </View>
             <TextInput
               style={styles.input}
@@ -627,15 +900,101 @@ export default function EditProfileScreen() {
               placeholder="Telefon numaranız"
               placeholderTextColor={COLORS.textLight}
               keyboardType="phone-pad"
+              editable={!phoneVerified}
             />
+            {isGuest && formData.phone && formData.phone !== originalPhone && !phoneVerified && (
+              <View style={styles.verificationContainer}>
+                {!phoneCodeSent ? (
+                  <TouchableOpacity
+                    style={styles.verifyButton}
+                    onPress={handleSendPhoneCode}
+                    disabled={phoneVerifying}
+                  >
+                    {phoneVerifying ? (
+                      <ActivityIndicator size="small" color={COLORS.white} />
+                    ) : (
+                      <Text style={styles.verifyButtonText}>Doğrulama Kodu Gönder</Text>
+                    )}
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.codeInputContainer}>
+                    <TextInput
+                      style={styles.codeInput}
+                      value={phoneVerificationCode}
+                      onChangeText={setPhoneVerificationCode}
+                      placeholder="6 haneli kod"
+                      placeholderTextColor={COLORS.textLight}
+                      keyboardType="number-pad"
+                      maxLength={6}
+                      autoFocus
+                    />
+                    <TouchableOpacity
+                      style={[styles.verifyCodeButton, (!phoneVerificationCode.trim() || phoneVerifying) && styles.buttonDisabled]}
+                      onPress={handleVerifyPhoneCode}
+                      disabled={!phoneVerificationCode.trim() || phoneVerifying}
+                    >
+                      {phoneVerifying ? (
+                        <ActivityIndicator size="small" color={COLORS.white} />
+                      ) : (
+                        <Text style={styles.verifyCodeButtonText}>Doğrula</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            )}
+            {phoneVerified && (
+              <Text style={styles.verifiedText}>✓ Telefon numaranız doğrulandı</Text>
+            )}
           </View>
 
           <View style={styles.inputContainer}>
             <View style={styles.labelRow}>
               <Text style={styles.label}>E-posta</Text>
-              <TouchableOpacity onPress={() => setPrivacy({ ...privacy, show_email: !privacy.show_email })}>
-                {privacy.show_email ? <Eye size={16} color={COLORS.primary} /> : <EyeOff size={16} color={COLORS.textLight} />}
-              </TouchableOpacity>
+              <View style={styles.labelActions}>
+                {formData.email && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert(
+                        'E-posta Adresini Sil',
+                        'E-posta adresinizi silmek istediğinizden emin misiniz?',
+                        [
+                          { text: 'İptal', style: 'cancel' },
+                          {
+                            text: 'Sil',
+                            style: 'destructive',
+                            onPress: async () => {
+                              try {
+                                setFormData({ ...formData, email: '' });
+                                setOriginalEmail('');
+                                setEmailVerifying(false);
+                                
+                                // Profile'den email'i sil
+                                await updateProfileMutation.mutateAsync({ email: null });
+                                
+                                // Not: Supabase Auth'tan email silinemez (zorunlu alan)
+                                // Ancak guest kullanıcılar için email null olabilir
+                                
+                                await refreshProfile();
+                                Alert.alert('Başarılı', 'E-posta adresiniz silindi');
+                              } catch (error: any) {
+                                console.error('❌ Email silme hatası:', error);
+                                Alert.alert('Hata', 'E-posta adresi silinirken bir hata oluştu');
+                              }
+                            },
+                          },
+                        ]
+                      );
+                    }}
+                    style={styles.deleteButton}
+                  >
+                    <Trash2 size={16} color={COLORS.error} />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={() => setPrivacy({ ...privacy, show_email: !privacy.show_email })}>
+                  {privacy.show_email ? <Eye size={16} color={COLORS.primary} /> : <EyeOff size={16} color={COLORS.textLight} />}
+                </TouchableOpacity>
+              </View>
             </View>
             <TextInput
               style={styles.input}
@@ -646,6 +1005,24 @@ export default function EditProfileScreen() {
               keyboardType="email-address"
               autoCapitalize="none"
             />
+            {isGuest && formData.email && formData.email !== originalEmail && (
+              <View style={styles.verificationContainer}>
+                <TouchableOpacity
+                  style={styles.verifyButton}
+                  onPress={handleSendEmailVerification}
+                  disabled={emailVerifying}
+                >
+                  {emailVerifying ? (
+                    <ActivityIndicator size="small" color={COLORS.white} />
+                  ) : (
+                    <Text style={styles.verifyButtonText}>Doğrulama Linki Gönder</Text>
+                  )}
+                </TouchableOpacity>
+                <Text style={styles.verificationHint}>
+                  Email adresinize doğrulama linki gönderilecek. Linke tıklayarak email adresinizi doğrulayabilirsiniz.
+                </Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.inputContainer}>
@@ -717,6 +1094,65 @@ export default function EditProfileScreen() {
             <Text style={styles.switchDescription}>
               Kullanıcı listesinde profilinizi görünür yapar. Kapatırsanız,
               sadece siz profilinizi görebilirsiniz.
+            </Text>
+          </View>
+          
+          <View style={styles.inputContainer}>
+            <View style={styles.labelRow}>
+              <View style={styles.labelWithIcon}>
+                <MapPin size={18} color={COLORS.text} />
+                <Text style={styles.label}>Yakındaki Kullanıcılar</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.switch, locationOptIn && styles.switchActive]}
+                onPress={async () => {
+                  const newValue = !locationOptIn;
+                  
+                  // Eğer açılıyorsa konum izni iste
+                  if (newValue) {
+                    const { status } = await Location.requestForegroundPermissionsAsync();
+                    if (status !== 'granted') {
+                      Alert.alert(
+                        'Konum İzni Gerekli',
+                        'Yakındaki kullanıcılar özelliğini kullanmak için konum izni gereklidir.',
+                        [{ text: 'Tamam' }]
+                      );
+                      return;
+                    }
+                  }
+
+                  // Optimistic update - State'i hemen güncelle
+                  const previousValue = locationOptIn;
+                  setLocationOptIn(newValue);
+                  setLocationOptInSaving(true);
+
+                  // Hemen kaydet
+                  try {
+                    await updateProfileMutation.mutateAsync({
+                      location_opt_in: newValue,
+                    });
+                    // Başarılı - refreshProfile zaten mutation içinde çağrılıyor
+                  } catch (error) {
+                    // Hata durumunda state'i geri al
+                    setLocationOptIn(previousValue);
+                    Alert.alert('Hata', 'Yakındaki kullanıcılar ayarı güncellenemedi. Lütfen tekrar deneyin.');
+                  } finally {
+                    setLocationOptInSaving(false);
+                  }
+                }}
+                activeOpacity={0.7}
+                disabled={locationOptInSaving}
+              >
+                <View
+                  style={[
+                    styles.switchThumb,
+                    locationOptIn && styles.switchThumbActive,
+                  ]}
+                />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.switchDescription}>
+              Yakınındaki diğer MyTrabzon kullanıcılarıyla eşleşebilirsin. Konumun haritada gösterilmez, sadece yakınlık hesaplaması için kullanılır.
             </Text>
           </View>
         </View>
@@ -820,6 +1256,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: SPACING.xs,
+  },
+  labelActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  deleteButton: {
+    padding: SPACING.xs,
   },
   label: {
     fontSize: FONT_SIZES.sm,
@@ -949,5 +1393,72 @@ const styles = StyleSheet.create({
   },
   inputError: {
     borderColor: COLORS.error || '#ef4444',
+  },
+  verificationContainer: {
+    marginTop: SPACING.sm,
+    padding: SPACING.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  verifyButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  verifyButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+  },
+  codeInputContainer: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    alignItems: 'center',
+  },
+  codeInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    backgroundColor: COLORS.white,
+    textAlign: 'center',
+  },
+  verifyCodeButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 8,
+    minWidth: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  verifyCodeButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+  },
+  verifiedText: {
+    marginTop: SPACING.xs,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.success || '#10b981',
+    fontWeight: '600',
+  },
+  verificationHint: {
+    marginTop: SPACING.xs,
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+    lineHeight: 16,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 });

@@ -90,69 +90,104 @@ app.post("/", async (c) => {
     // Email gönder - Resend API kullanarak
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     
-    if (resendApiKey) {
-      try {
-        // HTML içeriğini güvenli hale getir (XSS koruması)
-        const safeCode = String(code).replace(/[<>]/g, '');
-        const safeEmail = trimmedEmail.replace(/[<>]/g, '');
-        
-        const emailPayload = {
-          from: "MyTrabzon <noreply@mytrabzon.com>",
-          to: safeEmail,
-          subject: "MyTrabzon Doğrulama Kodu",
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #333;">MyTrabzon Doğrulama Kodu</h2>
-              <p>Merhaba,</p>
-              <p>Hesabınızı doğrulamak için aşağıdaki 6 haneli kodu kullanabilirsiniz:</p>
-              <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin: 20px 0;">
-                <h1 style="color: #007bff; font-size: 32px; letter-spacing: 5px; margin: 0;">${safeCode}</h1>
-              </div>
-              <p style="color: #666; font-size: 14px;">Bu kod 5 dakika geçerlidir.</p>
-              <p style="color: #666; font-size: 14px;">Eğer bu işlemi siz yapmadıysanız, bu email'i görmezden gelebilirsiniz.</p>
-              <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-              <p style="color: #999; font-size: 12px;">MyTrabzon Ekibi</p>
-            </div>
-          `,
-        };
-
-        // Timeout ile email gönderme (30 saniye)
-        const emailPromise = fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${resendApiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(emailPayload),
-        });
-
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error("Email request timeout")), 30000)
-        );
-
-        const emailResponse = await Promise.race([emailPromise, timeoutPromise]) as Response;
-
-        if (!emailResponse.ok) {
-          let errorData: any = {};
-          try {
-            errorData = await emailResponse.json();
-          } catch {
-            // JSON parse hatası - devam et
-          }
-          console.error("Resend API error:", errorData);
-          console.log(`📧 OTP Code for ${safeEmail}: ${safeCode} (Email gönderilemedi, log'a yazıldı)`);
-        } else {
-          console.log(`✅ Email sent to ${safeEmail}`);
-        }
-      } catch (emailError: any) {
-        console.error("Email sending error:", emailError?.message || emailError);
-        console.log(`📧 OTP Code for ${trimmedEmail}: ${code} (Email gönderilemedi, log'a yazıldı)`);
-        // Email gönderme hatası kritik değil, devam et
-      }
-    } else {
-      console.log(`📧 OTP Code for ${trimmedEmail}: ${code} (RESEND_API_KEY bulunamadı, log'a yazıldı)`);
+    if (!resendApiKey) {
+      console.error("RESEND_API_KEY bulunamadı");
+      return c.json({ 
+        error: "email_service_unavailable",
+        message: "Email servisi şu anda kullanılamıyor. Lütfen daha sonra tekrar deneyin." 
+      }, 503);
     }
 
+    let emailSent = false;
+    try {
+      // HTML içeriğini güvenli hale getir (XSS koruması)
+      const safeCode = String(code).replace(/[<>]/g, '');
+      const safeEmail = trimmedEmail.replace(/[<>]/g, '');
+      
+      const emailPayload = {
+        from: "MyTrabzon <noreply@mytrabzon.com>",
+        to: safeEmail,
+        subject: "MyTrabzon Doğrulama Kodu",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333;">MyTrabzon Doğrulama Kodu</h2>
+            <p>Merhaba,</p>
+            <p>Hesabınızı doğrulamak için aşağıdaki 6 haneli kodu kullanabilirsiniz:</p>
+            <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin: 20px 0;">
+              <h1 style="color: #007bff; font-size: 32px; letter-spacing: 5px; margin: 0;">${safeCode}</h1>
+            </div>
+            <p style="color: #666; font-size: 14px;">Bu kod 5 dakika geçerlidir.</p>
+            <p style="color: #666; font-size: 14px;">Eğer bu işlemi siz yapmadıysanız, bu email'i görmezden gelebilirsiniz.</p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+            <p style="color: #999; font-size: 12px;">MyTrabzon Ekibi</p>
+          </div>
+        `,
+      };
+
+      // Timeout ile email gönderme (30 saniye)
+      const emailPromise = fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${resendApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(emailPayload),
+      });
+
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Email request timeout")), 30000)
+      );
+
+      const emailResponse = await Promise.race([emailPromise, timeoutPromise]) as Response;
+
+      if (!emailResponse.ok) {
+        let errorData: any = {};
+        try {
+          errorData = await emailResponse.json();
+        } catch {
+          // JSON parse hatası
+        }
+        console.error("Resend API error:", errorData);
+        throw new Error(errorData.message || `Email gönderilemedi (Status: ${emailResponse.status})`);
+      }
+
+      const emailResult = await emailResponse.json();
+      if (emailResult.id) {
+        emailSent = true;
+        console.log(`✅ Email sent to ${safeEmail} (ID: ${emailResult.id})`);
+      } else {
+        throw new Error("Email gönderilemedi - geçersiz yanıt");
+      }
+    } catch (emailError: any) {
+      console.error("❌ Email sending error:", {
+        message: emailError?.message,
+        error: emailError,
+        stack: emailError?.stack,
+      });
+      console.log(`📧 OTP Code for ${trimmedEmail}: ${code} (Email gönderilemedi, log'a yazıldı)`);
+      
+      // Email gönderilemezse hata döndür
+      const errorMessage = emailError?.message || "Email gönderilemedi. Lütfen email adresinizi kontrol edip tekrar deneyin.";
+      console.error("❌ Returning error response:", {
+        error: "email_send_failed",
+        message: errorMessage,
+      });
+      
+      return c.json({ 
+        error: "email_send_failed",
+        message: errorMessage
+      }, 500);
+    }
+
+    if (!emailSent) {
+      console.error("❌ Email was not sent (emailSent = false)");
+      return c.json({ 
+        error: "email_send_failed",
+        message: "Email gönderilemedi. Lütfen tekrar deneyin."
+      }, 500);
+    }
+
+    console.log(`✅ Successfully sent OTP code to ${trimmedEmail}`);
     return c.json({ success: true });
   } catch (e: any) {
     console.error("Unexpected error:", e);

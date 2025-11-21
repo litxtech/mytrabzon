@@ -53,24 +53,34 @@ export const getPostDetailProcedure = publicProcedure
       throw new Error(error.message);
     }
 
+    if (!post) {
+      throw new Error('Post bulunamadı');
+    }
+
     let is_liked = false;
     if (user) {
-      const { data: liked } = await supabase
-        .from("post_likes")
-        .select("id")
-        .eq("post_id", input.postId)
-        .eq("user_id", user.id)
-        .single();
-      
-      is_liked = !!liked;
+      try {
+        const { data: liked } = await supabase
+          .from("post_likes")
+          .select("id")
+          .eq("post_id", input.postId)
+          .eq("user_id", user.id)
+          .single();
+        
+        is_liked = !!liked;
+      } catch (likeError) {
+        // Like kontrolü başarısız olursa sessizce devam et (is_liked = false)
+        console.warn('Like kontrolü başarısız:', likeError);
+        is_liked = false;
+      }
     }
 
     // Media URL'lerini optimize et
     const SUPABASE_URL = ctx.supabaseUrl || '';
-    let optimizedMedia = post.media;
-    if (post.media && Array.isArray(post.media)) {
+    let optimizedMedia = post.media || [];
+    if (post.media && Array.isArray(post.media) && post.media.length > 0) {
       optimizedMedia = post.media.map((mediaItem: any) => {
-        if (mediaItem.path && !mediaItem.path.startsWith('http')) {
+        if (mediaItem && mediaItem.path && !mediaItem.path.startsWith('http')) {
           const path = mediaItem.path.startsWith('posts/') 
             ? mediaItem.path 
             : `posts/${mediaItem.path}`;

@@ -86,26 +86,13 @@ export default function AuthCallbackScreen() {
             }
 
             if (data.session?.user) {
-              console.log('✅ [AuthCallback] Session created from code exchange');
+              console.log('✅ [AuthCallback] Session created from code exchange - Email doğrulama başarılı');
               
-              // Profil kontrolü
-              const { data: profile } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', data.session.user.id)
-                .single();
-
+              // Email doğrulama işlemi tamamlandı - hangi sayfaya gittiğinin önemi yok
+              // Direkt giriş sayfasına yönlendir, kullanıcı zaten giriş yapmış olacak
               setLoading(false);
-              
-              // Email doğrulama sonrası - kullanıcı bilgileri ekranına yönlendir
-              // Profil tamamlanmamışsa onboarding'e gönder
-              if (!profile || !profile.full_name) {
-                console.log('🔐 [AuthCallback] Profile incomplete, redirecting to onboarding');
-                router.replace('/auth/onboarding');
-              } else {
-                console.log('🔐 [AuthCallback] Profile complete, redirecting to feed');
-                router.replace('/(tabs)/feed');
-              }
+              console.log('🔐 [AuthCallback] Email doğrulama tamamlandı, giriş sayfasına yönlendiriliyor');
+              router.replace('/auth/login');
               return;
             }
           } catch (exchangeErr: any) {
@@ -128,26 +115,13 @@ export default function AuthCallbackScreen() {
           }
 
           if (data.session?.user) {
-            console.log('✅ [AuthCallback] Session set successfully');
+            console.log('✅ [AuthCallback] Session set successfully - Email doğrulama başarılı');
             
-            // Profil kontrolü
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', data.session.user.id)
-              .single();
-
+            // Email doğrulama işlemi tamamlandı - hangi sayfaya gittiğinin önemi yok
+            // Direkt giriş sayfasına yönlendir, kullanıcı zaten giriş yapmış olacak
             setLoading(false);
-            
-            // Email doğrulama sonrası - kullanıcı bilgileri ekranına yönlendir
-            // Profil tamamlanmamışsa onboarding'e gönder
-            if (!profile || !profile.full_name) {
-              console.log('🔐 [AuthCallback] Profile incomplete, redirecting to onboarding');
-              router.replace('/auth/onboarding');
-            } else {
-              console.log('🔐 [AuthCallback] Profile complete, redirecting to feed');
-              router.replace('/(tabs)/feed');
-            }
+            console.log('🔐 [AuthCallback] Email doğrulama tamamlandı, giriş sayfasına yönlendiriliyor');
+            router.replace('/auth/login');
             return;
           }
         }
@@ -157,24 +131,13 @@ export default function AuthCallbackScreen() {
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session?.user) {
-          console.log('✅ [AuthCallback] Found existing session');
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-
-          setLoading(false);
+          console.log('✅ [AuthCallback] Found existing session - Email doğrulama başarılı');
           
-          // Email doğrulama sonrası - kullanıcı bilgileri ekranına yönlendir
-          // Profil tamamlanmamışsa onboarding'e gönder
-          if (!profile || !profile.full_name) {
-            console.log('🔐 [AuthCallback] Profile incomplete, redirecting to onboarding');
-            router.replace('/auth/onboarding');
-          } else {
-            console.log('🔐 [AuthCallback] Profile complete, redirecting to feed');
-            router.replace('/(tabs)/feed');
-          }
+          // Email doğrulama işlemi tamamlandı - hangi sayfaya gittiğinin önemi yok
+          // Direkt giriş sayfasına yönlendir, kullanıcı zaten giriş yapmış olacak
+          setLoading(false);
+          console.log('🔐 [AuthCallback] Email doğrulama tamamlandı, giriş sayfasına yönlendiriliyor');
+          router.replace('/auth/login');
           return;
         }
 

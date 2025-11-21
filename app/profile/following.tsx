@@ -7,10 +7,12 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { Image } from 'expo-image';
-import { Search, X, Users } from 'lucide-react-native';
+import { Search, X, Users, UserMinus } from 'lucide-react-native';
+import { Alert } from 'react-native';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
@@ -26,6 +28,7 @@ export default function FollowingScreen() {
   const { user } = useAuth();
   const { theme } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -37,13 +40,55 @@ export default function FollowingScreen() {
     });
   }, [navigation, theme]);
 
-  const { data, isLoading } = trpc.user.getFollowing.useQuery(
+  const utils = trpc.useUtils();
+  const { data, isLoading, refetch } = trpc.user.getFollowing.useQuery(
     { user_id: id || user?.id || '', limit: 100, offset: 0 },
     {
       enabled: !!(id || user?.id),
       retry: false,
     }
   );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const unfollowMutation = trpc.user.unfollow.useMutation({
+    onSuccess: () => {
+      refetch();
+      // Takip sayısını da güncelle
+      utils.user.getFollowStats.invalidate({ user_id: id || user?.id || '' });
+      if (user?.id) {
+        utils.user.getFollowStats.invalidate({ user_id: user.id });
+      }
+      Alert.alert('Başarılı', 'Takip bırakıldı');
+    },
+    onError: (error) => {
+      Alert.alert('Hata', error.message || 'Takip bırakılırken bir hata oluştu');
+    },
+  });
+
+  const handleUnfollow = (followingId: string, followingName: string) => {
+    Alert.alert(
+      'Takibi Bırak',
+      `${followingName} adlı kullanıcıyı takipten çıkarmak istediğinize emin misiniz?`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Takibi Bırak',
+          style: 'destructive',
+          onPress: () => {
+            unfollowMutation.mutate({ following_id: followingId });
+          },
+        },
+      ]
+    );
+  };
 
   const filteredFollowing = useMemo(() => {
     const following = data?.following || [];
@@ -102,39 +147,61 @@ export default function FollowingScreen() {
           data={filteredFollowing}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[styles.followerItem, { backgroundColor: theme.colors.card }]}
-              onPress={() => {
-                router.push(`/profile/${item.id}` as any);
-              }}
-            >
-              <Image
-                source={{ uri: item.avatar_url || 'https://via.placeholder.com/50' }}
-                style={styles.followerAvatar}
-              />
-              <View style={styles.followerInfo}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={[styles.followerName, { color: theme.colors.text }]}>
-                    {item.full_name}
-                  </Text>
-                  {item.verified && <VerifiedBadgeIcon size={16} />}
-                </View>
-                {item.username && (
-                  <Text style={[styles.followerUsername, { color: theme.colors.textLight }]}>
-                    @{item.username}
-                  </Text>
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.colors.primary}
+              colors={[theme.colors.primary]}
+            />
+          }
+          renderItem={({ item }) => {
+            const isOwnProfile = !id || id === user?.id;
+            return (
+              <View style={[styles.followerItem, { backgroundColor: theme.colors.card }]}>
+                <TouchableOpacity
+                  style={styles.followerContent}
+                  onPress={() => {
+                    router.push(`/profile/${item.id}` as any);
+                  }}
+                >
+                  <Image
+                    source={{ uri: item.avatar_url || 'https://via.placeholder.com/50' }}
+                    style={styles.followerAvatar}
+                  />
+                  <View style={styles.followerInfo}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={[styles.followerName, { color: theme.colors.text }]}>
+                        {item.full_name}
+                      </Text>
+                      {item.verified && <VerifiedBadgeIcon size={16} />}
+                    </View>
+                    {item.username && (
+                      <Text style={[styles.followerUsername, { color: theme.colors.textLight }]}>
+                        @{item.username}
+                      </Text>
+                    )}
+                  </View>
+                  {item.supporter_badge && item.supporter_badge_visible && (
+                    <SupporterBadge
+                      visible={true}
+                      size="small"
+                      color={item.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
+                    />
+                  )}
+                </TouchableOpacity>
+                {isOwnProfile && (
+                  <TouchableOpacity
+                    style={styles.unfollowButton}
+                    onPress={() => handleUnfollow(item.id, item.full_name || 'Kullanıcı')}
+                    disabled={unfollowMutation.isPending}
+                  >
+                    <UserMinus size={18} color={theme.colors.error} />
+                  </TouchableOpacity>
                 )}
               </View>
-              {item.supporter_badge && item.supporter_badge_visible && (
-                <SupporterBadge
-                  visible={true}
-                  size="small"
-                  color={item.supporter_badge_color as 'yellow' | 'green' | 'blue' | 'red' | null}
-                />
-              )}
-            </TouchableOpacity>
-          )}
+            );
+          }}
         />
       )}
     </SafeAreaView>
@@ -194,6 +261,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: SPACING.sm,
     gap: SPACING.md,
+  },
+  followerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: SPACING.md,
+  },
+  unfollowButton: {
+    padding: SPACING.xs,
   },
   followerAvatar: {
     width: 50,

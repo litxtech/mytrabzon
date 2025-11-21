@@ -2,6 +2,8 @@ import { createTRPCRouter } from "./create-context";
 import hiRoute from "./routes/example/hi/route";
 import { requestAccountDeletionProcedure } from "./routes/user/request-deletion/route";
 import { cancelAccountDeletionProcedure } from "./routes/user/cancel-deletion/route";
+import { changePasswordProcedure } from "./routes/user/change-password/route";
+import { getBlockedUsersProcedure } from "./routes/user/get-blocked-users/route";
 import { getAllUsersProcedure } from "./routes/user/get-all-users/route";
 import { updateDirectoryVisibilityProcedure } from "./routes/user/update-directory-visibility/route";
 import { getRoomsProcedure } from "./routes/chat/get-rooms/route";
@@ -44,6 +46,7 @@ import { uploadAvatarProcedure } from "./routes/user/upload-avatar/route";
 import { getProfileProcedure } from "./routes/user/get-profile/route";
 import { followUserProcedure } from "./routes/user/follow/route";
 import { unfollowUserProcedure } from "./routes/user/unfollow/route";
+import { removeFollowerProcedure } from "./routes/user/remove-follower/route";
 import { checkFollowStatusProcedure } from "./routes/user/check-follow-status/route";
 import { getFollowersProcedure } from "./routes/user/get-followers/route";
 import { getFollowingProcedure } from "./routes/user/get-following/route";
@@ -120,6 +123,8 @@ export const appRouter = createTRPCRouter({
   user: createTRPCRouter({
     requestAccountDeletion: requestAccountDeletionProcedure,
     cancelAccountDeletion: cancelAccountDeletionProcedure,
+    changePassword: changePasswordProcedure,
+    getBlockedUsers: getBlockedUsersProcedure,
     getAllUsers: getAllUsersProcedure,
     updateDirectoryVisibility: updateDirectoryVisibilityProcedure,
     updateProfile: updateProfileProcedure,
@@ -127,6 +132,7 @@ export const appRouter = createTRPCRouter({
     getProfile: getProfileProcedure,
     follow: followUserProcedure,
     unfollow: unfollowUserProcedure,
+    removeFollower: removeFollowerProcedure,
     checkFollowStatus: checkFollowStatusProcedure,
     getFollowers: getFollowersProcedure,
     getFollowing: getFollowingProcedure,

@@ -187,8 +187,9 @@ export default function OnboardingScreen() {
       console.log('🔄 [onboarding] Refreshing profile...');
       await refreshProfile();
       
-      console.log('🚀 [onboarding] Navigating to tabs...');
-      router.replace('/(tabs)/feed' as any);
+      // Profil kaydedildi, kullanıcıyı profil sayfasına yönlendir
+      console.log('🚀 [onboarding] Navigating to profile...');
+      router.replace('/(tabs)/profile' as any);
     } catch (error: any) {
       console.error('❌ [onboarding] Error creating profile:', error);
       console.error('❌ [onboarding] Error details:', JSON.stringify(error, null, 2));

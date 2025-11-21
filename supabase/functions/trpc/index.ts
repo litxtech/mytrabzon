@@ -46,7 +46,7 @@ const appRouter = createTRPCRouter({
           city: z.string().optional(),
           age: z.number().optional(),
           gender: z.enum(["male", "female", "other"]).optional(),
-          phone: z.string().optional(),
+          phone: z.string().nullable().optional(),
           address: z.string().optional(),
           height: z.number().optional(),
           weight: z.number().optional(),
@@ -86,8 +86,9 @@ const appRouter = createTRPCRouter({
             }).optional(),
           }).optional(),
           show_in_directory: z.boolean().optional(),
-          email: z.string().optional(),
+          email: z.string().nullable().optional(),
           avatar_url: z.string().nullable().optional(),
+          location_opt_in: z.boolean().optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -141,7 +142,10 @@ const appRouter = createTRPCRouter({
         if (input.city !== undefined) updateData.city = input.city;
         if (input.age !== undefined) updateData.age = input.age;
         if (input.gender !== undefined) updateData.gender = input.gender;
-        if (input.phone !== undefined) updateData.phone = input.phone;
+        if (input.phone !== undefined) {
+          // null veya boş string ise null olarak kaydet
+          updateData.phone = input.phone === null || input.phone === '' ? null : input.phone;
+        }
         if (input.address !== undefined) updateData.address = input.address;
         if (input.height !== undefined) updateData.height = input.height;
         if (input.weight !== undefined) updateData.weight = input.weight;
@@ -153,12 +157,22 @@ const appRouter = createTRPCRouter({
 
         updateData.updated_at = new Date().toISOString();
 
-        if (input.email && input.email !== user.email) {
-          const { error: updateError } = await supabase.auth.updateUser({ email: input.email });
-          if (updateError) {
-            throw new Error(`Email güncelleme hatası: ${updateError.message}`);
+        if (input.email !== undefined) {
+          // Email silme durumu (null veya boş string)
+          if (input.email === null || input.email === '') {
+            // Email silme - Auth'tan silme yapılmaz (zorunlu alan)
+            updateData.email = null;
+          } else if (input.email !== user.email) {
+            // Email değiştirme - Auth'ta güncelle
+            const { error: updateError } = await supabase.auth.updateUser({ email: input.email });
+            if (updateError) {
+              throw new Error(`Email güncelleme hatası: ${updateError.message}`);
+            }
+            updateData.email = input.email;
+          } else {
+            // Aynı email - sadece profile'da güncelle
+            updateData.email = input.email;
           }
-          updateData.email = input.email;
         }
 
         const { data, error } = await supabase
@@ -177,12 +191,41 @@ const appRouter = createTRPCRouter({
           throw new Error("Profile update failed: No data returned");
         }
 
-        // Response'u serialize edilebilir hale getir
-        return {
-          ...data,
-          created_at: data.created_at ? new Date(data.created_at).toISOString() : null,
-          updated_at: data.updated_at ? new Date(data.updated_at).toISOString() : null,
-        };
+        // Response'u serialize edilebilir hale getir - tüm Date objelerini ve null değerleri düzgün handle et
+        const serializedData: any = {};
+        
+        // Tüm alanları serialize et
+        for (const [key, value] of Object.entries(data)) {
+          if (value === null || value === undefined) {
+            serializedData[key] = null;
+          } else if (value instanceof Date) {
+            serializedData[key] = value.toISOString();
+          } else if (typeof value === 'object' && !Array.isArray(value)) {
+            // Nested objeleri (social_media, privacy_settings gibi) olduğu gibi bırak
+            serializedData[key] = value;
+          } else {
+            serializedData[key] = value;
+          }
+        }
+        
+        // Özellikle Date alanlarını kontrol et
+        if (data.created_at) {
+          serializedData.created_at = data.created_at instanceof Date 
+            ? data.created_at.toISOString() 
+            : (typeof data.created_at === 'string' ? data.created_at : new Date(data.created_at).toISOString());
+        } else {
+          serializedData.created_at = null;
+        }
+        
+        if (data.updated_at) {
+          serializedData.updated_at = data.updated_at instanceof Date 
+            ? data.updated_at.toISOString() 
+            : (typeof data.updated_at === 'string' ? data.updated_at : new Date(data.updated_at).toISOString());
+        } else {
+          serializedData.updated_at = null;
+        }
+        
+        return serializedData;
       }),
 
     checkUsername: publicProcedure
@@ -487,6 +530,45 @@ const appRouter = createTRPCRouter({
         return { success: true, message: "Account deletion cancelled successfully" };
       }),
 
+    changePassword: protectedProcedure
+      .input(
+        z.object({
+          currentPassword: z.string().min(1, "Mevcut şifre gereklidir"),
+          newPassword: z.string().min(6, "Yeni şifre en az 6 karakter olmalıdır"),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        
+        if (!user) {
+          throw new Error("Unauthorized");
+        }
+
+        // Mevcut şifreyi doğrula
+        const { error: verifyError } = await supabase.auth.signInWithPassword({
+          email: user.email || '',
+          password: input.currentPassword,
+        });
+
+        if (verifyError) {
+          throw new Error("Mevcut şifre hatalı");
+        }
+
+        // Şifreyi güncelle
+        const { error: updateError } = await supabase.auth.updateUser({
+          password: input.newPassword,
+        });
+
+        if (updateError) {
+          throw new Error(updateError.message || "Şifre güncellenemedi");
+        }
+
+        return {
+          success: true,
+          message: "Şifre başarıyla değiştirildi",
+        };
+      }),
+
     // Takip et
     follow: protectedProcedure
       .input(z.object({ following_id: z.string().uuid() }))
@@ -639,6 +721,33 @@ const appRouter = createTRPCRouter({
         return { success: true };
       }),
 
+    // Takipçiyi kaldır
+    removeFollower: protectedProcedure
+      .input(z.object({ follower_id: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Giriş yapmanız gerekiyor' });
+
+        // Kendini takipçilerinden kaldıramazsın
+        if (user.id === input.follower_id) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Kendinizi takipçilerinizden kaldıramazsınız' });
+        }
+
+        // Takip kaydını sil (takipçinin sizi takip etmesini engelle)
+        const { error: removeError } = await supabase
+          .from('follows')
+          .delete()
+          .eq('follower_id', input.follower_id)
+          .eq('following_id', user.id);
+
+        if (removeError) {
+          console.error('Remove follower error:', removeError);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Takipçi kaldırma işlemi başarısız oldu' });
+        }
+
+        return { success: true };
+      }),
+
     // Takip durumunu kontrol et
     checkFollowStatus: protectedProcedure
       .input(z.object({ user_id: z.string().uuid() }))
@@ -708,18 +817,44 @@ const appRouter = createTRPCRouter({
           // Takipçi ID'lerini al
           const followerIds = followsData.map((f: any) => f.follower_id);
 
-          // Profil detaylarını al
-          const { data: profiles, error: profilesError } = await supabase
-            .from('profiles')
-            .select('id, full_name, username, avatar_url, verified, supporter_badge, supporter_badge_color, supporter_badge_visible')
-            .in('id', followerIds);
+          // Engellenen kullanıcıları filtrele - eğer kullanıcı giriş yaptıysa
+          let filteredFollowerIds = followerIds;
+          if (ctx.user) {
+            const { data: blockedUsers } = await supabase
+              .from('user_blocks')
+              .select('blocked_id, blocker_id')
+              .or(`blocker_id.eq.${input.user_id},blocked_id.eq.${input.user_id}`);
+            
+            let blockedUserIds: string[] = [];
+            if (blockedUsers) {
+              // Hem engellediğimiz hem de bizi engelleyen kullanıcıları filtrele
+              blockedUserIds = blockedUsers.map((b: any) => 
+                b.blocker_id === input.user_id ? b.blocked_id : b.blocker_id
+              );
+            }
 
-          if (profilesError) {
-            console.error('Get profiles error:', profilesError);
-            throw new TRPCError({
-              code: 'INTERNAL_SERVER_ERROR',
-              message: `Profil bilgileri yüklenirken hata oluştu: ${profilesError.message}`,
-            });
+            // Engellenen kullanıcıları takipçiler listesinden çıkar
+            if (blockedUserIds.length > 0) {
+              filteredFollowerIds = followerIds.filter((id: string) => !blockedUserIds.includes(id));
+            }
+          }
+
+          // Profil detaylarını al
+          let profiles: any[] = [];
+          if (filteredFollowerIds.length > 0) {
+            const { data: profilesData, error: profilesError } = await supabase
+              .from('profiles')
+              .select('id, full_name, username, avatar_url, verified, supporter_badge, supporter_badge_color, supporter_badge_visible')
+              .in('id', filteredFollowerIds);
+            
+            if (profilesError) {
+              console.error('Get profiles error:', profilesError);
+              throw new TRPCError({
+                code: 'INTERNAL_SERVER_ERROR',
+                message: `Profil bilgileri yüklenirken hata oluştu: ${profilesError.message}`,
+              });
+            }
+            profiles = profilesData || [];
           }
 
           // Profilleri ID'ye göre map'le
@@ -732,7 +867,7 @@ const appRouter = createTRPCRouter({
             .eq('following_id', input.user_id);
 
           return {
-            followers: followerIds.map((id: string) => {
+            followers: filteredFollowerIds.map((id: string) => {
               const profile = profilesMap.get(id) as any;
               return {
                 id,
@@ -799,18 +934,44 @@ const appRouter = createTRPCRouter({
           // Takip edilen ID'lerini al
           const followingIds = followsData.map((f: any) => f.following_id);
 
-          // Profil detaylarını al
-          const { data: profiles, error: profilesError } = await supabase
-            .from('profiles')
-            .select('id, full_name, username, avatar_url, verified, supporter_badge, supporter_badge_color, supporter_badge_visible')
-            .in('id', followingIds);
+          // Engellenen kullanıcıları filtrele - eğer kullanıcı giriş yaptıysa
+          let filteredFollowingIds = followingIds;
+          if (ctx.user) {
+            const { data: blockedUsers } = await supabase
+              .from('user_blocks')
+              .select('blocked_id, blocker_id')
+              .or(`blocker_id.eq.${input.user_id},blocked_id.eq.${input.user_id}`);
+            
+            let blockedUserIds: string[] = [];
+            if (blockedUsers) {
+              // Hem engellediğimiz hem de bizi engelleyen kullanıcıları filtrele
+              blockedUserIds = blockedUsers.map((b: any) => 
+                b.blocker_id === input.user_id ? b.blocked_id : b.blocker_id
+              );
+            }
 
-          if (profilesError) {
-            console.error('Get profiles error:', profilesError);
-            throw new TRPCError({
-              code: 'INTERNAL_SERVER_ERROR',
-              message: `Profil bilgileri yüklenirken hata oluştu: ${profilesError.message}`,
-            });
+            // Engellenen kullanıcıları takip listesinden çıkar
+            if (blockedUserIds.length > 0) {
+              filteredFollowingIds = followingIds.filter((id: string) => !blockedUserIds.includes(id));
+            }
+          }
+
+          // Profil detaylarını al
+          let profiles: any[] = [];
+          if (filteredFollowingIds.length > 0) {
+            const { data: profilesData, error: profilesError } = await supabase
+              .from('profiles')
+              .select('id, full_name, username, avatar_url, verified, supporter_badge, supporter_badge_color, supporter_badge_visible')
+              .in('id', filteredFollowingIds);
+            
+            if (profilesError) {
+              console.error('Get profiles error:', profilesError);
+              throw new TRPCError({
+                code: 'INTERNAL_SERVER_ERROR',
+                message: `Profil bilgileri yüklenirken hata oluştu: ${profilesError.message}`,
+              });
+            }
+            profiles = profilesData || [];
           }
 
           // Profilleri ID'ye göre map'le
@@ -823,7 +984,7 @@ const appRouter = createTRPCRouter({
             .eq('follower_id', input.user_id);
 
           return {
-            following: followingIds.map((id: string) => {
+            following: filteredFollowingIds.map((id: string) => {
               const profile = profilesMap.get(id) as any;
               return {
                 id,
@@ -843,6 +1004,100 @@ const appRouter = createTRPCRouter({
           throw new TRPCError({
             code: 'INTERNAL_SERVER_ERROR',
             message: `Takip edilenler yüklenirken hata oluştu: ${error.message || error}`,
+          });
+        }
+      }),
+
+    // Engellenen kullanıcıları getir
+    getBlockedUsers: protectedProcedure
+      .input(
+        z.object({
+          limit: z.number().min(1).max(100).default(50),
+          offset: z.number().min(0).default(0),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+
+        try {
+          // Kullanıcının engellediği kullanıcıları al
+          const { data: blockedData, error: blockedError } = await supabase
+            .from("user_blocks")
+            .select("blocked_id, created_at")
+            .eq("blocker_id", user.id)
+            .order("created_at", { ascending: false })
+            .range(input.offset, input.offset + input.limit - 1);
+
+          if (blockedError) {
+            console.error("Get blocked users error:", blockedError);
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Engellenen kullanıcılar yüklenirken hata oluştu: ${blockedError.message}`,
+            });
+          }
+
+          // Eğer engellenen kullanıcı yoksa boş dizi döndür
+          if (!blockedData || blockedData.length === 0) {
+            const { count } = await supabase
+              .from("user_blocks")
+              .select("*", { count: "exact", head: true })
+              .eq("blocker_id", user.id);
+
+            return {
+              blockedUsers: [],
+              total: count || 0,
+            };
+          }
+
+          // Engellenen kullanıcı ID'lerini al
+          const blockedIds = blockedData.map((b: any) => b.blocked_id);
+
+          // Profil detaylarını al
+          const { data: profiles, error: profilesError } = await supabase
+            .from("profiles")
+            .select("id, full_name, username, avatar_url, verified, supporter_badge, supporter_badge_color, supporter_badge_visible")
+            .in("id", blockedIds);
+
+          if (profilesError) {
+            console.error("Get profiles error:", profilesError);
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Profil bilgileri yüklenirken hata oluştu: ${profilesError.message}`,
+            });
+          }
+
+          // Profilleri ID'ye göre map'le
+          const profilesMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+
+          // Toplam engellenen kullanıcı sayısı
+          const { count } = await supabase
+            .from("user_blocks")
+            .select("*", { count: "exact", head: true })
+            .eq("blocker_id", user.id);
+
+          return {
+            blockedUsers: blockedIds.map((id: string) => {
+              const profile = profilesMap.get(id);
+              const blockData = blockedData.find((b: any) => b.blocked_id === id);
+              return {
+                id,
+                full_name: profile?.full_name || '',
+                username: profile?.username || null,
+                avatar_url: profile?.avatar_url || null,
+                verified: profile?.verified || false,
+                supporter_badge: profile?.supporter_badge || false,
+                supporter_badge_color: profile?.supporter_badge_color || null,
+                supporter_badge_visible: profile?.supporter_badge_visible || false,
+                blocked_at: blockData?.created_at || null,
+              };
+            }),
+            total: count || 0,
+          };
+        } catch (error: any) {
+          console.error("Get blocked users error:", error);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Engellenen kullanıcılar yüklenirken hata oluştu: ${error.message || error}`,
           });
         }
       }),
@@ -1937,26 +2192,62 @@ const appRouter = createTRPCRouter({
               supporter_badge_color
             )
           `)
-          .eq('id', input.postId)
-          .eq('is_deleted', false)
-          .single();
+        .eq('id', input.postId)
+        .eq('is_deleted', false)
+        .single();
 
-        if (error) throw new Error(error.message);
+        if (error) {
+          throw new Error(error.message || 'Post bulunamadı');
+        }
+
+        if (!post) {
+          throw new Error('Post bulunamadı');
+        }
 
         let is_liked = false;
         if (user) {
-          const { data: liked } = await supabase
-            .from("post_likes")
-            .select("id")
-            .eq("post_id", input.postId)
-            .eq("user_id", user.id)
-            .single();
-          
-          is_liked = !!liked;
+          try {
+            const { data: liked } = await supabase
+              .from("post_likes")
+              .select("id")
+              .eq("post_id", input.postId)
+              .eq("user_id", user.id)
+              .single();
+            
+            is_liked = !!liked;
+          } catch (likeError) {
+            // Like kontrolü başarısız olursa sessizce devam et (is_liked = false)
+            console.warn('Like kontrolü başarısız:', likeError);
+            is_liked = false;
+          }
+        }
+
+        // Media URL'lerini güvenli şekilde işle
+        let optimizedMedia = post.media || [];
+        if (post.media && Array.isArray(post.media) && post.media.length > 0) {
+          const SUPABASE_URL = ctx.supabaseUrl || '';
+          optimizedMedia = post.media.map((mediaItem: any) => {
+            if (mediaItem && mediaItem.path && !mediaItem.path.startsWith('http')) {
+              const path = mediaItem.path.startsWith('posts/') 
+                ? mediaItem.path 
+                : `posts/${mediaItem.path}`;
+              
+              const fullUrl = `${SUPABASE_URL}/storage/v1/object/public/posts/${path}`;
+              const thumbnailUrl = `${SUPABASE_URL}/storage/v1/object/public/posts/${path}?width=128&height=128&resize=cover`;
+              
+              return {
+                ...mediaItem,
+                path: fullUrl,
+                thumbnail: thumbnailUrl,
+              };
+            }
+            return mediaItem;
+          });
         }
 
         return {
           ...post,
+          media: optimizedMedia,
           is_liked,
         };
       }),
@@ -1976,16 +2267,18 @@ const appRouter = createTRPCRouter({
         // Önce posts tablosunda kontrol et
         const { data: post, error: postError } = await supabase
           .from('posts')
-          .select('id')
+          .select('id, author_id')
           .eq('id', input.post_id)
           .eq('is_deleted', false)
           .single();
+
+        let postAuthorId: string | null = null;
 
         // Eğer post bulunamazsa, event'lerde kontrol et
         if (postError || !post) {
           const { data: event, error: eventError } = await supabase
             .from('events')
-            .select('id')
+            .select('id, organizer_id')
             .eq('id', input.post_id)
             .eq('is_deleted', false)
             .single();
@@ -1994,6 +2287,22 @@ const appRouter = createTRPCRouter({
             throw new TRPCError({ code: 'NOT_FOUND', message: 'Gönderi bulunamadı' });
           }
           // Event bulundu, devam et (event'ler için de yorum eklenebilir)
+          postAuthorId = event.organizer_id;
+        } else {
+          postAuthorId = post.author_id;
+        }
+
+        // Engelleme kontrolü - post yazarı kullanıcıyı engellemiş mi veya kullanıcı post yazarını engellemiş mi?
+        if (postAuthorId) {
+          const { data: blockCheck } = await supabase
+            .from('user_blocks')
+            .select('id')
+            .or(`and(blocker_id.eq.${user.id},blocked_id.eq.${postAuthorId}),and(blocker_id.eq.${postAuthorId},blocked_id.eq.${user.id})`)
+            .maybeSingle();
+
+          if (blockCheck) {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Bu gönderiye yorum yapamazsınız' });
+          }
         }
 
         const { data, error } = await supabase
@@ -2264,6 +2573,26 @@ const appRouter = createTRPCRouter({
         let commentsWithLikes = data || [];
         
         if (user) {
+          // Engellenen kullanıcıları al
+          const { data: blockedUsers } = await supabase
+            .from('user_blocks')
+            .select('blocked_id, blocker_id')
+            .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
+          
+          let blockedUserIds: string[] = [];
+          if (blockedUsers) {
+            blockedUserIds = blockedUsers.map((b: any) => 
+              b.blocker_id === user.id ? b.blocked_id : b.blocker_id
+            );
+          }
+
+          // Engellenen kullanıcıların yorumlarını filtrele
+          if (blockedUserIds.length > 0) {
+            commentsWithLikes = commentsWithLikes.filter(
+              (comment: any) => !blockedUserIds.includes(comment.user_id)
+            );
+          }
+
           const commentIds = commentsWithLikes.map((c: any) => c.id);
           if (commentIds.length > 0) {
             const { data: likes } = await supabase

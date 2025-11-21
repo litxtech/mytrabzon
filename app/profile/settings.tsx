@@ -113,43 +113,52 @@ export default function SettingsScreen() {
   const [isLoading, setIsLoading] = useState(false);
 
   // Load settings when profile changes (sadece location_opt_in değiştiğinde)
+  // NOT: Bu useEffect sadece profile ilk yüklendiğinde veya dışarıdan değiştiğinde çalışmalı
+  // Kullanıcı toggle yaptığında çalışmamalı (optimistic update'i bozmamak için)
   useEffect(() => {
     if (profile) {
       const loadedSettings = loadSettings();
-      // Sadece location_opt_in değiştiyse güncelle (diğer ayarlar için kullanıcı değişiklik yapmış olabilir)
-      setSettings(prev => ({
-        ...prev,
-        location: {
-          optIn: loadedSettings.location.optIn,
-        },
-      }));
+      // Sadece location_opt_in değiştiyse ve mutation çalışmıyorsa güncelle
+      // Mutation çalışırken optimistic update'i korumak için kontrol ekle
+      if (!isLoading) {
+        setSettings(prev => {
+          // Eğer mevcut state ile yüklenen state aynıysa güncelleme yapma
+          // Bu, kullanıcının toggle yaptığı durumları korur
+          if (prev.location.optIn !== loadedSettings.location.optIn) {
+            return {
+              ...prev,
+              location: {
+                optIn: loadedSettings.location.optIn,
+              },
+            };
+          }
+          return prev;
+        });
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [(profile as any)?.location_opt_in]);
+  }, [(profile as any)?.location_opt_in, isLoading]);
 
   const updateProfileMutation = trpc.user.updateProfile.useMutation({
     onSuccess: async (data, variables) => {
       await refreshProfile();
       // Sadece "Ayarları Kaydet" butonundan çağrıldıysa alert göster
-      if (variables.privacy_settings) {
+      // location_opt_in güncellemesi için alert gösterme (optimistic update zaten yapıldı)
+      if (variables.privacy_settings && !variables.hasOwnProperty('location_opt_in')) {
         Alert.alert('Başarılı', 'Ayarlarınız kaydedildi.');
       }
       setIsLoading(false);
     },
     onError: (error) => {
       console.error('Settings update error:', error);
-      Alert.alert('Hata', `Ayarlar kaydedilirken bir hata oluştu: ${error.message}`);
-      setIsLoading(false);
-      // Hata durumunda state'i geri al
-      if (profile) {
-        const loadedSettings = loadSettings();
-        setSettings(prev => ({
-          ...prev,
-          location: {
-            optIn: loadedSettings.location.optIn,
-          },
-        }));
+      // location_opt_in güncellemesi için özel hata yönetimi yapılmış (handleLocationOptInToggle içinde)
+      // Burada sadece genel ayarlar için hata göster
+      if (!error.message?.includes('location')) {
+        Alert.alert('Hata', `Ayarlar kaydedilirken bir hata oluştu: ${error.message}`);
+      } else {
+        Alert.alert('Hata', 'Yakındaki kullanıcılar ayarı güncellenemedi. Lütfen tekrar deneyin.');
       }
+      setIsLoading(false);
     },
   });
 
@@ -223,14 +232,14 @@ export default function SettingsScreen() {
       }
     }
 
-    // State'i güncelle
-    setSettings({ ...settings, location: { ...settings.location, optIn: value } });
-
-    // Hemen kaydet (diğer ayarları koruyarak)
     if (!profile) {
       Alert.alert('Hata', 'Profil bilgisi bulunamadı.');
       return;
     }
+
+    // Optimistic update - State'i hemen güncelle
+    const previousValue = settings.location.optIn;
+    setSettings({ ...settings, location: { ...settings.location, optIn: value } });
 
     setIsLoading(true);
     
@@ -242,10 +251,18 @@ export default function SettingsScreen() {
     };
 
     // Sadece location_opt_in'i güncelle
-    updateProfileMutation.mutate({
-      privacy_settings: updatedPrivacySettings,
-      location_opt_in: value,
-    });
+    updateProfileMutation.mutate(
+      {
+        privacy_settings: updatedPrivacySettings,
+        location_opt_in: value,
+      },
+      {
+        onError: () => {
+          // Hata durumunda state'i geri al
+          setSettings({ ...settings, location: { ...settings.location, optIn: previousValue } });
+        },
+      }
+    );
   };
 
   return (

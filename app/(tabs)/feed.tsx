@@ -53,6 +53,7 @@ export default function FeedScreen() {
   const modalScrollViewRef = useRef<ScrollView>(null);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [videoModalVisible, setVideoModalVisible] = useState(false);
+  const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set());
   const [warningModalVisible, setWarningModalVisible] = useState(false);
   const [selectedWarning, setSelectedWarning] = useState<any>(null);
   const [selectedWarningPost, setSelectedWarningPost] = useState<Post | null>(null);
@@ -507,11 +508,15 @@ export default function FeedScreen() {
         </View>
       </View>
     );
-  }, [router, theme, user?.id, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible, refetchEvents, formatCount, likeEventMutation, deleteEventMutation]);
+  }, [router, theme, user?.id, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible, refetchEvents, formatCount, likeEventMutation, deleteEventMutation, expandedPosts, setExpandedPosts]);
 
   const renderPost = useCallback(({ item }: { item: Post }) => {
     const firstMedia = item.media && item.media.length > 0 ? item.media[0] : null;
     const isVideo = firstMedia?.type === 'video' || firstMedia?.path?.match(/\.(mp4|mov|avi|webm)$/i);
+    const isExpanded = expandedPosts.has(item.id);
+    const contentLength = item.content?.length || 0;
+    const estimatedLines = Math.ceil(contentLength / 50); // Yaklaşık satır sayısı
+    const shouldShowReadMore = estimatedLines > 10 && !isExpanded;
 
     return (
       <View style={[styles.postCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
@@ -595,19 +600,39 @@ export default function FeedScreen() {
           )}
         </View>
 
-        <TouchableOpacity
-          style={styles.postContentContainer}
-          onPress={() => router.push(`/post/${item.id}` as any)}
-          activeOpacity={0.9}
-        >
+        <View style={styles.postContentContainer}>
           <Text 
             style={[styles.postContent, { color: theme.colors.text }]}
-            numberOfLines={10}
+            numberOfLines={isExpanded ? undefined : 10}
             ellipsizeMode="tail"
           >
             {item.content}
           </Text>
-        </TouchableOpacity>
+          {shouldShowReadMore && (
+            <TouchableOpacity
+              onPress={() => {
+                setExpandedPosts(prev => new Set(prev).add(item.id));
+              }}
+              style={styles.readMoreButton}
+            >
+              <Text style={[styles.readMoreText, { color: theme.colors.primary }]}>Devamını gör</Text>
+            </TouchableOpacity>
+          )}
+          {isExpanded && estimatedLines > 10 && (
+            <TouchableOpacity
+              onPress={() => {
+                setExpandedPosts(prev => {
+                  const newSet = new Set(prev);
+                  newSet.delete(item.id);
+                  return newSet;
+                });
+              }}
+              style={styles.readMoreButton}
+            >
+              <Text style={[styles.readMoreText, { color: theme.colors.primary }]}>Daha az göster</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         {item.media && item.media.length > 0 && (
           <>
@@ -1448,6 +1473,14 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'android' && {
       includeFontPadding: false,
     }),
+  },
+  readMoreButton: {
+    marginTop: SPACING.xs,
+    paddingVertical: SPACING.xs,
+  },
+  readMoreText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
   },
   imageContainer: {
     width: Dimensions.get('window').width,

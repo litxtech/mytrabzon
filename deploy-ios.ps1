@@ -1,6 +1,10 @@
 # Interaktif iOS Build ve App Store Submit Scripti
 # Bu script kullanicidan onay alarak build yapar ve submit eder
 
+# UTF-8 encoding ayarla
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 Write-Host "🚀 iOS App Store Yukleme" -ForegroundColor Cyan
 Write-Host ""
 

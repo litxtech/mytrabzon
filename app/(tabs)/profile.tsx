@@ -5,7 +5,7 @@ import { Video, ResizeMode, Audio } from 'expo-av';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { LogOut, Settings, Edit3, Heart, MoreVertical, MessageCircle, Instagram, Twitter, Facebook, Linkedin, Youtube, Shield, Car, Trophy, Search, HelpCircle, Target, Trash2, CheckCircle2, Clock, XCircle, Share2, Users, X, UserCheck } from 'lucide-react-native';
+import { LogOut, Settings, Edit3, Heart, MoreVertical, MessageCircle, Instagram, Twitter, Facebook, Linkedin, Youtube, Shield, Car, Trophy, Search, HelpCircle, Target, Trash2, CheckCircle2, Clock, XCircle, Share2, Users, X, UserCheck, Lock } from 'lucide-react-native';
 import { DISTRICT_BADGES } from '../../constants/districts';
 import { useRouter } from 'expo-router';
 import { Footer } from '../../components/Footer';
@@ -426,7 +426,7 @@ export default function ProfileScreen() {
             )}
 
             {/* Sosyal Medya Linkleri - Kompakt ve Modern */}
-            {showSocialMedia && socialMedia && typeof socialMedia === 'object' && Object.keys(socialMedia).length > 0 && (
+            {showSocialMedia && socialMedia && typeof socialMedia === 'object' && !Array.isArray(socialMedia) && Object.keys(socialMedia).length > 0 && (
               <View style={styles.socialMediaContainer}>
                 {socialMedia.instagram && (
                   <TouchableOpacity
@@ -653,26 +653,60 @@ export default function ProfileScreen() {
                 <Text style={[styles.menuOptionText, { color: theme.colors.success }]}>Admin Panel</Text>
               </TouchableOpacity>
             )}
+            {user && (
+              <TouchableOpacity
+                style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
+                onPress={() => {
+                  setMenuVisible(false);
+                  router.push('/profile/change-password');
+                }}
+              >
+                <Lock size={18} color={theme.colors.primary} />
+                <Text style={[styles.menuOptionText, { color: theme.colors.primary }]}>Şifremi Değiştir</Text>
+              </TouchableOpacity>
+            )}
+            {user && (
+              <TouchableOpacity
+                style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
+                onPress={() => {
+                  setMenuVisible(false);
+                  router.push('/profile/blocked-users');
+                }}
+              >
+                <X size={18} color={theme.colors.error} />
+                <Text style={[styles.menuOptionText, { color: theme.colors.error }]}>Engellenen Kullanıcılar</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
               onPress={() => {
                 setMenuVisible(false);
-                router.push('/profile/delete-account');
+                if (!user) {
+                  // Giriş yapmamışsa giriş sayfasına yönlendir, returnUrl ile
+                  router.push({
+                    pathname: '/auth/login',
+                    params: { returnUrl: '/profile/delete-account' },
+                  } as any);
+                } else {
+                  router.push('/profile/delete-account');
+                }
               }}
             >
               <Trash2 size={18} color={theme.colors.error} />
               <Text style={[styles.menuOptionText, { color: theme.colors.error }]}>Hesabı Sil</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
-              onPress={() => {
-                setMenuVisible(false);
-                handleLogout();
-              }}
-            >
-              <LogOut size={18} color={theme.colors.error} />
-              <Text style={[styles.menuOptionText, { color: theme.colors.error }]}>Çıkış Yap</Text>
-            </TouchableOpacity>
+            {user && (
+              <TouchableOpacity
+                style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
+                onPress={() => {
+                  setMenuVisible(false);
+                  handleLogout();
+                }}
+              >
+                <LogOut size={18} color={theme.colors.error} />
+                <Text style={[styles.menuOptionText, { color: theme.colors.error }]}>Çıkış Yap</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </Modal>

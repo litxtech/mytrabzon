@@ -1,6 +1,7 @@
 import createContextHook from '@nkzw/create-context-hook';
 import { supabase } from '@/lib/supabase';
 import { retryOperation } from '@/utils/retry';
+import { safeObject } from '@/utils/safe-operations';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import {
@@ -215,7 +216,7 @@ const fetchRoomsViaSupabase = async (currentUserId: string): Promise<ChatRoomWit
     return acc;
   }, {});
 
-  const roomIds = Object.keys(membershipMap);
+  const roomIds = safeObject.keys(membershipMap);
 
   const { data: roomsRaw, error: roomsError } = await supabase
     .from('chat_rooms')
@@ -410,9 +411,10 @@ export const [ChatContext, useChat] = createContextHook(() => {
 
     // Optimize: Sadece aktif room için channel oluştur
     // Diğer room'ların channel'larını kapat
-    if (channelsRef.current && typeof channelsRef.current === 'object') {
-      Object.keys(channelsRef.current).forEach((key) => {
-        if (key !== roomId && channelsRef.current[key]) {
+    if (channelsRef.current && typeof channelsRef.current === 'object' && !Array.isArray(channelsRef.current)) {
+      const keys = safeObject.keys(channelsRef.current);
+      keys.forEach((key) => {
+        if (key !== roomId && channelsRef.current && channelsRef.current[key]) {
           try {
             channelsRef.current[key].unsubscribe();
             delete channelsRef.current[key];

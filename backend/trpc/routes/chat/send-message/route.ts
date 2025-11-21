@@ -28,6 +28,30 @@ export const sendMessageProcedure = protectedProcedure
       throw new Error('Not a member of this room');
     }
 
+    // Engelleme kontrolü - odadaki diğer kullanıcıları kontrol et
+    const { data: roomMembers } = await ctx.supabase
+      .from('chat_members')
+      .select('user_id')
+      .eq('room_id', input.roomId)
+      .neq('user_id', userId);
+
+    if (roomMembers && roomMembers.length > 0) {
+      const otherUserIds = roomMembers.map(m => m.user_id);
+      
+      // Kullanıcı engellenmiş mi kontrol et (her iki yönde de)
+      for (const otherUserId of otherUserIds) {
+        const { data: blockCheck } = await ctx.supabase
+          .from('user_blocks')
+          .select('id')
+          .or(`and(blocker_id.eq.${userId},blocked_id.eq.${otherUserId}),and(blocker_id.eq.${otherUserId},blocked_id.eq.${userId})`)
+          .maybeSingle();
+
+        if (blockCheck) {
+          throw new Error('Bu kullanıcıya mesaj gönderemezsiniz');
+        }
+      }
+    }
+
     const { data: message, error } = await ctx.supabase
       .from('messages')
       .insert({

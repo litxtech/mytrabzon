@@ -14,6 +14,7 @@ import {
   Modal,
   Linking,
   Keyboard,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
@@ -23,7 +24,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
 import { trpc } from '@/lib/trpc';
 import { useAuthGuard } from '@/hooks/useAuthGuard';
-import { Send, Paperclip, Smile, MoreVertical, ImageIcon, Plus, Heart, MessageCircle, Share2, Phone, Video as VideoIcon, Users, Search, Check, X, UserMinus, Trash2, LogOut, Edit3, XCircle } from 'lucide-react-native';
+import { Send, Paperclip, Smile, MoreVertical, ImageIcon, Plus, Heart, MessageCircle, Share2, Phone, Video as VideoIcon, Users, Search, Check, X, UserMinus, Trash2, LogOut, Edit3, XCircle, Ban, Flag } from 'lucide-react-native';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -56,6 +57,9 @@ export default function ChatRoomScreen() {
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [editMessageText, setEditMessageText] = useState('');
   const [pendingCallType, setPendingCallType] = useState<'audio' | 'video' | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState<string>('');
+  const [reportDescription, setReportDescription] = useState('');
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const utils = trpc.useUtils();
@@ -340,7 +344,8 @@ export default function ChatRoomScreen() {
     onSuccess: () => {
       utils.chat.getRooms.invalidate();
       refetchRooms();
-      router.back();
+      // Otomatik yönlendirme yapma - kullanıcı isterse kendi gidebilir
+      Alert.alert('Başarılı', 'Sohbetten ayrıldınız');
     },
     onError: (error) => {
       Alert.alert('Hata', error.message || 'Gruptan ayrılamadınız');
@@ -350,10 +355,33 @@ export default function ChatRoomScreen() {
   const deleteRoomMutation = trpc.chat.deleteRoom.useMutation({
     onSuccess: () => {
       utils.chat.getRooms.invalidate();
-      router.back();
+      // Otomatik yönlendirme yapma - kullanıcı isterse kendi gidebilir
+      Alert.alert('Başarılı', 'Grup silindi');
     },
     onError: (error) => {
       Alert.alert('Hata', error.message || 'Grup silinemedi');
+    },
+  });
+
+  // Engelle ve şikayet mutation'ları
+  const blockUserMutation = (trpc as any).chat.blockUser.useMutation({
+    onSuccess: () => {
+      Alert.alert('Başarılı', 'Kullanıcı engellendi');
+    },
+    onError: (error: any) => {
+      Alert.alert('Hata', error.message || 'Kullanıcı engellenemedi');
+    },
+  });
+
+  const reportUserMutation = trpc.user.reportUser.useMutation({
+    onSuccess: () => {
+      Alert.alert('Başarılı', 'Şikayetiniz admin paneline iletildi. Teşekkürler!');
+      setShowReportModal(false);
+      setReportReason('');
+      setReportDescription('');
+    },
+    onError: (error: any) => {
+      Alert.alert('Hata', error.message || 'Şikayet gönderilemedi');
     },
   });
 
@@ -992,9 +1020,98 @@ export default function ChatRoomScreen() {
                   if (isGroup) {
                     setShowGroupOptionsModal(true);
                   } else {
-                    // Direct chat için diğer seçenekler
+                    // Direct chat için menü
+                    if (otherUser) {
+                      Alert.alert(
+                        'Sohbet Seçenekleri',
+                        `${(otherUser as any).full_name || 'Kullanıcı'} ile ilgili işlemler`,
+                        [
+                          {
+                            text: 'Profili Görüntüle',
+                            onPress: () => {
+                              router.push(`/profile/${(otherUser as any).id}` as any);
+                            },
+                          },
+                          {
+                            text: 'Engelle',
+                            style: 'destructive',
+                            onPress: () => {
+                              Alert.alert(
+                                'Kullanıcıyı Engelle',
+                                `${(otherUser as any).full_name || 'Bu kullanıcıyı'} engellemek istediğinizden emin misiniz? Engellediğiniz kullanıcı size mesaj gönderemez ve sizi göremez.`,
+                                [
+                                  { text: 'İptal', style: 'cancel' },
+                                  {
+                                    text: 'Engelle',
+                                    style: 'destructive',
+                                    onPress: () => {
+                                      if ((otherUser as any).id) {
+                                        blockUserMutation.mutate({ blockedUserId: (otherUser as any).id });
+                                      }
+                                    },
+                                  },
+                                ]
+                              );
+                            },
+                          },
+                          {
+                            text: 'Şikayet Et',
+                            onPress: () => {
+                              setShowReportModal(true);
+                            },
+                          },
+                          {
+                            text: 'Tüm Mesajları Sil',
+                            style: 'destructive',
+                            onPress: () => {
+                              Alert.alert(
+                                'Tüm Mesajları Sil',
+                                'Tüm mesajları silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.',
+                                [
+                                  { text: 'İptal', style: 'cancel' },
+                                  {
+                                    text: 'Sil',
+                                    style: 'destructive',
+                                    onPress: () => {
+                                      if (roomId) {
+                                        deleteAllMessagesMutation.mutate({ roomId });
+                                      }
+                                    },
+                                  },
+                                ]
+                              );
+                            },
+                          },
+                          {
+                            text: 'Sohbeti Sil',
+                            style: 'destructive',
+                            onPress: () => {
+                              Alert.alert(
+                                'Sohbeti Sil',
+                                'Bu sohbeti silmek istediğinizden emin misiniz?',
+                                [
+                                  { text: 'İptal', style: 'cancel' },
+                                  {
+                                    text: 'Sil',
+                                    style: 'destructive',
+                                    onPress: () => {
+                                      if (roomId) {
+                                        leaveRoomMutation.mutate({ roomId });
+                                        // Otomatik yönlendirme yapma - mutation içinde zaten alert gösteriliyor
+                                      }
+                                    },
+                                  },
+                                ]
+                              );
+                            },
+                          },
+                          { text: 'İptal', style: 'cancel' },
+                        ]
+                      );
+                    }
                   }
                 }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <MoreVertical size={20} color={COLORS.primary} />
               </TouchableOpacity>
@@ -1503,6 +1620,114 @@ export default function ChatRoomScreen() {
                 </View>
               }
             />
+          </View>
+        </View>
+      </Modal>
+      {/* Şikayet Modal */}
+      <Modal
+        visible={showReportModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowReportModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.reportModalContent}>
+            <View style={styles.reportModalHeader}>
+              <Text style={styles.reportModalTitle}>Kullanıcıyı Şikayet Et</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowReportModal(false);
+                  setReportReason('');
+                  setReportDescription('');
+                }}
+              >
+                <X size={24} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Şikayet Edilen Kullanıcı Bilgileri */}
+            {otherUser && (
+              <View style={styles.reportedUserInfo}>
+                <Image
+                  source={{ uri: (otherUser as any).avatar_url || 'https://via.placeholder.com/50' }}
+                  style={styles.reportedUserAvatar}
+                />
+                <View style={styles.reportedUserDetails}>
+                  <Text style={styles.reportedUserName}>{(otherUser as any).full_name || 'İsimsiz'}</Text>
+                  {(otherUser as any).username && (
+                    <Text style={styles.reportedUserUsername}>@{(otherUser as any).username}</Text>
+                  )}
+                  {(otherUser as any).district && (
+                    <Text style={styles.reportedUserDistrict}>{(otherUser as any).district}</Text>
+                  )}
+                </View>
+              </View>
+            )}
+
+            <ScrollView style={styles.reportScrollView} showsVerticalScrollIndicator={false}>
+              <Text style={styles.reportLabel}>Şikayet Nedeni *</Text>
+              <View style={styles.reportReasonsContainer}>
+                {[
+                  { value: 'spam', label: 'Spam / Gereksiz İçerik' },
+                  { value: 'harassment', label: 'Taciz / Rahatsız Edici' },
+                  { value: 'inappropriate', label: 'Uygunsuz İçerik' },
+                  { value: 'fake', label: 'Sahte Hesap' },
+                  { value: 'other', label: 'Diğer' },
+                ].map((r) => (
+                  <TouchableOpacity
+                    key={r.value}
+                    style={[
+                      styles.reportReasonChip,
+                      reportReason === r.value && styles.reportReasonChipSelected,
+                    ]}
+                    onPress={() => setReportReason(r.value)}
+                  >
+                    <Text
+                      style={[
+                        styles.reportReasonText,
+                        reportReason === r.value && styles.reportReasonTextSelected,
+                      ]}
+                    >
+                      {r.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.reportLabel}>Açıklama (Opsiyonel)</Text>
+              <TextInput
+                style={[styles.reportInput, styles.reportTextArea]}
+                placeholder="Şikayetinizi detaylı olarak açıklayın..."
+                placeholderTextColor={COLORS.textLight}
+                value={reportDescription}
+                onChangeText={setReportDescription}
+                multiline
+                numberOfLines={6}
+                textAlignVertical="top"
+              />
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[
+                styles.reportSubmitButton,
+                (!reportReason || reportUserMutation.isPending) && styles.reportSubmitButtonDisabled,
+              ]}
+              onPress={() => {
+                if (!(otherUser as any)?.id || !reportReason) return;
+                reportUserMutation.mutate({
+                  reported_user_id: (otherUser as any).id,
+                  reason: reportReason as any,
+                  description: reportDescription.trim() || undefined,
+                });
+              }}
+              disabled={!reportReason || reportUserMutation.isPending}
+            >
+              {reportUserMutation.isPending ? (
+                <ActivityIndicator size="small" color={COLORS.white} />
+              ) : (
+                <Text style={styles.reportSubmitButtonText}>Şikayet Et</Text>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -2171,5 +2396,120 @@ const styles = StyleSheet.create({
   },
   memberRemoveButton: {
     padding: SPACING.xs,
+  },
+  reportModalContent: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    width: '90%',
+    maxWidth: 500,
+    maxHeight: '80%',
+    padding: SPACING.lg,
+    alignSelf: 'center',
+    marginTop: '10%',
+  },
+  reportModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  reportModalTitle: {
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  reportedUserInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+    borderRadius: 12,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
+    gap: SPACING.md,
+  },
+  reportedUserAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+  reportedUserDetails: {
+    flex: 1,
+  },
+  reportedUserName: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  reportedUserUsername: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+    marginTop: 2,
+  },
+  reportedUserDistrict: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textLight,
+    marginTop: 2,
+  },
+  reportScrollView: {
+    maxHeight: 400,
+  },
+  reportLabel: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  reportReasonsContainer: {
+    gap: SPACING.sm,
+  },
+  reportReasonChip: {
+    padding: SPACING.md,
+    borderRadius: 12,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  reportReasonChipSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  reportReasonText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  reportReasonTextSelected: {
+    color: COLORS.white,
+  },
+  reportInput: {
+    backgroundColor: COLORS.background,
+    borderRadius: 12,
+    padding: SPACING.md,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  reportTextArea: {
+    minHeight: 120,
+    paddingTop: SPACING.md,
+  },
+  reportSubmitButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: 12,
+    marginTop: SPACING.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportSubmitButtonDisabled: {
+    opacity: 0.5,
+  },
+  reportSubmitButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700',
   },
 });
