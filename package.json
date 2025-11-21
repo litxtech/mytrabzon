@@ -24,6 +24,7 @@
     "deploy:ios": "powershell -ExecutionPolicy Bypass -File ./deploy-ios-auto.ps1",
     "deploy:ios:interactive": "powershell -ExecutionPolicy Bypass -File ./deploy-ios.ps1",
     "release:ios": "powershell -ExecutionPolicy Bypass -File ./release-ios.ps1",
+    "deploy:ios:auto": "powershell -ExecutionPolicy Bypass -File ./deploy-ios-auto.ps1",
     "bump-version": "node scripts/bump-version.js",
     "version": "node scripts/bump-version.js",
     "generate-apple-jwt": "node scripts/generate-apple-jwt.js",
