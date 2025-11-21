@@ -1,7 +1,7 @@
 {
   "name": "mytrabzon",
   "main": "expo-router/entry",
-  "version": "1.0.56",
+  "version": "1.0.57",
   "scripts": {
     "start": "npx expo start --lan --clear --port 8081",
     "start:expo-go": "npx expo start --tunnel --clear --port 8081",
@@ -62,7 +62,7 @@
     "expo-document-picker": "^14.0.7",
     "expo-file-system": "~19.0.19",
     "expo-font": "~14.0.9",
-    "ffmpeg-kit-react-native": "^6.0.2",
+    "ffmpeg-kit-react-native": "^6.0.3",
     "expo-haptics": "~15.0.7",
     "expo-image": "~3.0.10",
     "expo-image-manipulator": "~14.0.7",
