@@ -28,7 +28,6 @@ import {
   MapPin,
   Users,
   Star,
-<<<<<<< HEAD
   Instagram,
   Twitter,
   Facebook,
@@ -38,9 +37,7 @@ import {
   Venus,
   Mars,
   Link as LinkIcon,
-=======
   Target,
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CallButtons } from '@/components/CallButtons';

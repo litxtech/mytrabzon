@@ -5,6 +5,12 @@
 
 import { Platform } from 'react-native';
 
+// ErrorUtils tip tanımı (React Native'de global olarak mevcut)
+declare const ErrorUtils: {
+  getGlobalHandler: () => ((error: Error, isFatal?: boolean) => void) | null;
+  setGlobalHandler: (handler: (error: Error, isFatal?: boolean) => void) => void;
+};
+
 /**
  * Global error handler - yakalanmamış hataları yakalar
  */
@@ -28,22 +34,24 @@ export const setupGlobalErrorHandler = () => {
     }
   });
 
-  // Promise rejection handler
-  const unhandledRejectionHandler = (event: PromiseRejectionEvent) => {
-    console.error('🚨 Unhandled Promise Rejection:', event.reason);
-    
-    if (!__DEV__) {
-      // TODO: Crash reporting
-    }
-    
-    // Default davranışı engelle (crash'i önle)
-    event.preventDefault();
-  };
+  // Promise rejection handler - sadece web platformunda
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.addEventListener) {
+    const unhandledRejectionHandler = (event: PromiseRejectionEvent) => {
+      console.error('🚨 Unhandled Promise Rejection:', event.reason);
+      
+      if (!__DEV__) {
+        // TODO: Crash reporting
+      }
+      
+      // Default davranışı engelle (crash'i önle)
+      event.preventDefault();
+    };
 
-  // React Native'de Promise rejection'ları yakala
-  if (typeof window !== 'undefined') {
     window.addEventListener('unhandledrejection', unhandledRejectionHandler);
   }
+  
+  // React Native'de Promise rejection'lar ErrorUtils.setGlobalHandler ile yakalanır
+  // Ek bir işlem gerekmez
 };
 
 // React hooks burada değil - hooks klasöründe olmalı

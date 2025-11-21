@@ -17,6 +17,7 @@ import {
   Modal,
   Share,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { Video, ResizeMode, Audio } from 'expo-av';
 import { Heart, MessageCircle, Share2, Bookmark, VolumeX } from 'lucide-react-native';
@@ -27,6 +28,9 @@ import { trpc } from '@/lib/trpc';
 import { Image } from 'expo-image';
 import { CommentSheetExpoGo, CommentSheetExpoGoRef } from './CommentSheetExpoGo';
 import VerifiedBadgeIcon from './VerifiedBadge';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { X } from 'lucide-react-native';
 
 // Expo Go için CommentSheetExpoGo kullan (her zaman çalışır)
 const CommentSheet = CommentSheetExpoGo;
@@ -45,21 +49,22 @@ interface VideoFeedItemProps {
 export function VideoFeedItem({ post, isActive, isViewable, index, onCommentsChange }: VideoFeedItemProps) {
   const router = useRouter();
   const { theme } = useTheme();
+  const { guard } = useAuthGuard();
   const videoRef = useRef<Video>(null);
   const [isMuted] = useState(true);
   const [isLiked, setIsLiked] = useState(post.is_liked || false);
   const [likeCount, setLikeCount] = useState(post.like_count || 0);
   const [isLoading, setIsLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
-<<<<<<< HEAD
-  const [isVideoReady, setIsVideoReady] = useState(false);
-  const commentSheetY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
-=======
   const [showShareModal, setShowShareModal] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
+  const [audioSessionReady, setAudioSessionReady] = useState(false);
   const commentSheetRef = useRef<CommentSheetRef>(null);
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   const lastTap = useRef(0);
   const isMountedRef = useRef(true);
+  const [showLikeAnimation, setShowLikeAnimation] = useState(false);
+  const likeAnimationScale = useRef(new Animated.Value(0)).current;
+  const likeAnimationOpacity = useRef(new Animated.Value(0)).current;
 
   const firstMedia = post.media && post.media.length > 0 ? post.media[0] : null;
   const videoUrl = firstMedia?.path;
@@ -99,32 +104,13 @@ export function VideoFeedItem({ post, isActive, isViewable, index, onCommentsCha
       // Event'ler için upvotes - downvotes kullanılıyor
       setLikeCount((prev: number) => (isLiked ? prev - 1 : prev + 1));
     },
-<<<<<<< HEAD
-    onError: (error: any) => {
-=======
     onError: (error: unknown) => {
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
       console.error('Like event error:', error);
     },
   });
 
-  const [audioSessionReady, setAudioSessionReady] = useState(false);
-  const [videoReady, setVideoReady] = useState(false);
-
   // Audio session'ı aktif et
   useEffect(() => {
-<<<<<<< HEAD
-    Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      staysActiveInBackground: false,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
-    }).catch(() => {
-      // Sessizce geç
-    });
-  }, []);
-=======
     let mounted = true;
     
     const initAudio = async () => {
@@ -151,7 +137,11 @@ export function VideoFeedItem({ post, isActive, isViewable, index, onCommentsCha
     };
 
     initAudio();
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Component unmount olduğunda flag'i güncelle
   useEffect(() => {
@@ -169,67 +159,6 @@ export function VideoFeedItem({ post, isActive, isViewable, index, onCommentsCha
 
   // Sadece aktif video oynatılır - diğerleri durur
   useEffect(() => {
-<<<<<<< HEAD
-    // Video hazır değilse bekle
-    if (!isVideoReady || !videoUrl) return;
-
-    const timer = setTimeout(() => {
-      if (!isMountedRef.current) return;
-
-      // Video ref'inin geçerli olduğundan emin ol
-      if (!videoRef.current) return;
-
-      if (isActive) {
-        // Audio session aktif olduğundan emin ol
-        Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
-          staysActiveInBackground: false,
-          playsInSilentModeIOS: true,
-          shouldDuckAndroid: true,
-          playThroughEarpieceAndroid: false,
-        })
-          .then(() => {
-            // Ref'in hala geçerli olduğunu kontrol et
-            if (!isMountedRef.current || !videoRef.current) return;
-            
-            try {
-              return videoRef.current.playAsync();
-            } catch {
-              // Native view hatası - sessizce geç
-              return null;
-            }
-          })
-          .then(() => {
-            if (isMountedRef.current) {
-              setIsPlaying(true);
-            }
-          })
-          .catch(() => {
-            // Tüm hataları sessizce geç - console'a yazma
-            if (isMountedRef.current) {
-              setIsLoading(false);
-            }
-          });
-      } else {
-        // Aktif değilse durdur
-        if (videoRef.current && isMountedRef.current) {
-          try {
-            videoRef.current.pauseAsync().catch(() => {
-              // Sessizce geç
-            });
-          } catch {
-            // Sessizce geç
-          }
-        }
-        if (isMountedRef.current) {
-          setIsPlaying(false);
-        }
-      }
-    }, 200); // Daha uzun gecikme - native view'ın hazır olması için
-
-    return () => clearTimeout(timer);
-  }, [isActive, videoUrl, isVideoReady]);
-=======
     if (isActive && videoRef.current && videoUrl && videoUrl.trim() !== '' && audioSessionReady && videoReady) {
       const playVideo = async () => {
         try {
@@ -311,51 +240,33 @@ export function VideoFeedItem({ post, isActive, isViewable, index, onCommentsCha
       setIsPlaying(false);
     }
   }, [isActive, videoUrl, audioSessionReady, videoReady]);
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 
   // Sadece aktif video sesli olmalı - video hazır olduğunda
   useEffect(() => {
-<<<<<<< HEAD
-    // Video hazır değilse bekle
-    if (!isVideoReady) return;
-
-    const timer = setTimeout(() => {
-      if (!isMountedRef.current || !videoRef.current) return;
-
-      try {
-        videoRef.current.setIsMutedAsync(!isActive).catch(() => {
-          // Sessizce geç
-        });
-      } catch {
-        // Sessizce geç
-      }
-    }, 200);
-
-    return () => clearTimeout(timer);
-  }, [isActive, isVideoReady]);
-=======
     if (videoRef.current && videoReady && videoUrl && videoUrl.trim() !== '') {
       videoRef.current.setIsMutedAsync(!isActive).catch((error) => {
-        // Video henüz hazır değilse veya null ise sessizce geç
         console.warn('⚠️ Video mute operation warning:', error);
       });
     }
   }, [isActive, videoReady, videoUrl]);
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 
   const handleLike = () => {
-    if (isEvent) {
-      // Event'ler için event_id'yi çıkar (event_ prefix'ini kaldır)
-      const eventId = post.id.replace('event_', '');
-      likeEventMutation.mutate({ event_id: eventId });
-    } else {
-      likePostMutation.mutate({ postId: post.id });
-    }
+    guard(() => {
+      if (isEvent) {
+        // Event'ler için event_id'yi çıkar (event_ prefix'ini kaldır)
+        const eventId = post.id.replace('event_', '');
+        likeEventMutation.mutate({ event_id: eventId });
+      } else {
+        likePostMutation.mutate({ postId: post.id });
+      }
+    }, 'Beğenmek');
   };
 
   const handleComment = () => {
-    commentSheetRef.current?.present();
-    onCommentsChange?.(true);
+    guard(() => {
+      commentSheetRef.current?.present();
+      onCommentsChange?.(true);
+    }, 'Yorum yapmak');
   };
 
   // Video üzerine tıklama - çift tıklama beğeni, tek tıklama pause/play
@@ -369,26 +280,33 @@ export function VideoFeedItem({ post, isActive, isViewable, index, onCommentsCha
     if (now - lastTap.current < DOUBLE_TAP_DELAY) {
       // Çift tıklama - beğeni
       handleLike();
+      // Beğeni animasyonu göster
+      setShowLikeAnimation(true);
+      likeAnimationScale.setValue(0);
+      likeAnimationOpacity.setValue(1);
+      
+      Animated.parallel([
+        Animated.spring(likeAnimationScale, {
+          toValue: 1.2,
+          friction: 3,
+          tension: 40,
+          useNativeDriver: true,
+        }),
+        Animated.sequence([
+          Animated.delay(300),
+          Animated.timing(likeAnimationOpacity, {
+            toValue: 0,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start(() => {
+        setShowLikeAnimation(false);
+        likeAnimationScale.setValue(0);
+        likeAnimationOpacity.setValue(0);
+      });
     } else {
       // Tek tıklama - pause/play toggle
-<<<<<<< HEAD
-      if (!videoRef.current || !isVideoReady || !isMountedRef.current) return;
-
-      try {
-        if (isPlaying) {
-          videoRef.current.pauseAsync().catch(() => {
-            // Sessizce geç
-          });
-          setIsPlaying(false);
-        } else {
-          videoRef.current.playAsync().catch(() => {
-            // Sessizce geç
-          });
-          setIsPlaying(true);
-        }
-      } catch {
-        // Sessizce geç
-=======
       if (videoRef.current && videoReady && videoUrl && videoUrl.trim() !== '') {
         if (isPlaying) {
           // Video hazır olduğunda pause
@@ -444,9 +362,6 @@ export function VideoFeedItem({ post, isActive, isViewable, index, onCommentsCha
             console.warn('⚠️ Audio session activation error:', audioError);
           }
         }
-      } else {
-        console.warn('⚠️ Video ref is null or not ready, cannot toggle play/pause');
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
       }
     }
     lastTap.current = now;
@@ -475,9 +390,20 @@ export function VideoFeedItem({ post, isActive, isViewable, index, onCommentsCha
   const authorName = post.author?.full_name || 'Kullanıcı';
   const authorUsername = post.author?.username || authorName.toLowerCase().replace(/\s+/g, '') || 'kullanici';
   const authorAvatar = post.author?.avatar_url || 'https://via.placeholder.com/40';
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={[styles.container, { height: SCREEN_HEIGHT }]} {...videoPanResponder.panHandlers}>
+      {/* Çarpı Butonu - En üstte, overlay'in üzerinde */}
+      <TouchableOpacity
+        style={[styles.closeButton, { top: insets.top + SPACING.md }]}
+        onPress={() => router.back()}
+        hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+        activeOpacity={0.7}
+      >
+        <X size={24} color={COLORS.white} />
+      </TouchableOpacity>
+
       <Pressable 
         style={styles.videoContainer}
         onPress={handleVideoPress}
@@ -497,34 +423,6 @@ export function VideoFeedItem({ post, isActive, isViewable, index, onCommentsCha
             shouldPlay={isActive && videoReady && !isLoading}
             useNativeControls={false}
             onError={(error) => {
-<<<<<<< HEAD
-              // Hataları sessizce geç - console'a yazma
-              if (isMountedRef.current) {
-                setIsLoading(false);
-              }
-            }}
-            onLoadStart={() => {
-              if (isMountedRef.current) {
-                setIsLoading(true);
-              }
-            }}
-            onLoad={() => {
-              if (isMountedRef.current) {
-                setIsLoading(false);
-                // Video yüklendiğinde hazır olarak işaretle
-                setTimeout(() => {
-                  if (isMountedRef.current) {
-                    setIsVideoReady(true);
-                  }
-                }, 100);
-              }
-            }}
-            onReadyForDisplay={() => {
-              if (isMountedRef.current) {
-                setIsVideoReady(true);
-                setIsLoading(false);
-              }
-=======
               console.error('VideoFeedItem Video error:', error);
               setIsLoading(false);
               setVideoReady(false);
@@ -539,10 +437,8 @@ export function VideoFeedItem({ post, isActive, isViewable, index, onCommentsCha
               handleVideoLoad();
             }}
             onReadyForDisplay={() => {
-              // Video görüntülenmeye hazır olduğunda
               setIsLoading(false);
               setVideoReady(true);
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
             }}
           />
         ) : (
@@ -556,10 +452,27 @@ export function VideoFeedItem({ post, isActive, isViewable, index, onCommentsCha
             <View style={styles.loadingIndicator} />
           </View>
         )}
+        {/* Çift tıklama beğeni animasyonu */}
+        {showLikeAnimation && (
+          <Animated.View 
+            style={[
+              styles.likeAnimationContainer, 
+              {
+                opacity: likeAnimationOpacity,
+                transform: [{ scale: likeAnimationScale }],
+              }
+            ]} 
+            pointerEvents="none"
+          >
+            <Heart size={80} color={theme.colors.error} fill={theme.colors.error} />
+          </Animated.View>
+        )}
       </Pressable>
 
       {/* Overlay - Kullanıcı bilgisi ve içerik */}
       <View style={styles.overlay} pointerEvents="box-none">
+        {/* Sol üst - Çarpı butonu için boşluk (overlay'in pointerEvents'i box-none olduğu için çarpı butonu çalışır) */}
+        
         {/* Sol alt - Kullanıcı bilgisi */}
         <View style={styles.bottomSection} pointerEvents="auto">
           <View style={styles.userInfo}>
@@ -619,7 +532,40 @@ export function VideoFeedItem({ post, isActive, isViewable, index, onCommentsCha
             <Text style={styles.actionCount}>{post.comment_count || 0}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={async () => {
+              guard(async () => {
+                if (isEvent) {
+                  // Event paylaşımı - Share API kullan
+                  try {
+                    const eventData = post.eventData;
+                    const eventContent = `🚨 Olay Var: ${eventData?.title || ''}\n\n${eventData?.description || ''}\n\n📍 ${eventData?.district || ''}${eventData?.city ? `, ${eventData?.city}` : ''}`;
+                    await Share.share({
+                      message: eventContent,
+                      url: videoUrl || '',
+                    });
+                  } catch (error) {
+                    console.error('Share error:', error);
+                  }
+                } else {
+                  // Post paylaşımı - create-post ekranına yönlendir
+                  const shareContent = post.content || '';
+                  const shareMediaUrls = post.media && post.media.length > 0 
+                    ? JSON.stringify(post.media.map((m: any) => m.path))
+                    : undefined;
+                  
+                  router.push({
+                    pathname: '/create-post',
+                    params: {
+                      content: shareContent,
+                      mediaUrls: shareMediaUrls,
+                    } as any,
+                  });
+                }
+              }, 'Paylaşmak');
+            }}
+          >
             <Share2 size={32} color={COLORS.white} />
             <Text style={styles.actionCount}>{post.share_count || 0}</Text>
           </TouchableOpacity>
@@ -633,7 +579,7 @@ export function VideoFeedItem({ post, isActive, isViewable, index, onCommentsCha
       {/* Yorum Paneli - BottomSheetModal */}
       <CommentSheet
         ref={commentSheetRef}
-        postId={post.id}
+        postId={isEvent ? (post.id.startsWith('event_') ? post.id : `event_${post.id}`) : post.id}
         initialCount={post.comment_count || 0}
         onClose={() => onCommentsChange?.(false)}
       />
@@ -715,6 +661,17 @@ const styles = StyleSheet.create({
     height: SCREEN_HEIGHT,
     backgroundColor: '#000',
   },
+  closeButton: {
+    position: 'absolute',
+    left: SPACING.md,
+    zIndex: 10000,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   videoContainer: {
     width: '100%',
     height: '100%',
@@ -734,6 +691,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: SPACING.xl,
     paddingHorizontal: SPACING.md,
+    paddingTop: 0, // Çarpı butonu için üstten boşluk yok, absolute position ile üstte
   },
   bottomSection: {
     flex: 1,
@@ -845,5 +803,11 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
   },
+  likeAnimationContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+    pointerEvents: 'none',
+  },
 });
-

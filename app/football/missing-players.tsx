@@ -18,6 +18,7 @@ import { trpc } from '@/lib/trpc';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, MapPin, Clock, MessageCircle, UserPlus } from 'lucide-react-native';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 
 type MissingPlayerPost = {
   id: string;
@@ -186,7 +187,10 @@ export default function MissingPlayersScreen() {
       <View style={styles.organizerRow}>
         {renderAvatar(item.posted_by_user)}
         <View style={styles.organizerInfo}>
-          <Text style={styles.organizerName}>{item.posted_by_user?.full_name || 'Organizatör'}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.organizerName}>{item.posted_by_user?.full_name || 'Organizatör'}</Text>
+            {item.posted_by_user?.verified && <VerifiedBadgeIcon size={16} />}
+          </View>
           <Text style={styles.organizerMeta}>
             {item.city} • {formatDateTime(item.match, item.match_time)}
           </Text>

@@ -67,23 +67,24 @@ export function SupportPanel({ visible, onClose }: SupportPanelProps) {
       onRequestClose={onClose}
       statusBarTranslucent
     >
-<<<<<<< HEAD
-      <View style={styles.overlay}>
-        <TouchableOpacity 
-          style={StyleSheet.absoluteFill}
-          activeOpacity={1}
-          onPress={onClose}
-        />
-        <KeyboardAvoidingView
-          style={styles.keyboardView}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      <Pressable 
+        style={styles.overlay}
+        onPress={onClose}
+      >
+        <View 
+          style={styles.modalContentWrapper}
+          pointerEvents="box-none"
         >
-          <TouchableOpacity 
-            style={styles.container}
-            activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
+          <KeyboardAvoidingView
+            style={styles.keyboardView}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+            pointerEvents="box-none"
           >
+            <View 
+              style={styles.container}
+              onStartShouldSetResponder={() => true}
+            >
           <View style={styles.header}>
             <Text style={styles.title}>Destek</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -167,103 +168,10 @@ export function SupportPanel({ visible, onClose }: SupportPanelProps) {
               </Text>
             </TouchableOpacity>
           </ScrollView>
-          </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </View>
-=======
-      <Pressable 
-        style={styles.overlay}
-        onPress={onClose}
-      >
-        <View 
-          style={styles.modalContentWrapper}
-          pointerEvents="box-none"
-        >
-          <KeyboardAvoidingView
-            style={styles.keyboardView}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-            pointerEvents="box-none"
-          >
-            <View 
-              style={styles.container}
-              onStartShouldSetResponder={() => true}
-            >
-              <View style={styles.header}>
-                <Text style={styles.title}>Destek</Text>
-                <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                  <X size={24} color={COLORS.text} />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView
-                style={styles.scrollView}
-                contentContainerStyle={styles.scrollContent}
-                keyboardShouldPersistTaps="handled"
-              >
-                <Text style={styles.subtitle}>İletişim Bilgileri</Text>
-
-                <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('phone')}>
-                  <View style={styles.iconContainer}>
-                    <Phone size={20} color={COLORS.primary} />
-                  </View>
-                  <View style={styles.contactTextContainer}>
-                    <Text style={styles.contactLabel}>Telefon</Text>
-                    <Text style={styles.contactValue}>+1 307 271 5151</Text>
-                  </View>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('email')}>
-                  <View style={styles.iconContainer}>
-                    <Mail size={20} color={COLORS.primary} />
-                  </View>
-                  <View style={styles.contactTextContainer}>
-                    <Text style={styles.contactLabel}>E-posta</Text>
-                    <Text style={styles.contactValue}>support@litxtech.com</Text>
-                  </View>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.contactItem} onPress={() => handleContact('web')}>
-                  <View style={styles.iconContainer}>
-                    <Globe size={20} color={COLORS.primary} />
-                  </View>
-                  <View style={styles.contactTextContainer}>
-                    <Text style={styles.contactLabel}>Web</Text>
-                    <Text style={styles.contactValue}>www.litxtech.com</Text>
-                  </View>
-                </TouchableOpacity>
-
-                <View style={styles.divider} />
-
-                <Text style={styles.subtitle}>Hızlı Mesaj</Text>
-                <TextInput
-                  style={styles.messageInput}
-                  placeholder="Mesajınızı buraya yazın..."
-                  placeholderTextColor={COLORS.textLight}
-                  value={message}
-                  onChangeText={setMessage}
-                  multiline
-                  numberOfLines={4}
-                  textAlignVertical="top"
-                  maxLength={1000}
-                />
-
-                <TouchableOpacity
-                  style={[styles.sendButton, createTicketMutation.isPending && styles.sendButtonDisabled]}
-                  onPress={handleSendMessage}
-                  disabled={createTicketMutation.isPending}
-                >
-                  <MessageCircle size={20} color={COLORS.white} />
-                  <Text style={styles.sendButtonText}>
-                    {createTicketMutation.isPending ? 'Gönderiliyor...' : 'Mesaj Gönder'}
-                  </Text>
-                </TouchableOpacity>
-              </ScrollView>
             </View>
           </KeyboardAvoidingView>
         </View>
       </Pressable>
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     </Modal>
   );
 }

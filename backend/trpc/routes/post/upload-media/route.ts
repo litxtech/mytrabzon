@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { protectedProcedure } from "../../../create-context";
 
 export const uploadPostMediaProcedure = protectedProcedure
@@ -29,11 +30,45 @@ export const uploadPostMediaProcedure = protectedProcedure
 
       if (error) {
         console.error("Storage upload error:", error);
-        throw new Error(`Storage upload failed: ${error.message}`);
+        
+        // WORKER_LIMIT veya compute resources hatası kontrolü
+        const errorMessage = error.message || '';
+        const isWorkerLimitError = 
+          errorMessage.includes('WORKER_LIMIT') ||
+          errorMessage.includes('compute resources') ||
+          errorMessage.includes('not having enough compute') ||
+          error.code === 'WORKER_LIMIT';
+        
+        if (isWorkerLimitError) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'WORKER_LIMIT',
+            cause: error,
+          });
+        }
+        
+        // Storage quota hatası
+        if (errorMessage.includes('quota') || errorMessage.includes('storage')) {
+          throw new TRPCError({
+            code: 'PAYLOAD_TOO_LARGE',
+            message: 'Storage quota exceeded. Please try again later.',
+            cause: error,
+          });
+        }
+        
+        // Generic storage error
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Storage upload failed: ${error.message}`,
+          cause: error,
+        });
       }
 
       if (!data) {
-        throw new Error("No data returned from storage upload");
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'No data returned from storage upload',
+        });
       }
 
       const {
@@ -48,9 +83,24 @@ export const uploadPostMediaProcedure = protectedProcedure
       };
     } catch (error) {
       console.error("Upload procedure error:", error);
-      if (error instanceof Error) {
-        throw new Error(`Media upload failed: ${error.message}`);
+      
+      // TRPCError ise direkt fırlat
+      if (error instanceof TRPCError) {
+        throw error;
       }
-      throw new Error("Media upload failed: Unknown error");
+      
+      // Diğer hatalar için generic error
+      if (error instanceof Error) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Media upload failed: ${error.message}`,
+          cause: error,
+        });
+      }
+      
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Media upload failed: Unknown error',
+      });
     }
   });

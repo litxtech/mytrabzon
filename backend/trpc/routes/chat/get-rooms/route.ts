@@ -131,7 +131,7 @@ export const getRoomsProcedure = protectedProcedure
     // Optimize: Tüm members'ları tek query'de al
     const { data: allMembersData } = await ctx.supabase
       .from('chat_members')
-      .select('room_id, user_id, role, user:profiles(id, full_name, avatar_url, username)')
+      .select('room_id, user_id, role, user:profiles(id, full_name, avatar_url, username, verified)')
       .in('room_id', roomIds);
 
     // Room'a göre members'ları grupla
@@ -148,6 +148,7 @@ export const getRoomsProcedure = protectedProcedure
           full_name: member.user.full_name,
           avatar_url: member.user.avatar_url,
           username: member.user.username,
+          verified: member.user.verified || false,
         } : null,
       });
     });

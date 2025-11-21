@@ -5,7 +5,7 @@ import { Video, ResizeMode, Audio } from 'expo-av';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { LogOut, Settings, Edit3, Heart, MoreVertical, MessageCircle, Instagram, Twitter, Facebook, Linkedin, Youtube, Shield, Car, Trophy, Search, HelpCircle, Target, Trash2, CheckCircle2, Clock, XCircle, Share2, Users, X } from 'lucide-react-native';
+import { LogOut, Settings, Edit3, Heart, MoreVertical, MessageCircle, Instagram, Twitter, Facebook, Linkedin, Youtube, Shield, Car, Trophy, Search, HelpCircle, Target, Trash2, CheckCircle2, Clock, XCircle, Share2, Users, X, UserCheck } from 'lucide-react-native';
 import { DISTRICT_BADGES } from '../../constants/districts';
 import { useRouter } from 'expo-router';
 import { Footer } from '../../components/Footer';
@@ -171,117 +171,13 @@ export default function ProfileScreen() {
       setIsAdmin(false);
     }
   }, [user?.id, user?.email, user?.user_metadata?.email, profile?.username, user?.user_metadata?.username]);
-  
-  // Takipçi ve takip sayılarını getir - gerçek zamanlı güncelleme için refetch
-  const { data: followStats, refetch: refetchFollowStats } = trpc.user.getFollowStats.useQuery(
-    { user_id: user?.id || '' },
-    { enabled: !!user?.id }
-  );
-  
-  const followersCount = followStats?.followers_count || 0;
-  const followingCount = followStats?.following_count || 0;
 
-  // Takip/takipçi sayılarını periyodik olarak güncelle (her 30 saniyede bir - performans için)
-  useEffect(() => {
-    if (!user?.id) return;
-    
-    let interval: ReturnType<typeof setInterval> | null = null;
-    let isMounted = true;
-    
-    const updateStats = () => {
-      if (isMounted && refetchFollowStats) {
-        try {
-          refetchFollowStats();
-        } catch (error) {
-          console.error('Error refetching follow stats:', error);
-        }
-      }
-    };
-    
-    // İlk güncelleme
-    updateStats();
-    
-    // Periyodik güncelleme (30 saniye - performans için optimize edildi)
-    interval = setInterval(updateStats, 30000);
-    
-    return () => {
-      isMounted = false;
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
-  }, [user?.id, refetchFollowStats]);
-
-  const handleLogout = async () => {
-    try {
-      Alert.alert(
-        'Çıkış Yap',
-        'Hesabınızdan çıkmak istediğinizden emin misiniz?',
-        [
-          { text: 'İptal', style: 'cancel' },
-          {
-            text: 'Çıkış Yap',
-            style: 'destructive',
-            onPress: async () => {
-              await signOut();
-              // Navigation'ı zorla yap
-              router.replace('/auth/login' as any);
-              // Ekstra güvence için bir süre sonra tekrar dene
-              setTimeout(() => {
-                router.replace('/auth/login' as any);
-              }, 100);
-            },
-          },
-        ]
-      );
-    } catch (error) {
-      console.error('Logout error:', error);
-      // Hata olsa bile çıkış yap
-      await signOut();
-      router.replace('/auth/login' as any);
-    }
-  };
-
-  const handleDeleteAccount = () => {
-    Alert.alert(
-      'Hesabı Sil',
-      'Hesabınızı silmek istediğinizden emin misiniz?\n\nHesabınız 7 gün süreyle askıya alınacak ve bu süre sonunda kalıcı olarak silinecektir. Bu süre içinde giriş yaparsanız hesabınızı geri yükleyebilirsiniz.\n\nSilinen veriler:\n• Profil bilgileriniz\n• Paylaşımlarınız\n• Yorumlarınız\n• Mesajlarınız\n• Tüm kişisel verileriniz',
-      [
-        { text: 'İptal', style: 'cancel' },
-        {
-          text: 'Sil',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteAccountMutation.mutateAsync();
-              Alert.alert(
-                'Hesap Silme İsteği Alındı',
-                'Hesabınız 7 gün içinde kalıcı olarak silinecektir. Bu süre içinde giriş yaparsanız hesabınızı geri yükleyebilirsiniz.',
-                [
-                  {
-                    text: 'Tamam',
-                    onPress: () => {
-                      signOut();
-                      router.replace('/auth/login');
-                    }
-                  }
-                ]
-              );
-            } catch (error) {
-              Alert.alert('Hata', 'Hesap silme işlemi sırasında bir hata oluştu.');
-              console.error('Delete account error:', error);
-            }
-          }
-        }
-      ]
-=======
   // Loading durumunda loading göster
   if (authLoading) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }]}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
       </View>
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     );
   }
 
@@ -644,7 +540,7 @@ export default function ProfileScreen() {
             })}
           </View>
         ) : (
-          <View style={[styles.emptyPostsContainer, { backgroundColor: theme.colors.card }]}>
+          <View style={[styles.emptyPostsContainer, { backgroundColor: theme.colors.card, paddingVertical: SPACING.xl, paddingHorizontal: SPACING.md }]}>
             <View style={styles.emptyPostsIllustration}>
               <Text style={styles.emptyPostsEmoji}>🎨</Text>
             </View>
@@ -655,6 +551,7 @@ export default function ProfileScreen() {
             <TouchableOpacity
               style={[styles.createPostButton, { backgroundColor: theme.colors.primary }]}
               onPress={() => router.push('/create-post')}
+              activeOpacity={0.8}
             >
               <Text style={styles.createPostButtonText}>Oluştur</Text>
             </TouchableOpacity>
@@ -664,28 +561,13 @@ export default function ProfileScreen() {
         <Footer />
       </ScrollView>
 
-      {/* Menu Modal - Basit */}
+      {/* Menu Modal */}
       <Modal
         visible={menuVisible}
         transparent
         animationType="fade"
         onRequestClose={() => setMenuVisible(false)}
       >
-<<<<<<< HEAD
-        <TouchableOpacity 
-          style={styles.menuOverlay}
-          activeOpacity={1}
-          onPress={() => setMenuVisible(false)}
-        >
-          <TouchableOpacity 
-            style={[styles.menuContent, { backgroundColor: theme.colors.card }]}
-            activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View style={styles.menuHeader}>
-              <Text style={[styles.menuTitle, { color: theme.colors.text }]}>Profil menüsü</Text>
-              <TouchableOpacity 
-=======
         <View style={styles.menuOverlay}>
           <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
             <View style={styles.menuBackdrop} />
@@ -694,82 +576,11 @@ export default function ProfileScreen() {
             <View style={[styles.menuHeader, { borderBottomColor: theme.colors.border }]}>
               <Text style={[styles.menuTitle, { color: theme.colors.text }]}>Profil menüsü</Text>
               <TouchableOpacity
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
                 onPress={() => setMenuVisible(false)}
                 style={styles.menuCloseButton}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-<<<<<<< HEAD
-                <X size={24} color={theme.colors.text} />
-              </TouchableOpacity>
-            </View>
-            {menuActions.map((action) => {
-              const IconComponent = action.icon;
-              const isDisabled = action.disabled;
-              const toneColor =
-                action.tone === 'danger'
-                  ? theme.colors.error
-                  : action.tone === 'success'
-                  ? theme.colors.success
-                  : theme.colors.text;
-              
-              return (
-                <TouchableOpacity
-                  key={action.id}
-                  style={[
-                    styles.menuOption,
-                    { borderTopColor: theme.colors.border },
-                    action.tone === 'danger' && styles.menuOptionDanger,
-                    isDisabled && styles.menuOptionDisabled
-                  ]}
-                  onPress={() => {
-                    if (!isDisabled && action.onPress) {
-                      action.onPress();
-                    }
-                  }}
-                  disabled={isDisabled || !action.onPress}
-                >
-                  <IconComponent size={18} color={toneColor} />
-                  <Text
-                    style={[
-                      styles.menuOptionText,
-                      { color: theme.colors.text },
-                      action.tone === 'danger' && { color: theme.colors.error },
-                      isDisabled && { color: theme.colors.textLight }
-                    ]}
-                  >
-                    {action.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
-      <SupportPanel visible={supportVisible} onClose={() => setSupportVisible(false)} />
-
-      {/* Takipçiler Modal */}
-      <Modal
-        visible={followersModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setFollowersModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity 
-            style={StyleSheet.absoluteFill}
-            activeOpacity={1}
-            onPress={() => setFollowersModalVisible(false)}
-          />
-          <View style={[styles.followersModalContent, { backgroundColor: theme.colors.card }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Takipçiler</Text>
-              <TouchableOpacity onPress={() => setFollowersModalVisible(false)}>
-                <Text style={[styles.modalCloseText, { color: theme.colors.textLight }]}>✕</Text>
-=======
                 <Text style={[styles.menuCloseText, { color: theme.colors.text }]}>✕</Text>
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
               </TouchableOpacity>
             </View>
             <TouchableOpacity
@@ -812,6 +623,24 @@ export default function ProfileScreen() {
               <Car size={18} color={theme.colors.text} />
               <Text style={[styles.menuOptionText, { color: theme.colors.text }]}>Yolculuklarım</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
+              onPress={() => {
+                setMenuVisible(false);
+                handleNavigate('/kyc/verify');
+              }}
+            >
+              <UserCheck 
+                size={18} 
+                color={displayProfile.verified ? theme.colors.success : theme.colors.primary} 
+              />
+              <Text style={[
+                styles.menuOptionText, 
+                { color: displayProfile.verified ? theme.colors.success : theme.colors.primary }
+              ]}>
+                {displayProfile.verified ? 'Kimliği Doğrulandı' : 'Kimliği Doğrula'}
+              </Text>
+            </TouchableOpacity>
             {isAdmin && (
               <TouchableOpacity
                 style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
@@ -828,6 +657,16 @@ export default function ProfileScreen() {
               style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
               onPress={() => {
                 setMenuVisible(false);
+                router.push('/profile/delete-account');
+              }}
+            >
+              <Trash2 size={18} color={theme.colors.error} />
+              <Text style={[styles.menuOptionText, { color: theme.colors.error }]}>Hesabı Sil</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuOption, { borderTopColor: theme.colors.border }]}
+              onPress={() => {
+                setMenuVisible(false);
                 handleLogout();
               }}
             >
@@ -838,29 +677,13 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      {/* Avatar Modal - Büyük Profil Resmi */}
+      {/* Avatar Modal */}
       <Modal
         visible={avatarModalVisible}
         transparent
         animationType="fade"
         onRequestClose={() => setAvatarModalVisible(false)}
       >
-<<<<<<< HEAD
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity 
-            style={StyleSheet.absoluteFill}
-            activeOpacity={1}
-            onPress={() => setFollowingModalVisible(false)}
-          />
-          <View style={[styles.followersModalContent, { backgroundColor: theme.colors.card }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Takip Edilenler</Text>
-              <TouchableOpacity onPress={() => setFollowingModalVisible(false)}>
-                <Text style={[styles.modalCloseText, { color: theme.colors.textLight }]}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            <FollowingList userId={user?.id || ''} />
-=======
         <View style={styles.avatarModalOverlay}>
           <TouchableWithoutFeedback onPress={() => setAvatarModalVisible(false)}>
             <View style={styles.avatarModalBackdrop} />
@@ -871,7 +694,6 @@ export default function ProfileScreen() {
               style={styles.avatarModalImage}
               contentFit="contain"
             />
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
           </View>
         </View>
       </Modal>
@@ -950,8 +772,8 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: FONT_SIZES.lg,
     fontWeight: '700',
-<<<<<<< HEAD
     color: COLORS.text,
+    marginBottom: SPACING.xs / 2,
     ...(Platform.OS === 'android' && {
       includeFontPadding: false,
       lineHeight: FONT_SIZES.md * 1.3,
@@ -959,50 +781,20 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: FONT_SIZES.xs,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
     color: COLORS.textLight,
     marginTop: 2,
     ...(Platform.OS === 'android' && {
       includeFontPadding: false,
       lineHeight: FONT_SIZES.xs * 1.3,
     }),
-=======
-    marginBottom: SPACING.xs / 2,
-  },
-  statLabel: {
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   },
   profileInfo: {
     alignItems: 'center',
     marginBottom: SPACING.md,
     paddingHorizontal: SPACING.md,
-<<<<<<< HEAD
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  quickActionCardDisabled: {
-    opacity: 0.6,
-  },
-  quickActionLabel: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    color: COLORS.text,
-    ...(Platform.OS === 'android' && {
-      includeFontPadding: false,
-      lineHeight: FONT_SIZES.sm * 1.3,
-    }),
-  },
-  quickActionLabelDisabled: {
-    color: COLORS.textLight,
-=======
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   },
   nameRow: {
     flexDirection: 'row',
@@ -1023,20 +815,14 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   bio: {
-<<<<<<< HEAD
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.text,
-    lineHeight: 16,
-    marginBottom: SPACING.xs,
-    ...(Platform.OS === 'android' && {
-      includeFontPadding: false,
-      lineHeight: FONT_SIZES.xs * 1.3,
-    }),
-=======
     fontSize: FONT_SIZES.md,
     textAlign: 'center',
     marginBottom: SPACING.sm,
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
+    color: COLORS.text,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.md * 1.3,
+    }),
   },
   locationRow: {
     marginTop: SPACING.xs,
@@ -1150,16 +936,8 @@ const styles = StyleSheet.create({
   postGridStatText: {
     color: COLORS.white,
     fontSize: FONT_SIZES.sm,
-<<<<<<< HEAD
     fontWeight: '700' as const,
     marginLeft: 2,
-  },
-  emptyPostsContainer: {
-    backgroundColor: COLORS.white,
-    paddingVertical: SPACING.xxl * 2,
-    paddingHorizontal: SPACING.xl,
-    alignItems: 'center',
-    minHeight: 400,
   },
   emptyPostsIllustration: {
     width: 120,
@@ -1203,15 +981,6 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xl,
     paddingHorizontal: SPACING.md,
     marginBottom: SPACING.md,
-  },
-  username: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textLight,
-    marginBottom: SPACING.sm,
-    ...(Platform.OS === 'android' && {
-      includeFontPadding: false,
-      lineHeight: FONT_SIZES.md * 1.3,
-    }),
   },
   badgesRow: {
     flexDirection: 'row' as const,
@@ -1355,6 +1124,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
+  menuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
   menuContent: {
     backgroundColor: COLORS.white,
     padding: SPACING.lg,
@@ -1377,6 +1149,10 @@ const styles = StyleSheet.create({
   menuCloseButton: {
     padding: SPACING.xs,
   },
+  menuCloseText: {
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '600',
+  },
   menuOption: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1386,23 +1162,17 @@ const styles = StyleSheet.create({
   menuOptionText: {
     fontSize: FONT_SIZES.md,
     color: COLORS.text,
-=======
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     fontWeight: '600',
     ...(Platform.OS === 'android' && {
       includeFontPadding: false,
       lineHeight: FONT_SIZES.md * 1.3,
     }),
   },
-<<<<<<< HEAD
   menuOptionDanger: {
     borderTopWidth: 1,
     borderColor: COLORS.border,
     marginTop: SPACING.sm,
     paddingTop: SPACING.sm,
-  },
-  menuOptionDangerText: {
-    color: COLORS.error,
   },
   menuOptionDisabled: {
     opacity: 0.5,
@@ -1517,23 +1287,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  sectionTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '700',
-    color: COLORS.text,
-  },
-  matchesList: {
-    padding: SPACING.md,
-  },
-  matchItem: {
-    backgroundColor: COLORS.background,
-=======
   postGridBadge: {
     position: 'absolute',
     top: SPACING.xs,
     right: SPACING.xs,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     borderRadius: 12,
     paddingHorizontal: SPACING.xs,
     paddingVertical: 2,
@@ -1557,108 +1315,11 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     fontWeight: '600',
   },
-  loadingContainer: {
-    padding: SPACING.xl,
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: FONT_SIZES.md,
-  },
   emptyPostsContainer: {
-    padding: SPACING.xl,
     alignItems: 'center',
-    marginTop: SPACING.lg,
-  },
-  emptyPostsIllustration: {
-    marginBottom: SPACING.md,
-  },
-  emptyPostsEmoji: {
-    fontSize: 64,
-  },
-  emptyPostsTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '600',
-    marginBottom: SPACING.xs,
-  },
-  emptyPostsSubtitle: {
-    fontSize: FONT_SIZES.md,
-    marginBottom: SPACING.lg,
-    textAlign: 'center',
-  },
-  createPostButton: {
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.xl,
-    borderRadius: 8,
-  },
-  createPostButtonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-  },
-  menuOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  menuBackdrop: {
-    flex: 1,
-  },
-  menuContent: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingBottom: SPACING.xl,
-  },
-  menuHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: SPACING.md,
-    borderBottomWidth: 1,
-  },
-  menuTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '600',
-  },
-  menuCloseButton: {
-    padding: SPACING.xs,
-  },
-  menuCloseText: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: '600',
-  },
-  menuOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: SPACING.md,
-    borderTopWidth: 1,
-    gap: SPACING.md,
-  },
-  menuOptionDanger: {
-    borderTopColor: COLORS.error + '20',
-  },
-  menuOptionDisabled: {
-    opacity: 0.5,
-  },
-  menuOptionText: {
-    fontSize: FONT_SIZES.md,
-  },
-  emptyContainer: {
-    padding: SPACING.xl,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: 'bold',
-    marginTop: SPACING.md,
-    color: COLORS.text,
-  },
-  emptySubtext: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textLight,
-    textAlign: 'center',
-    marginTop: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
+    justifyContent: 'center',
+    paddingVertical: SPACING.xl,
+    paddingHorizontal: SPACING.md,
   },
   socialMediaContainer: {
     flexDirection: 'row',

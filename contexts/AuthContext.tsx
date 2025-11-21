@@ -307,6 +307,37 @@ export const [AuthContext, useAuth] = createContextHook(() => {
       throw new Error('Kullanıcı oturumu bulunamadı');
     }
 
+    // Email veya telefon eklendiğinde hesabı ilişkilendir
+    const isGuestAccount = !user.email || user.email.includes('@mytrabzon.guest') || user.is_anonymous;
+    
+    if (isGuestAccount && updates.email && typeof updates.email === 'string') {
+      const trimmedEmail = updates.email.trim();
+      
+      // Email validation
+      if (trimmedEmail.length > 0 && trimmedEmail.length <= 254 && trimmedEmail !== user.email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (emailRegex.test(trimmedEmail)) {
+          console.log('🔄 [Profile] Linking guest account with email:', trimmedEmail);
+          try {
+            const { error: updateError } = await supabase.auth.updateUser({ 
+              email: trimmedEmail 
+            });
+            if (updateError) {
+              console.error('❌ [Profile] Email update error:', updateError);
+              // Email güncelleme hatası profil güncellemesini durdurmaz
+            } else {
+              console.log('✅ [Profile] Email linked successfully');
+            }
+          } catch (emailError: any) {
+            console.error('❌ [Profile] Unexpected error linking email:', emailError);
+            // Hata olsa bile devam et
+          }
+        } else {
+          console.warn('⚠️ [Profile] Invalid email format:', trimmedEmail);
+        }
+      }
+    }
+
     const { data, error } = await supabase
       .from('profiles')
       .update(updates)
@@ -331,6 +362,16 @@ export const [AuthContext, useAuth] = createContextHook(() => {
 
     setProfile(data as UserProfile);
 
+    // Profil güncellendikten sonra user bilgisini yenile
+    try {
+      const { data: { user: updatedUser } } = await supabase.auth.getUser();
+      if (updatedUser) {
+        setUser(updatedUser);
+      }
+    } catch (userError: any) {
+      console.warn('⚠️ Error refreshing user after profile update:', userError);
+    }
+
     try {
       const refreshedProfile = await loadProfile(user.id);
       setProfile(refreshedProfile);
@@ -341,6 +382,146 @@ export const [AuthContext, useAuth] = createContextHook(() => {
     }
   }, [user, loadProfile]);
 
+  /**
+   * Misafir olarak giriş yap (Anonymous Auth)
+   * Önce anonymous auth dener, başarısız olursa geçici email ile otomatik kayıt yapar
+   */
+  const signInAsGuest = useCallback(async () => {
+    try {
+      setLoading(true);
+      
+      // Önce anonymous auth'u dene
+      let data = null;
+      let error = null;
+      
+      try {
+        const result = await supabase.auth.signInAnonymously();
+        data = result.data;
+        error = result.error;
+      } catch (anonError: any) {
+        error = anonError;
+      }
+      
+      // Anonymous auth başarısızsa backend fonksiyonu ile misafir kullanıcı oluştur (email doğrulaması bypass)
+      if (error && error.message?.includes('Anonymous sign-ins are disabled')) {
+        console.log('🔄 [Guest] Anonymous auth disabled, creating guest user via backend...');
+        
+        try {
+          // Backend fonksiyonu ile misafir kullanıcı oluştur (email confirmation bypass)
+          const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://xcvcplwimicylaxghiak.supabase.co';
+          const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+          
+          console.log('🔄 [Guest] Calling backend function:', `${supabaseUrl}/functions/v1/create-guest-user`);
+          
+          const response = await fetch(`${supabaseUrl}/functions/v1/create-guest-user`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseAnonKey}`,
+            },
+          });
+
+          console.log('📡 [Guest] Backend response status:', response.status);
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ [Guest] Backend error response:', errorText);
+            let errorData;
+            try {
+              errorData = JSON.parse(errorText);
+            } catch {
+              errorData = { error: errorText || 'Backend error' };
+            }
+            throw new Error(errorData.error || errorData.message || 'Misafir hesabı oluşturulamadı');
+          }
+
+          const result = await response.json();
+          console.log('✅ [Guest] Backend response:', { success: result.success, hasSession: !!result.session, hasUser: !!result.user });
+          
+          if (!result.success || !result.session || !result.user) {
+            console.error('❌ [Guest] Invalid backend response:', result);
+            throw new Error('Misafir hesabı oluşturulamadı - geçersiz yanıt');
+          }
+
+          // Session'ı set et
+          console.log('🔄 [Guest] Setting session...');
+          const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+            access_token: result.session.access_token,
+            refresh_token: result.session.refresh_token,
+          });
+
+          if (sessionError || !sessionData.session || !sessionData.user) {
+            console.error('❌ [Guest] Session set error:', sessionError);
+            throw new Error('Misafir oturumu oluşturulamadı');
+          }
+
+          console.log('✅ [Guest] Session set successfully');
+          data = { session: sessionData.session, user: sessionData.user };
+        } catch (backendError: any) {
+          console.error('❌ [Guest] Backend creation error:', backendError);
+          // Fallback: Eski yöntemi dene
+          console.log('🔄 [Guest] Falling back to direct signup...');
+          
+          // Geçici email oluştur
+          const timestamp = Date.now();
+          const randomId = Math.random().toString(36).substring(2, 9);
+          const tempEmail = `guest_${timestamp}_${randomId}@mytrabzon.guest`;
+          
+          // Geçici password oluştur
+          const tempPassword = `Guest_${timestamp}_${randomId}_${Math.random().toString(36).substring(2, 15)}`;
+          
+          // Önce giriş yapmayı dene (hesap zaten varsa)
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+            email: tempEmail,
+            password: tempPassword,
+          });
+          
+          if (!signInError && signInData?.session && signInData?.user) {
+            // Hesap zaten varsa direkt giriş yap
+            data = signInData;
+          } else {
+            throw new Error(backendError.message || 'Misafir hesabı oluşturulamadı. Lütfen email veya telefon ile giriş yapın.');
+          }
+        }
+      } else if (error) {
+        throw new Error(error.message || 'Misafir girişi başarısız');
+      }
+
+      if (!data || !data.session || !data.user) {
+        throw new Error('Misafir oturumu oluşturulamadı');
+      }
+
+      setSession(data.session);
+      setUser(data.user);
+      
+      // Guest user için profil yükleme
+      try {
+        const profileData = await loadProfile(data.user.id);
+        setProfile(profileData);
+        console.log('✅ [AuthContext] Guest signed in successfully');
+      } catch (error: any) {
+        // Profil oluşturulamazsa bile devam et
+        console.warn('⚠️ [AuthContext] Guest profile creation failed:', error);
+      }
+      
+      setLoading(false);
+      return data.session;
+    } catch (error: any) {
+      console.error('❌ Unexpected error during guest sign in:', error);
+      setLoading(false);
+      throw error;
+    }
+  }, [loadProfile]);
+
+  /**
+   * Kullanıcının misafir olup olmadığını kontrol eder
+   */
+  const isGuest = useMemo(() => {
+    if (!user) return false;
+    // Anonymous kullanıcılar misafir sayılır (email yoksa)
+    return !user.email && user.is_anonymous === true;
+  }, [user]);
+
   return useMemo(() => ({
     session,
     user,
@@ -349,5 +530,7 @@ export const [AuthContext, useAuth] = createContextHook(() => {
     signOut,
     refreshProfile,
     updateProfile,
-  }), [session, user, profile, loading, signOut, refreshProfile, updateProfile]);
+    signInAsGuest,
+    isGuest,
+  }), [session, user, profile, loading, signOut, refreshProfile, updateProfile, signInAsGuest, isGuest]);
 });

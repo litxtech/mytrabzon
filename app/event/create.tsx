@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -20,9 +20,16 @@ import { ArrowLeft, AlertCircle, ChevronDown, Camera, Image as ImageIcon, X, Vid
 import { getDistrictsByCity } from '@/constants/districts';
 import { Footer } from '@/components/Footer';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { useEffect } from 'react';
+import { 
+  compressVideo, 
+  uploadViaSignedUrl, 
+  getFriendlyErrorMessage
+} from '@/lib/mediaUpload';
+import { compressImage } from '@/lib/image-compression';
 
 const EVENT_CATEGORIES = [
   { value: 'trafik', label: '🚗 Trafik Var' },
@@ -75,24 +82,25 @@ export default function CreateEventScreen() {
 
   const utils = trpc.useUtils();
   
-  // Event verilerini yükle (düzenleme modu için)
-  const { data: eventsData } = trpc.event.getEvents.useQuery({
-    limit: 100,
-    offset: 0,
-  }, { enabled: isEditMode });
-
-  const eventToEdit = isEditMode && eventsData?.events?.find((e: any) => e.id === params.edit);
-
-  // Event verilerini forma yükle
+  // Event verilerini yükle (düzenleme modu için) - sadece tek event yükle
+  const { data: eventToEdit } = trpc.event.getEvents.useQuery(
+    { limit: 100, offset: 0 },
+    { 
+      enabled: isEditMode && !!params.edit,
+      select: (data) => data?.events?.find((e: any) => e.id === params.edit),
+    }
+  );
+  
+  // Event verilerini forma yükle - sadece bir kez çalışsın
   useEffect(() => {
-    if (eventToEdit) {
+    if (eventToEdit && isEditMode) {
       setFormData({
         title: eventToEdit.title || '',
         description: eventToEdit.description || '',
         category: eventToEdit.category || '',
         severity: eventToEdit.severity || 'NORMAL',
         city: eventToEdit.city || 'Trabzon',
-        district: eventToEdit.district || 'Tümü', // null ise "Tümü" göster
+        district: eventToEdit.district || '',
         latitude: eventToEdit.latitude,
         longitude: eventToEdit.longitude,
       });
@@ -107,7 +115,7 @@ export default function CreateEventScreen() {
         setSelectedVideos(videos);
       }
     }
-  }, [eventToEdit]);
+  }, [eventToEdit?.id]); // Sadece event ID değiştiğinde çalışsın
   
   const createEventMutation = trpc.event.createEvent.useMutation({
     onSuccess: async () => {
@@ -135,7 +143,9 @@ export default function CreateEventScreen() {
     },
   });
 
-  const pickImage = async () => {
+  const pickImage = useCallback(async () => {
+    if (loading || uploading) return;
+    
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('İzin Gerekli', 'Galeri erişimi için izin vermeniz gerekiyor');
@@ -155,28 +165,56 @@ export default function CreateEventScreen() {
       setSelectedVideos((prev) => [...prev, ...videos].slice(0, 3));
       setSelectedImages((prev) => [...prev, ...images].slice(0, 5));
     }
-  };
+  }, [loading, uploading]);
 
-  const takePhoto = async () => {
+  const takePhoto = useCallback(async () => {
+    if (loading || uploading) return;
+    
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('İzin Gerekli', 'Kamera erişimi için izin vermeniz gerekiyor');
       return;
     }
 
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images', 'videos'],
-      quality: 0.8,
-    });
+    // Kullanıcıya fotoğraf mı video mu çekmek istediğini sor
+    Alert.alert(
+      'Medya Seç',
+      'Fotoğraf mı video mu çekmek istersiniz?',
+      [
+        {
+          text: 'Fotoğraf',
+          onPress: async () => {
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: ['images'],
+              quality: 0.8,
+            });
 
-    if (!result.canceled && result.assets[0]) {
-      if (result.assets[0].type === 'video') {
-        setSelectedVideos((prev) => [...prev, result.assets[0].uri].slice(0, 3));
-      } else {
-        setSelectedImages((prev) => [...prev, result.assets[0].uri].slice(0, 5));
-      }
-    }
-  };
+            if (!result.canceled && result.assets[0]) {
+              setSelectedImages((prev) => [...prev, result.assets[0].uri].slice(0, 5));
+            }
+          },
+        },
+        {
+          text: 'Video',
+          onPress: async () => {
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: ['videos'],
+              quality: 0.8,
+              videoMaxDuration: undefined, // Süre limiti yok
+            });
+
+            if (!result.canceled && result.assets[0]) {
+              setSelectedVideos((prev) => [...prev, result.assets[0].uri].slice(0, 3));
+            }
+          },
+        },
+        {
+          text: 'İptal',
+          style: 'cancel',
+        },
+      ]
+    );
+  }, [loading, uploading]);
 
   const removeImage = (index: number) => {
     setSelectedImages((prev) => prev.filter((_, i) => i !== index));
@@ -186,36 +224,148 @@ export default function CreateEventScreen() {
     setSelectedVideos((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const uploadMediaMutation = trpc.post.uploadMedia.useMutation();
+  const getUploadUrlMutation = trpc.post.getUploadUrl.useMutation();
 
+  // Optimized upload using compression and signed URLs
   const uploadMedia = async (uri: string, type: 'image' | 'video'): Promise<string> => {
     if (!user?.id) throw new Error('Kullanıcı bilgisi bulunamadı');
 
-    const fileExt = uri.split('.').pop()?.toLowerCase() || (type === 'video' ? 'mp4' : 'jpg');
-    const fileName = `events/${type}_${Date.now()}.${fileExt}`;
+    let finalUri = uri;
     
+    // Compress image if needed
+    if (type === 'image') {
+      try {
+        console.log('🖼️ Image sıkıştırma başlıyor...');
+        finalUri = await compressImage(uri, { 
+          maxWidth: 1080, 
+          quality: 0.8 
+        });
+        console.log('✅ Image sıkıştırma başarılı');
+      } catch (compressionError: any) {
+        // Image compression hatası durumunda orijinal dosyayı kullan
+        console.warn('⚠️ Image sıkıştırma hatası, orijinal dosya kullanılıyor:', compressionError);
+        finalUri = uri; // fallback to original
+      }
+    }
+    
+    // Compress video if needed (TikTok/Instagram style)
+    if (type === 'video') {
+      try {
+        console.log('🎬 Video sıkıştırma başlıyor...');
+        const compressedResult = await compressVideo(finalUri);
+        finalUri = compressedResult.uri;
+        
+        // Boyut kontrolü kaldırıldı - compression sonrası sadece log
+        const fileInfo = await FileSystem.getInfoAsync(finalUri);
+        if (fileInfo.exists && fileInfo.size) {
+          const fileSizeMB = fileInfo.size / (1024 * 1024);
+          console.log(`📹 Sıkıştırılmış video boyutu: ${fileSizeMB.toFixed(2)}MB`);
+        }
+        
+        console.log(`✅ Video sıkıştırma başarılı: ${(compressedResult.size / (1024 * 1024)).toFixed(2)}MB`);
+      } catch (compressionError: any) {
+        // Compression hatası durumunda orijinal dosyayı kullan
+        // Boyut kontrolü kaldırıldı - herhangi bir boyutta video kabul ediliyor
+        console.warn('⚠️ Video sıkıştırma hatası, orijinal dosya kullanılıyor:', compressionError);
+        
+        // Orijinal dosyanın boyutunu sadece log için kontrol et
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(finalUri);
+          if (fileInfo.exists && fileInfo.size) {
+            const fileSizeMB = fileInfo.size / (1024 * 1024);
+            console.log(`📹 Orijinal video boyutu: ${fileSizeMB.toFixed(2)}MB`);
+          }
+        } catch (sizeError: any) {
+          // Boyut kontrolü yapılmıyor, sadece log
+          console.warn('Boyut bilgisi alınamadı:', sizeError);
+        }
+        
+        // finalUri zaten orijinal URI'yi içeriyor, devam et
+      }
+    }
+
+    const fileExt = uri.split('.').pop()?.toLowerCase() || (type === 'video' ? 'mp4' : 'jpg');
     const fileType = type === 'video' 
       ? 'video/mp4' 
       : fileExt === 'png' 
       ? 'image/png' 
       : 'image/jpeg';
 
-    // Base64 string'i oku
-    const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: 'base64' as any,
-    });
+    // Get signed upload URL
+    let uploadUrlResult;
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount <= maxRetries) {
+      try {
+        uploadUrlResult = await getUploadUrlMutation.mutateAsync({
+          fileExtension: fileExt,
+          contentType: fileType,
+          mediaType: type,
+        });
+        break;
+      } catch (urlError: any) {
+        console.error(`❌ Upload URL hatası (deneme ${retryCount + 1}/${maxRetries + 1}):`, urlError);
+        
+        if (retryCount >= maxRetries) {
+          throw new Error('Sunucu hatası. Lütfen tekrar deneyin.');
+        }
+        
+        retryCount++;
+        await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
+      }
+    }
 
-    // Base64 string'i temizle (data: prefix varsa kaldır)
-    const base64Data = base64.replace(/^data:image\/\w+;base64,/, '').replace(/^data:video\/\w+;base64,/, '');
+    if (!uploadUrlResult) {
+      throw new Error('Upload URL alınamadı. Lütfen tekrar deneyin.');
+    }
 
-    // Backend'deki uploadMedia mutation'ını kullan
-    const result = await uploadMediaMutation.mutateAsync({
-      base64Data,
-      fileType,
-      fileName,
-    });
-
-    return result.url;
+    // Upload file directly to Supabase Storage using signed URL
+    retryCount = 0;
+    const maxUploadRetries = type === 'video' ? 3 : 2;
+    
+    while (retryCount <= maxUploadRetries) {
+      try {
+        // uploadViaSignedUrl artık filePath bekliyor (uploadUrlResult.path)
+        await uploadViaSignedUrl(
+          uploadUrlResult.path, // filePath kullan
+          finalUri,
+          fileType
+        );
+        
+        console.log(`✅ Upload başarılı: ${uploadUrlResult.publicUrl}`);
+        return uploadUrlResult.publicUrl;
+      } catch (uploadError: any) {
+        const errorMessage = uploadError?.message || '';
+        
+        // VIDEO_TOO_LARGE hatası artık kontrol edilmiyor - boyut limiti kaldırıldı
+        // if (errorMessage === 'VIDEO_TOO_LARGE' || errorMessage.includes('VIDEO_TOO_LARGE')) {
+        //   throw new Error('VIDEO_TOO_LARGE');
+        // }
+        
+        console.error(`❌ Upload hatası (deneme ${retryCount + 1}/${maxUploadRetries + 1}):`, uploadError);
+        
+        // Network/timeout hataları için retry
+        const isRetryableError = 
+          errorMessage.includes('network') ||
+          errorMessage.includes('timeout') ||
+          errorMessage.includes('fetch') ||
+          errorMessage.includes('connection');
+        
+        if (isRetryableError && retryCount < maxUploadRetries) {
+          retryCount++;
+          const delay = 2000 * retryCount;
+          console.log(`⏳ ${delay / 1000} saniye bekleyip tekrar denenecek...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        
+        // Son deneme veya retry yapılamaz hata
+        throw uploadError;
+      }
+    }
+    
+    throw new Error('Upload başarısız oldu. Lütfen tekrar deneyin.');
   };
 
   const handleSubmit = async () => {
@@ -224,7 +374,10 @@ export default function CreateEventScreen() {
       return;
     }
 
-    // İlçe zorunlu - "Tümü" seçeneği kaldırıldı
+    // Loading state kontrolü - zaten yükleniyorsa tekrar başlatma
+    if (loading || uploading) {
+      return;
+    }
 
     setLoading(true);
     setUploading(true);
@@ -246,14 +399,37 @@ export default function CreateEventScreen() {
       ];
 
       if (allNewMedia.length > 0) {
-        const uploadPromises = allNewMedia.map(media => uploadMedia(media.uri, media.type));
-        const uploadedUrls = await Promise.all(uploadPromises);
+        // Sequential upload - büyük dosyalar için daha güvenli
+        const uploadedUrls: string[] = [];
+        for (const media of allNewMedia) {
+          try {
+            const url = await uploadMedia(media.uri, media.type);
+            uploadedUrls.push(url);
+          } catch (uploadError: any) {
+            console.error('Media upload error:', uploadError);
+            Alert.alert(
+              'Yükleme Hatası',
+              uploadError.message || 'Medya yüklenirken bir hata oluştu. Devam edilsin mi?',
+              [
+                { text: 'İptal', style: 'cancel', onPress: () => {
+                  setLoading(false);
+                  setUploading(false);
+                }},
+                { text: 'Devam Et', onPress: () => {
+                  // Bu medyayı atla ve devam et
+                }},
+              ]
+            );
+            // Hata durumunda devam et ama bu medyayı ekleme
+          }
+        }
         mediaUrls = [...existingMedia, ...uploadedUrls];
       } else {
         mediaUrls = existingMedia;
       }
 
-<<<<<<< HEAD
+      const districtToSend = formData.district === 'Tümü' ? null : formData.district;
+
       if (isEditMode && params.edit) {
         // Düzenleme modu
         await updateEventMutation.mutateAsync({
@@ -282,30 +458,28 @@ export default function CreateEventScreen() {
           media_urls: mediaUrls.length > 0 ? mediaUrls : undefined,
         });
       }
-=======
-      await createEventMutation.mutateAsync({
-        title: formData.title,
-        description: formData.description,
-        category: formData.category as any,
-        severity: formData.severity,
-        district: formData.district,
-        city: formData.city,
-        latitude: formData.latitude,
-        longitude: formData.longitude,
-        media_urls: mediaUrls.length > 0 ? mediaUrls : undefined,
-      });
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
-    } catch (error) {
+    } catch (error: any) {
       console.error('Event save error:', error);
-      Alert.alert('Hata', error instanceof Error ? error.message : 'Olay kaydedilemedi');
+      const errorMessage = getFriendlyErrorMessage(error);
+      
+      // VIDEO_TOO_LARGE kontrolü kaldırıldı - boyut limiti yok
+      // if (isVideoTooLarge) {
+      //   Alert.alert('Hata', errorMessage);
+      //   return;
+      // }
+      
+      Alert.alert('Hata', errorMessage);
     } finally {
       setLoading(false);
       setUploading(false);
     }
   };
 
-  // Seçili şehre göre ilçeleri al
-  const availableDistricts = getDistrictsByCity(formData.city);
+  // Seçili şehre göre ilçeleri al - useMemo ile optimize et
+  const availableDistricts = useMemo(
+    () => getDistrictsByCity(formData.city),
+    [formData.city]
+  );
 
   return (
     <KeyboardAvoidingView

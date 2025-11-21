@@ -9,47 +9,25 @@ Write-Host "📌 Project: $PROJECT_REF" -ForegroundColor Yellow
 Write-Host "✅ Token: Set" -ForegroundColor Green
 Write-Host ""
 
-# Check if Supabase CLI is installed
-Write-Host "🔍 Checking Supabase CLI..." -ForegroundColor Cyan
+# Check if npm is installed
+Write-Host "🔍 Checking npm..." -ForegroundColor Cyan
 try {
-    $cliVersion = supabase --version 2>&1
+    $npmVersion = npm --version 2>&1
     if ($LASTEXITCODE -ne 0) {
-        throw "Supabase CLI not found"
+        throw "npm not found"
     }
-    Write-Host "✅ Supabase CLI found: $cliVersion" -ForegroundColor Green
+    Write-Host "✅ npm found: $npmVersion" -ForegroundColor Green
 } catch {
-    Write-Host "❌ Supabase CLI is not installed!" -ForegroundColor Red
-    Write-Host "Please install it: npm install -g supabase" -ForegroundColor Yellow
+    Write-Host "❌ npm is not installed!" -ForegroundColor Red
+    Write-Host "Please install Node.js: https://nodejs.org/" -ForegroundColor Yellow
     exit 1
 }
 
 Write-Host ""
 Write-Host "🔗 Linking project..." -ForegroundColor Cyan
-$linkOutput = supabase link --project-ref $PROJECT_REF 2>&1 | Out-String
+$linkOutput = npx supabase link --project-ref $PROJECT_REF 2>&1 | Out-String
 
 if ($LASTEXITCODE -eq 0) {
-<<<<<<< HEAD
-    Write-Host "✅ Project linked!" -ForegroundColor Green
-} else {
-    Write-Host "⚠️  Link failed (may already be linked, continuing...)" -ForegroundColor Yellow
-}
-
-Write-Host ""
-Write-Host "📦 Deploying function..." -ForegroundColor Cyan
-supabase functions deploy trpc --no-verify-jwt
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host ""
-    Write-Host "✅✅✅ DEPLOYMENT SUCCESSFUL! ✅✅✅" -ForegroundColor Green
-    Write-Host ""
-    Write-Host "🔗 Function URL: https://$PROJECT_REF.supabase.co/functions/v1/trpc" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "🎉 Deployment complete!" -ForegroundColor Green
-} else {
-    Write-Host ""
-    Write-Host "❌ Deployment failed!" -ForegroundColor Red
-    exit 1
-=======
     Write-Host "✅ Project linked successfully!" -ForegroundColor Green
 } else {
     # Check if already linked
@@ -58,12 +36,11 @@ if ($LASTEXITCODE -eq 0) {
     } else {
         Write-Host "⚠️  Link warning (may already be linked): $linkOutput" -ForegroundColor Yellow
     }
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 }
 
 Write-Host ""
-Write-Host "📦 Deploying function..." -ForegroundColor Cyan
-$deployOutput = supabase functions deploy trpc --no-verify-jwt 2>&1 | Out-String
+Write-Host "📦 Deploying trpc function..." -ForegroundColor Cyan
+$deployOutput = npx supabase functions deploy trpc --no-verify-jwt 2>&1 | Out-String
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""

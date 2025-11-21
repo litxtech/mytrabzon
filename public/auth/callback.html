@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="0;url=mytrabzon://auth/callback" id="redirectMeta">
     <title>MyTrabzon - Kimlik Doğrulama</title>
     <style>
         body {
@@ -68,18 +69,28 @@
         (function() {
             console.log('Callback page loaded');
             console.log('Current URL:', window.location.href);
+            console.log('Current Hash:', window.location.hash);
             console.log('User Agent:', navigator.userAgent);
             console.log('Is Mobile:', /iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
             
-            // URL'den parametreleri al
+            // Meta redirect tag'ini kaldır (JavaScript ile yöneteceğiz)
+            const redirectMeta = document.getElementById('redirectMeta');
+            if (redirectMeta) {
+                redirectMeta.remove();
+            }
+            
+            // URL'den parametreleri al - hem query hem hash fragment'ten
             const urlParams = new URLSearchParams(window.location.search);
-            const accessToken = urlParams.get('access_token');
-            const refreshToken = urlParams.get('refresh_token');
-            const code = urlParams.get('code');
-            const redirectTo = urlParams.get('redirect_to');
-            const error = urlParams.get('error');
-            const errorDescription = urlParams.get('error_description');
-            const type = urlParams.get('type'); // Email confirmation type
+            const hashParams = new URLSearchParams(window.location.hash.substring(1)); // # işaretini kaldır
+            
+            // Önce hash'ten al (Supabase OAuth formatı), yoksa query'den al
+            const accessToken = hashParams.get('access_token') || urlParams.get('access_token');
+            const refreshToken = hashParams.get('refresh_token') || urlParams.get('refresh_token');
+            const code = hashParams.get('code') || urlParams.get('code');
+            const redirectTo = hashParams.get('redirect_to') || urlParams.get('redirect_to');
+            const error = hashParams.get('error') || urlParams.get('error');
+            const errorDescription = hashParams.get('error_description') || urlParams.get('error_description');
+            const type = hashParams.get('type') || urlParams.get('type'); // Email confirmation type
 
             console.log('URL params:', {
                 hasAccessToken: !!accessToken,
@@ -130,42 +141,83 @@
             
             console.log('Final deep link URL:', deepLinkUrl);
 
-            // Deep link URL'ine token'ları ekle (hash fragment olarak - Supabase formatı)
+            // Deep link URL'ine token'ları ekle
+            // Hem query parameter hem hash fragment olarak ekle (farklı tarayıcılar için)
+            const queryParams = [];
             const hashParams = [];
-            if (accessToken) hashParams.push('access_token=' + encodeURIComponent(accessToken));
-            if (refreshToken) hashParams.push('refresh_token=' + encodeURIComponent(refreshToken));
-            if (code) hashParams.push('code=' + encodeURIComponent(code));
-            if (accessToken) hashParams.push('expires_at=' + new Date(Date.now() + 3600000).getTime());
-            if (accessToken) hashParams.push('expires_in=3600');
-            if (accessToken) hashParams.push('token_type=bearer');
-
-            // Hash fragment kullan (Supabase OAuth formatı)
-            if (hashParams.length > 0) {
-                deepLinkUrl += '#' + hashParams.join('&');
+            
+            if (accessToken) {
+                queryParams.push('access_token=' + encodeURIComponent(accessToken));
+                hashParams.push('access_token=' + encodeURIComponent(accessToken));
+            }
+            if (refreshToken) {
+                queryParams.push('refresh_token=' + encodeURIComponent(refreshToken));
+                hashParams.push('refresh_token=' + encodeURIComponent(refreshToken));
+            }
+            if (code) {
+                queryParams.push('code=' + encodeURIComponent(code));
+                hashParams.push('code=' + encodeURIComponent(code));
+            }
+            if (accessToken) {
+                queryParams.push('expires_at=' + new Date(Date.now() + 3600000).getTime());
+                hashParams.push('expires_at=' + new Date(Date.now() + 3600000).getTime());
+            }
+            if (accessToken) {
+                queryParams.push('expires_in=3600');
+                hashParams.push('expires_in=3600');
+            }
+            if (accessToken) {
+                queryParams.push('token_type=bearer');
+                hashParams.push('token_type=bearer');
             }
 
-            console.log('Deep link URL:', deepLinkUrl);
+            // Query parameter versiyonu (daha güvenilir)
+            if (queryParams.length > 0) {
+                deepLinkUrl += '?' + queryParams.join('&');
+            }
+            
+            // Hash fragment versiyonu (Supabase OAuth formatı - fallback)
+            let deepLinkUrlHash = 'mytrabzon://auth/callback';
+            if (hashParams.length > 0) {
+                deepLinkUrlHash += '#' + hashParams.join('&');
+            }
+            
+            // Query parameter versiyonunu öncelikli kullan
+            const finalDeepLinkUrl = queryParams.length > 0 ? deepLinkUrl : deepLinkUrlHash;
+
+            console.log('Deep link URL (query):', finalDeepLinkUrl);
+            console.log('Deep link URL (hash):', deepLinkUrlHash);
 
             function attemptDeepLink() {
+                // Önce query parameter versiyonunu dene
                 try {
-                    window.location.replace(deepLinkUrl);
+                    window.location.replace(finalDeepLinkUrl);
                 } catch (e) {
                     console.error('replace failed:', e);
                 }
 
                 setTimeout(function() {
                     try {
-                        window.location.href = deepLinkUrl;
+                        window.location.href = finalDeepLinkUrl;
                     } catch (e) {
                         console.error('href failed:', e);
                     }
-                }, 100);
+                }, 50);
 
                 setTimeout(function() {
                     try {
-                        window.location.assign(deepLinkUrl);
+                        window.location.assign(finalDeepLinkUrl);
                     } catch (e) {
                         console.error('assign failed:', e);
+                    }
+                }, 100);
+
+                // Hash fragment versiyonunu da dene (fallback)
+                setTimeout(function() {
+                    try {
+                        window.location.href = deepLinkUrlHash;
+                    } catch (e) {
+                        console.error('hash href failed:', e);
                     }
                 }, 200);
 
@@ -173,68 +225,73 @@
                     try {
                         var iframe = document.createElement('iframe');
                         iframe.style.display = 'none';
-                        iframe.src = deepLinkUrl;
+                        iframe.src = finalDeepLinkUrl;
                         document.body.appendChild(iframe);
                     } catch (e) {
                         console.error('iframe failed:', e);
                     }
-                }, 400);
+                }, 300);
             }
 
             // Deep link butonunu göster
             const deepLinkButton = document.getElementById('deepLinkButton');
-            deepLinkButton.href = deepLinkUrl;
+            deepLinkButton.href = finalDeepLinkUrl;
             deepLinkButton.style.display = 'inline-block';
 
             // Mobil cihazlarda otomatik yönlendirme dene
             const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
             
             if (isMobile) {
-                // iOS için
+                // iOS için - hemen yönlendir
                 if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-                    attemptDeepLink();
+                    console.log('iOS device detected, attempting immediate deep link');
+                    // Hemen yönlendir - query parameter versiyonunu kullan
+                    window.location.href = finalDeepLinkUrl;
                     
+                    // Fallback: 500ms sonra tekrar dene
+                    setTimeout(function() {
+                        attemptDeepLink();
+                    }, 500);
+                    
+                    // Eğer hala çalışmazsa butonu göster
                     setTimeout(function() {
                         deepLinkButton.style.display = 'inline-block';
                         document.querySelector('.message').textContent = 'Uygulamayı açmak için butona tıklayın';
-                    }, 2000);
+                    }, 1500);
                 } 
                 // Android için
                 else if (/Android/i.test(navigator.userAgent)) {
                     console.log('Android device detected, attempting deep link');
                     
-                    // Android'de hash fragment'ı query parameter'a çevir (bazı tarayıcılar hash'i desteklemiyor)
-                    let androidDeepLink = deepLinkUrl;
-                    if (androidDeepLink.includes('#')) {
-                        const hashPart = androidDeepLink.split('#')[1];
-                        androidDeepLink = androidDeepLink.split('#')[0] + '?' + hashPart;
-                    }
-                    
-                    // Önce normal deep link'i dene
+                    // Hemen query parameter versiyonunu dene (daha güvenilir)
                     try {
-                        console.log('Attempting deep link:', androidDeepLink);
-                        window.location.href = androidDeepLink;
-                        
-                        setTimeout(function() {
-                            if (deepLinkUrl !== androidDeepLink) {
-                                console.log('Attempting hash fragment version:', deepLinkUrl);
-                                window.location.href = deepLinkUrl;
-                            }
-                        }, 100);
+                        console.log('Attempting query parameter deep link:', finalDeepLinkUrl);
+                        window.location.href = finalDeepLinkUrl;
                     } catch (e) {
-                        console.error('Deep link error:', e);
+                        console.error('Query deep link error:', e);
                     }
                     
+                    // 100ms sonra hash fragment versiyonunu dene
+                    setTimeout(function() {
+                        try {
+                            console.log('Attempting hash fragment deep link:', deepLinkUrlHash);
+                            window.location.href = deepLinkUrlHash;
+                        } catch (e) {
+                            console.error('Hash deep link error:', e);
+                        }
+                    }, 100);
+                    
+                    // 300ms sonra attemptDeepLink fonksiyonunu çalıştır
                     setTimeout(function() {
                         attemptDeepLink();
                     }, 300);
                     
-                    // Intent URL fallback (Chrome için)
+                    // Intent URL fallback (Chrome için) - 500ms sonra
                     setTimeout(function() {
                         try {
-                            const hashPart = deepLinkUrl.includes('#') ? deepLinkUrl.split('#')[1] : '';
+                            const queryPart = finalDeepLinkUrl.includes('?') ? finalDeepLinkUrl.split('?')[1] : '';
                             const intentUrl = 'intent://auth/callback' + 
-                                (hashPart ? '?' + hashPart : '') + 
+                                (queryPart ? '?' + queryPart : '') + 
                                 '#Intent;scheme=mytrabzon;package=com.litxtech.mytrabzon;end';
                             console.log('Intent URL attempted:', intentUrl);
                             window.location.href = intentUrl;
@@ -247,7 +304,7 @@
                     setTimeout(function() {
                         deepLinkButton.style.display = 'inline-block';
                         document.querySelector('.message').textContent = 'Uygulamayı açmak için butona tıklayın';
-                    }, 2000);
+                    }, 1500);
                 }
             } else {
                 // Desktop'ta direkt butonu göster

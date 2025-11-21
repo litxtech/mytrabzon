@@ -5,7 +5,7 @@
  * - Expo Go'da çalışır
  */
 
-import React, { forwardRef, useState, useRef } from 'react';
+import React, { forwardRef, useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -27,6 +27,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 import { formatTimeAgo } from '@/lib/time-utils';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 import { useRouter } from 'expo-router';
@@ -48,12 +49,14 @@ export const CommentSheetExpoGo = forwardRef<CommentSheetExpoGoRef, CommentSheet
     const router = useRouter();
     const { theme } = useTheme();
     const { user, profile } = useAuth();
+    const { guard } = useAuthGuard();
     const insets = useSafeAreaInsets();
     const [visible, setVisible] = useState(false);
     const [commentText, setCommentText] = useState('');
     const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
     const [editingCommentText, setEditingCommentText] = useState('');
     const [menuVisibleCommentId, setMenuVisibleCommentId] = useState<string | null>(null);
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
     const commentInputRef = useRef<TextInput>(null);
 
     // Ref methods
@@ -65,22 +68,58 @@ export const CommentSheetExpoGo = forwardRef<CommentSheetExpoGoRef, CommentSheet
       },
     }));
 
+    // Klavye event listener'ları
+    useEffect(() => {
+      const keyboardWillShowListener = Keyboard.addListener(
+        Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+        (e) => {
+          setKeyboardHeight(e.endCoordinates.height);
+        }
+      );
+      const keyboardWillHideListener = Keyboard.addListener(
+        Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+        () => {
+          setKeyboardHeight(0);
+        }
+      );
+
+      return () => {
+        keyboardWillShowListener.remove();
+        keyboardWillHideListener.remove();
+      };
+    }, []);
+
     const utils = trpc.useUtils();
     
-    const { data: commentsData } = trpc.post.getComments.useQuery(
-      { post_id: postId, limit: 50, offset: 0 },
-      { enabled: !!postId && visible }
+    // Event mi kontrol et
+    const isEvent = postId.startsWith('event_');
+    const actualId = isEvent ? postId.replace('event_', '') : postId;
+    
+    // Post comments query
+    const { data: postCommentsData } = trpc.post.getComments.useQuery(
+      { post_id: actualId, limit: 50, offset: 0 },
+      { enabled: !!postId && visible && !isEvent }
     );
+    
+    // Event comments query
+    const { data: eventCommentsData } = (trpc as any).event.getEventComments.useQuery(
+      { event_id: actualId, limit: 50, offset: 0 },
+      { enabled: !!postId && visible && isEvent }
+    );
+    
+    // Comments data - event veya post'a göre
+    const commentsData = isEvent ? eventCommentsData : postCommentsData;
 
-    const createCommentMutation = trpc.post.addComment.useMutation({
+    // Post comment mutation
+    const createPostCommentMutation = trpc.post.addComment.useMutation({
       onMutate: async (newComment) => {
         // Optimistic update: Yorumu hemen ekle
-        await utils.post.getComments.cancel({ post_id: postId });
-        const previousComments = utils.post.getComments.getData({ post_id: postId });
+        await utils.post.getComments.cancel({ post_id: actualId });
+        const previousComments = utils.post.getComments.getData({ post_id: actualId });
         
         const optimisticComment = {
           id: `temp-${Date.now()}`,
-          post_id: postId,
+          post_id: actualId,
           user_id: user?.id || '',
           content: newComment.content,
           created_at: new Date().toISOString(),
@@ -99,7 +138,7 @@ export const CommentSheetExpoGo = forwardRef<CommentSheetExpoGoRef, CommentSheet
         };
 
         utils.post.getComments.setData(
-          { post_id: postId },
+          { post_id: actualId },
           (old: any) => {
             if (!old) return { comments: [optimisticComment], total: 1 };
             return {
@@ -114,7 +153,7 @@ export const CommentSheetExpoGo = forwardRef<CommentSheetExpoGoRef, CommentSheet
       onError: (err, newComment, context) => {
         // Hata durumunda geri al
         if (context?.previousComments) {
-          utils.post.getComments.setData({ post_id: postId }, context.previousComments);
+          utils.post.getComments.setData({ post_id: actualId }, context.previousComments);
         }
         Alert.alert('Hata', err.message || 'Yorum gönderilemedi. Lütfen tekrar deneyin.');
       },
@@ -123,18 +162,77 @@ export const CommentSheetExpoGo = forwardRef<CommentSheetExpoGoRef, CommentSheet
         Keyboard.dismiss();
         commentInputRef.current?.blur();
         // Cache'i invalidate et (gerçek veriyi çek)
-        utils.post.getComments.invalidate({ post_id: postId });
+        utils.post.getComments.invalidate({ post_id: actualId });
       },
     });
+    
+    // Event comment mutation
+    const createEventCommentMutation = (trpc as any).event.addEventComment.useMutation({
+      onMutate: async (newComment: any) => {
+        // Optimistic update: Yorumu hemen ekle
+        await (utils as any).event.getEventComments.cancel({ event_id: actualId });
+        const previousComments = (utils as any).event.getEventComments.getData({ event_id: actualId });
+        
+        const optimisticComment = {
+          id: `temp-${Date.now()}`,
+          event_id: actualId,
+          user_id: user?.id || '',
+          content: newComment.content,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          user: profile ? {
+            id: profile.id,
+            full_name: profile.full_name,
+            username: profile.username,
+            avatar_url: profile.avatar_url,
+            verified: profile.verified || false,
+            supporter_badge: profile.supporter_badge,
+            supporter_badge_visible: profile.supporter_badge_visible,
+            supporter_badge_color: profile.supporter_badge_color,
+          } : null,
+        };
 
-    const deleteCommentMutation = trpc.post.deleteComment.useMutation({
+        (utils as any).event.getEventComments.setData(
+          { event_id: actualId },
+          (old: any) => {
+            if (!old) return { comments: [optimisticComment], total: 1 };
+            return {
+              comments: [...(old.comments || []), optimisticComment],
+              total: (old.total || 0) + 1,
+            };
+          }
+        );
+
+        return { previousComments };
+      },
+      onError: (err: any, newComment: any, context: any) => {
+        // Hata durumunda geri al
+        if (context?.previousComments) {
+          (utils as any).event.getEventComments.setData({ event_id: actualId }, context.previousComments);
+        }
+        Alert.alert('Hata', err.message || 'Yorum gönderilemedi. Lütfen tekrar deneyin.');
+      },
+      onSuccess: () => {
+        setCommentText('');
+        Keyboard.dismiss();
+        commentInputRef.current?.blur();
+        // Cache'i invalidate et (gerçek veriyi çek)
+        (utils as any).event.getEventComments.invalidate({ event_id: actualId });
+      },
+    });
+    
+    // Unified mutation
+    const createCommentMutation = isEvent ? createEventCommentMutation : createPostCommentMutation;
+
+    // Post delete comment mutation
+    const deletePostCommentMutation = trpc.post.deleteComment.useMutation({
       onMutate: async ({ commentId }) => {
         // Optimistic update: Yorumu hemen sil
-        await utils.post.getComments.cancel({ post_id: postId });
-        const previousComments = utils.post.getComments.getData({ post_id: postId });
+        await utils.post.getComments.cancel({ post_id: actualId });
+        const previousComments = utils.post.getComments.getData({ post_id: actualId });
 
         utils.post.getComments.setData(
-          { post_id: postId },
+          { post_id: actualId },
           (old: any) => {
             if (!old) return old;
             return {
@@ -149,7 +247,7 @@ export const CommentSheetExpoGo = forwardRef<CommentSheetExpoGoRef, CommentSheet
       onError: (err, variables, context) => {
         // Hata durumunda geri al
         if (context?.previousComments) {
-          utils.post.getComments.setData({ post_id: postId }, context.previousComments);
+          utils.post.getComments.setData({ post_id: actualId }, context.previousComments);
         }
         Alert.alert('Hata', err.message || 'Yorum silinemedi. Lütfen tekrar deneyin.');
       },
@@ -157,18 +255,57 @@ export const CommentSheetExpoGo = forwardRef<CommentSheetExpoGoRef, CommentSheet
         Keyboard.dismiss();
         setMenuVisibleCommentId(null);
         // Cache'i invalidate et
-        utils.post.getComments.invalidate({ post_id: postId });
+        utils.post.getComments.invalidate({ post_id: actualId });
       },
     });
+    
+    // Event delete comment mutation (if exists)
+    const deleteEventCommentMutation = (trpc as any).event.deleteEventComment?.useMutation({
+      onMutate: async ({ commentId }: { commentId: string }) => {
+        // Optimistic update: Yorumu hemen sil
+        await (utils as any).event.getEventComments.cancel({ event_id: actualId });
+        const previousComments = (utils as any).event.getEventComments.getData({ event_id: actualId });
 
-    const updateCommentMutation = (trpc.post as any).updateComment.useMutation({
+        (utils as any).event.getEventComments.setData(
+          { event_id: actualId },
+          (old: any) => {
+            if (!old) return old;
+            return {
+              comments: (old.comments || []).filter((c: any) => c.id !== commentId),
+              total: Math.max(0, (old.total || 0) - 1),
+            };
+          }
+        );
+
+        return { previousComments };
+      },
+      onError: (err: any, variables: any, context: any) => {
+        // Hata durumunda geri al
+        if (context?.previousComments) {
+          (utils as any).event.getEventComments.setData({ event_id: actualId }, context.previousComments);
+        }
+        Alert.alert('Hata', err.message || 'Yorum silinemedi. Lütfen tekrar deneyin.');
+      },
+      onSuccess: () => {
+        Keyboard.dismiss();
+        setMenuVisibleCommentId(null);
+        // Cache'i invalidate et
+        (utils as any).event.getEventComments.invalidate({ event_id: actualId });
+      },
+    });
+    
+    // Unified delete mutation
+    const deleteCommentMutation = isEvent ? (deleteEventCommentMutation || deletePostCommentMutation) : deletePostCommentMutation;
+
+    // Post update comment mutation
+    const updatePostCommentMutation = (trpc.post as any).updateComment.useMutation({
       onMutate: async ({ commentId, content }: { commentId: string; content: string }) => {
         // Optimistic update: Yorumu hemen güncelle
-        await utils.post.getComments.cancel({ post_id: postId });
-        const previousComments = utils.post.getComments.getData({ post_id: postId });
+        await utils.post.getComments.cancel({ post_id: actualId });
+        const previousComments = utils.post.getComments.getData({ post_id: actualId });
 
         utils.post.getComments.setData(
-          { post_id: postId },
+          { post_id: actualId },
           (old: any) => {
             if (!old) return old;
             return {
@@ -185,7 +322,7 @@ export const CommentSheetExpoGo = forwardRef<CommentSheetExpoGoRef, CommentSheet
       onError: (err: any, variables: any, context: any) => {
         // Hata durumunda geri al
         if (context?.previousComments) {
-          utils.post.getComments.setData({ post_id: postId }, context.previousComments);
+          utils.post.getComments.setData({ post_id: actualId }, context.previousComments);
         }
         Alert.alert('Hata', err.message || 'Yorum güncellenemedi. Lütfen tekrar deneyin.');
       },
@@ -194,19 +331,76 @@ export const CommentSheetExpoGo = forwardRef<CommentSheetExpoGoRef, CommentSheet
         setEditingCommentText('');
         setMenuVisibleCommentId(null);
         // Cache'i invalidate et
-        utils.post.getComments.invalidate({ post_id: postId });
+        utils.post.getComments.invalidate({ post_id: actualId });
       },
     });
+    
+    // Event update comment mutation (if exists)
+    const updateEventCommentMutation = (trpc as any).event.updateEventComment?.useMutation({
+      onMutate: async ({ commentId, content }: { commentId: string; content: string }) => {
+        // Optimistic update: Yorumu hemen güncelle
+        await (utils as any).event.getEventComments.cancel({ event_id: actualId });
+        const previousComments = (utils as any).event.getEventComments.getData({ event_id: actualId });
+
+        (utils as any).event.getEventComments.setData(
+          { event_id: actualId },
+          (old: any) => {
+            if (!old) return old;
+            return {
+              ...old,
+              comments: (old.comments || []).map((c: any) =>
+                c.id === commentId ? { ...c, content, updated_at: new Date().toISOString() } : c
+              ),
+            };
+          }
+        );
+
+        return { previousComments };
+      },
+      onError: (err: any, variables: any, context: any) => {
+        // Hata durumunda geri al
+        if (context?.previousComments) {
+          (utils as any).event.getEventComments.setData({ event_id: actualId }, context.previousComments);
+        }
+        Alert.alert('Hata', err.message || 'Yorum güncellenemedi. Lütfen tekrar deneyin.');
+      },
+      onSuccess: () => {
+        setEditingCommentId(null);
+        setEditingCommentText('');
+        setMenuVisibleCommentId(null);
+        // Cache'i invalidate et
+        (utils as any).event.getEventComments.invalidate({ event_id: actualId });
+      },
+    });
+    
+    // Unified update mutation
+    const updateCommentMutation = isEvent ? (updateEventCommentMutation || updatePostCommentMutation) : updatePostCommentMutation;
 
     const handleSendComment = () => {
-      if (!commentText.trim() || !postId) return;
-      
-      const actualPostId = postId.startsWith('event_') ? postId.replace('event_', '') : postId;
-      
-      createCommentMutation.mutate({
-        post_id: actualPostId,
-        content: commentText.trim(),
-      });
+      guard(() => {
+        if (!commentText.trim() || !postId) return;
+        
+        console.log('📝 CommentSheetExpoGo - handleSendComment:', {
+          postId,
+          isEvent,
+          actualId,
+          commentTextLength: commentText.trim().length,
+        });
+        
+        if (isEvent) {
+          console.log('✅ Using event.addEventComment mutation');
+          createEventCommentMutation.mutate({
+            event_id: actualId,
+            content: commentText.trim(),
+          });
+        } else {
+          console.log('✅ Using post.addComment mutation');
+          createPostCommentMutation.mutate({
+            post_id: actualId,
+            content: commentText.trim(),
+          });
+        }
+      }, 'Yorum yapmak');
     };
 
     const handleDeleteComment = (commentId: string) => {
@@ -271,25 +465,46 @@ export const CommentSheetExpoGo = forwardRef<CommentSheetExpoGoRef, CommentSheet
             />
           </TouchableOpacity>
           <View style={styles.commentContent}>
+            {/* İsim ve Kullanıcı Bilgileri - Üstte */}
             <View style={styles.commentHeader}>
-              <TouchableOpacity
-                onPress={() => {
-                  if (item.user?.id) {
-                    router.push(`/profile/${item.user.id}` as any);
-                  }
-                }}
-                activeOpacity={0.7}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-              >
-                <Text style={[styles.commentAuthor, { color: theme.colors.text }]}>
-                  {item.user?.full_name || 'İsimsiz'}
+              <View style={styles.commentAuthorContainer}>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (item.user?.id) {
+                      router.push(`/profile/${item.user.id}` as any);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                >
+                  <Text style={[styles.commentAuthor, { color: theme.colors.text }]}>
+                    {item.user?.full_name || 'İsimsiz'}
+                  </Text>
+                  {item.user?.verified && <VerifiedBadgeIcon size={14} />}
+                </TouchableOpacity>
+                {item.user?.username && (
+                  <Text style={[styles.commentUsername, { color: theme.colors.textLight }]}>
+                    @{item.user.username}
+                  </Text>
+                )}
+              </View>
+              <View style={styles.commentHeaderRight}>
+                <Text style={[styles.commentTime, { color: theme.colors.textLight }]}>
+                  {formatTimeAgo(item.created_at)}
                 </Text>
-                {item.user?.verified && <VerifiedBadgeIcon size={14} />}
-              </TouchableOpacity>
-              <Text style={[styles.commentTime, { color: theme.colors.textLight }]}>
-                {formatTimeAgo(item.created_at)}
-              </Text>
+                {isOwner && !isEditing && (
+                  <TouchableOpacity
+                    style={styles.menuButton}
+                    onPress={() => setMenuVisibleCommentId(menuVisibleCommentId === item.id ? null : item.id)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <MoreVertical size={16} color={theme.colors.textLight} />
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
+            
+            {/* Yorum Metni - Altta */}
             {isEditing ? (
               <View style={styles.editContainer}>
                 <TextInput
@@ -322,20 +537,11 @@ export const CommentSheetExpoGo = forwardRef<CommentSheetExpoGoRef, CommentSheet
                 </View>
               </View>
             ) : (
-              <>
+              <View style={styles.commentTextContainer}>
                 <Text style={[styles.commentText, { color: theme.colors.text }]}>
                   {item.content}
                 </Text>
-                {isOwner && (
-                  <TouchableOpacity
-                    style={styles.menuButton}
-                    onPress={() => setMenuVisibleCommentId(menuVisibleCommentId === item.id ? null : item.id)}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <MoreVertical size={16} color={theme.colors.textLight} />
-                  </TouchableOpacity>
-                )}
-              </>
+              </View>
             )}
           </View>
         </TouchableOpacity>
@@ -354,9 +560,9 @@ export const CommentSheetExpoGo = forwardRef<CommentSheetExpoGoRef, CommentSheet
       >
         <KeyboardAvoidingView
           style={styles.modalContainer}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-          enabled={Platform.OS === 'ios'}
+          enabled={true}
         >
           <Pressable
             style={styles.backdrop}
@@ -390,7 +596,9 @@ export const CommentSheetExpoGo = forwardRef<CommentSheetExpoGoRef, CommentSheet
               data={comments}
               keyExtractor={(item) => item.id}
               renderItem={renderComment}
-              contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]} // Input için boşluk
+              contentContainerStyle={[styles.listContent, { 
+                paddingBottom: keyboardHeight > 0 ? keyboardHeight + 100 : 100 
+              }]} // Input için boşluk - klavye açıldığında daha fazla
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
@@ -412,6 +620,7 @@ export const CommentSheetExpoGo = forwardRef<CommentSheetExpoGoRef, CommentSheet
               borderTopColor: theme.colors.border,
               backgroundColor: theme.colors.card,
               paddingBottom: Math.max(insets.bottom, SPACING.sm),
+              bottom: keyboardHeight > 0 ? keyboardHeight : 0,
             }]}>
                 <Image
                   source={{ uri: profile?.avatar_url || 'https://via.placeholder.com/32' }}
@@ -510,6 +719,7 @@ const styles = StyleSheet.create({
     maxHeight: '90%',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
+    overflow: 'hidden',
   },
   header: {
     paddingHorizontal: 16,
@@ -553,20 +763,44 @@ const styles = StyleSheet.create({
   },
   commentHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: SPACING.xs + 2,
+  },
+  commentAuthorContainer: {
+    flex: 1,
+    flexShrink: 1,
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
-    marginBottom: SPACING.xs / 2,
+    gap: 8,
+    flexWrap: 'wrap',
   },
   commentAuthor: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
+    fontSize: FONT_SIZES.sm + 1,
+    fontWeight: '700',
+  },
+  commentUsername: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '500',
+  },
+  commentHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
   },
   commentTime: {
-    fontSize: FONT_SIZES.xs,
+    fontSize: FONT_SIZES.xs - 1,
+    opacity: 0.7,
+  },
+  commentTextContainer: {
+    marginTop: SPACING.xs,
   },
   commentText: {
     fontSize: FONT_SIZES.sm,
-    lineHeight: 18,
+    lineHeight: Platform.OS === 'android' ? FONT_SIZES.sm * 1.5 : 20,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+    }),
   },
   emptyContainer: {
     padding: SPACING.xl,
@@ -581,12 +815,16 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
   },
   inputContainer: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderTopWidth: 1,
     gap: SPACING.sm,
+    zIndex: 1000,
   },
   inputAvatar: {
     width: 32,

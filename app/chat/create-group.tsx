@@ -17,6 +17,7 @@ import { ArrowLeft, Users, Search, Check } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 
 export default function CreateGroupScreen() {
   const router = useRouter();
@@ -183,7 +184,10 @@ export default function CreateGroupScreen() {
                       style={styles.userAvatar}
                     />
                     <View style={styles.userInfo}>
-                      <Text style={styles.userName}>{item.full_name}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={styles.userName}>{item.full_name}</Text>
+                        {item.verified && <VerifiedBadgeIcon size={14} />}
+                      </View>
                       {item.district && (
                         <Text style={styles.userDistrict}>{item.district}</Text>
                       )}

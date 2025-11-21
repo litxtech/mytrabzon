@@ -24,6 +24,7 @@ import { likePostProcedure } from "./routes/post/like-post/route";
 import { deletePostProcedure } from "./routes/post/delete-post/route";
 import { deleteCommentProcedure } from "./routes/post/delete-comment/route";
 import { uploadPostMediaProcedure } from "./routes/post/upload-media/route";
+import { getUploadUrlProcedure } from "./routes/post/get-upload-url/route";
 import { getPostDetailProcedure } from "./routes/post/get-post-detail/route";
 import { addCommentProcedure } from "./routes/post/add-comment/route";
 import { getCommentsProcedure } from "./routes/post/get-comments/route";
@@ -93,10 +94,7 @@ import {
 import { createEventProcedure } from "./routes/event/create-event/route";
 import { getEventsProcedure } from "./routes/event/get-events/route";
 import { deleteEventProcedure } from "./routes/event/delete-event/route";
-<<<<<<< HEAD
 import { updateEventProcedure } from "./routes/event/update-event/route";
-=======
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 import { createRideProcedure } from "./routes/ride/create-ride/route";
 import { searchRidesProcedure } from "./routes/ride/search-rides/route";
 import { getRideDetailProcedure } from "./routes/ride/get-ride-detail/route";
@@ -161,6 +159,7 @@ export const appRouter = createTRPCRouter({
     deletePost: deletePostProcedure,
     updatePost: updatePostProcedure,
     uploadMedia: uploadPostMediaProcedure,
+    getUploadUrl: getUploadUrlProcedure,
     getPostDetail: getPostDetailProcedure,
     addComment: addCommentProcedure,
     deleteComment: deleteCommentProcedure,
@@ -215,10 +214,7 @@ export const appRouter = createTRPCRouter({
   event: createTRPCRouter({
     createEvent: createEventProcedure,
     getEvents: getEventsProcedure,
-<<<<<<< HEAD
     updateEvent: updateEventProcedure,
-=======
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     deleteEvent: deleteEventProcedure,
   }),
   notification: createTRPCRouter({

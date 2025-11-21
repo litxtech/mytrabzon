@@ -378,12 +378,18 @@ export default function AdminKycScreen() {
                 {selectedRequest.status === 'pending' && (
                   <View style={styles.actionButtons}>
                     <TouchableOpacity
-                      style={[styles.actionButton, styles.approveButton]}
+                      style={[
+                        styles.actionButton, 
+                        styles.approveButton,
+                        selectedRequest.user?.verified && styles.approveButtonVerified
+                      ]}
                       onPress={() => handleApprove(selectedRequest.id)}
                       disabled={approveMutation.isPending}
                     >
                       <CheckCircle2 size={20} color={COLORS.white} />
-                      <Text style={styles.actionButtonText}>Onayla</Text>
+                      <Text style={styles.actionButtonText}>
+                        {selectedRequest.user?.verified ? 'Kimliği Doğru' : 'Onayla'}
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.actionButton, styles.rejectButton]}
@@ -710,6 +716,12 @@ const styles = StyleSheet.create({
   },
   approveButton: {
     backgroundColor: COLORS.success,
+  },
+  approveButtonVerified: {
+    backgroundColor: COLORS.success,
+    opacity: 1,
+    borderWidth: 2,
+    borderColor: COLORS.success,
   },
   rejectButton: {
     backgroundColor: COLORS.error,

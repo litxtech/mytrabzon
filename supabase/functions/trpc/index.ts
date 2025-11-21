@@ -349,8 +349,14 @@ const appRouter = createTRPCRouter({
 
         console.log('getAllUsers called with:', { search, gender });
 
-<<<<<<< HEAD
-        // Engellenen kullanıcıların ID'lerini al (eğer kullanıcı giriş yaptıysa)
+        // Sadece show_in_directory = true olan kullanıcıları göster
+        let query = supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url, bio, city, district, created_at, gender, public_id, username, verified', { count: 'exact' })
+          .eq('show_in_directory', true)
+          .order('created_at', { ascending: false });
+
+        // Engellenen kullanıcıları filtrele (eğer kullanıcı giriş yapmışsa)
         let blockedUserIds: string[] = [];
         if (user) {
           const { data: blockedUsers } = await supabase
@@ -366,17 +372,6 @@ const appRouter = createTRPCRouter({
           }
         }
 
-        // TÜM KULLANICILARI GÖSTER - HİÇBİR FİLTRE YOK
-=======
-        // Sadece show_in_directory = true olan kullanıcıları göster
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
-        let query = supabase
-          .from('profiles')
-          .select('id, full_name, avatar_url, bio, city, district, created_at, gender, public_id, username, verified', { count: 'exact' })
-          .eq('show_in_directory', true)
-          .order('created_at', { ascending: false });
-
-        // Engellenen kullanıcıları filtrele
         if (blockedUserIds.length > 0) {
           query = query.not('id', 'in', `(${blockedUserIds.join(',')})`);
         }
@@ -977,9 +972,9 @@ const appRouter = createTRPCRouter({
         return { success: true, consentedCount: consents.length };
       }),
 
-    // ============================================
+    // ==
     // Yakındaki Kullanıcılar - Çift Onaylı Karşılaşma Sistemi
-    // ============================================
+    // ==
 
     // Konum güncelle ve yakınlık kontrolü yap
     updateLocationAndCheckProximity: protectedProcedure
@@ -1582,44 +1577,6 @@ const appRouter = createTRPCRouter({
 
         if (error) throw new Error(error.message);
 
-<<<<<<< HEAD
-        // Bildirim gönder - post sahibine
-        try {
-          const { data: post } = await supabase
-            .from("posts")
-            .select("author_id")
-            .eq("id", input.postId)
-            .single();
-
-          if (post && post.author_id !== user.id) {
-            const { data: authorProfile } = await supabase
-              .from("profiles")
-              .select("push_token, privacy_settings, full_name")
-              .eq("id", post.author_id)
-              .maybeSingle();
-
-            if (authorProfile) {
-              const privacySettings = authorProfile.privacy_settings as any;
-              const notificationsEnabled = privacySettings?.notifications?.push !== false;
-              const likesEnabled = privacySettings?.notifications?.likes !== false;
-
-              // Bildirim kaydı oluştur
-              const { data: notification } = await supabase
-                .from("notifications")
-                .insert({
-                  user_id: post.author_id,
-                  type: "LIKE",
-                  title: "Yeni Beğeni",
-                  body: `${user.user_metadata?.full_name || 'Birisi'} paylaşımınızı beğendi`,
-                  data: { post_id: input.postId, liker_id: user.id },
-                  push_sent: false,
-                })
-                .select()
-                .single();
-
-              // Push notification gönder (eğer izin verilmişse)
-              if (notification && authorProfile.push_token && notificationsEnabled && likesEnabled) {
-=======
         // Beğeni bildirimi oluştur
         try {
           const { data: post } = await supabase
@@ -1663,7 +1620,6 @@ const appRouter = createTRPCRouter({
                 .maybeSingle();
 
               if (targetProfile?.push_token) {
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
                 try {
                   const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
                   await fetch(expoPushUrl, {
@@ -1674,13 +1630,6 @@ const appRouter = createTRPCRouter({
                       'Accept-Encoding': 'gzip, deflate',
                     },
                     body: JSON.stringify({
-<<<<<<< HEAD
-                      to: authorProfile.push_token,
-                      sound: 'default',
-                      title: 'Yeni Beğeni',
-                      body: `${user.user_metadata?.full_name || 'Birisi'} paylaşımınızı beğendi`,
-                      data: { type: 'LIKE', post_id: input.postId },
-=======
                       to: targetProfile.push_token,
                       sound: 'default',
                       title: 'Yeni Beğeni',
@@ -1689,21 +1638,14 @@ const appRouter = createTRPCRouter({
                         type: 'LIKE',
                         postId: input.postId,
                       },
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
                       badge: 1,
                     }),
                   });
 
                   await supabase
-<<<<<<< HEAD
-                    .from("notifications")
-                    .update({ push_sent: true })
-                    .eq("id", notification.id);
-=======
                     .from('notifications')
                     .update({ push_sent: true })
                     .eq('id', notification.id);
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
                 } catch (pushError) {
                   console.error('Like push notification error:', pushError);
                 }
@@ -1712,10 +1654,7 @@ const appRouter = createTRPCRouter({
           }
         } catch (notificationError) {
           console.error('Like notification error:', notificationError);
-<<<<<<< HEAD
-=======
           // Bildirim hatası olsa bile beğeni işlemi başarılı, devam et
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
         }
 
         return { liked: true };
@@ -1850,23 +1789,132 @@ const appRouter = createTRPCRouter({
       }))
       .mutation(async ({ ctx, input }) => {
         const { supabase, user } = ctx;
-        if (!user) throw new Error("Unauthorized");
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Unauthorized' });
 
-        const fileData = base64ToUint8Array(input.base64Data);
-        const filePath = `${user.id}/${Date.now()}-${input.fileName}`;
+        try {
+          const fileData = base64ToUint8Array(input.base64Data);
+          const filePath = `${user.id}/${Date.now()}-${input.fileName}`;
 
-        const { data, error } = await supabase.storage
-          .from("posts")
-          .upload(filePath, fileData, {
-            contentType: input.fileType,
-            upsert: false,
+          const { data, error } = await supabase.storage
+            .from("posts")
+            .upload(filePath, fileData, {
+              contentType: input.fileType,
+              upsert: false,
+            });
+
+          if (error) {
+            // WORKER_LIMIT veya compute resources hatası kontrolü
+            const errorMessage = error.message || '';
+            const isWorkerLimitError = 
+              errorMessage.includes('WORKER_LIMIT') ||
+              errorMessage.includes('compute resources') ||
+              errorMessage.includes('not having enough compute') ||
+              error.code === 'WORKER_LIMIT';
+            
+            if (isWorkerLimitError) {
+              throw new TRPCError({
+                code: 'INTERNAL_SERVER_ERROR',
+                message: 'WORKER_LIMIT',
+                cause: error,
+              });
+            }
+            
+            // Storage quota hatası
+            if (errorMessage.includes('quota') || errorMessage.includes('storage')) {
+              throw new TRPCError({
+                code: 'PAYLOAD_TOO_LARGE',
+                message: 'Storage quota exceeded. Please try again later.',
+                cause: error,
+              });
+            }
+            
+            // Generic storage error
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: `Storage upload failed: ${error.message}`,
+              cause: error,
+            });
+          }
+
+          if (!data) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'No data returned from storage upload',
+            });
+          }
+
+          const { data: { publicUrl } } = supabase.storage.from("posts").getPublicUrl(data.path);
+
+          return { url: publicUrl, path: data.path };
+        } catch (error: any) {
+          // TRPCError ise direkt fırlat
+          if (error instanceof TRPCError) {
+            throw error;
+          }
+          
+          // Diğer hatalar için generic error
+          console.error('Upload media error:', error);
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: error?.message || 'Media upload failed',
+            cause: error,
           });
+        }
+      }),
 
-        if (error) throw new Error(error.message);
+    getUploadUrl: protectedProcedure
+      .input(
+        z.object({
+          fileExtension: z.string().min(1),
+          contentType: z.string().min(1),
+          mediaType: z.enum(["video", "image"]),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { supabase, user } = ctx;
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Unauthorized' });
 
-        const { data: { publicUrl } } = supabase.storage.from("posts").getPublicUrl(data.path);
+        try {
+          // Generate unique file path
+          const timestamp = Date.now();
+          const random = Math.random().toString(36).substr(2, 9);
+          const fileName = `${input.mediaType}-${timestamp}-${random}.${input.fileExtension}`;
+          const filePath = `${user.id}/${fileName}`;
 
-        return { url: publicUrl, path: data.path };
+          // Supabase Storage'da upload için signed URL oluşturma
+          // createSignedUploadUrl metodu Supabase Storage API'sinde yok
+          // Bunun yerine client-side'dan direkt upload yapılacak
+          // RLS policy'leri sayesinde kullanıcı sadece kendi klasörüne upload yapabilecek
+          
+          // Get public URL for the file path
+          const { data: urlData } = supabase.storage
+            .from("posts")
+            .getPublicUrl(filePath);
+
+          const publicUrl = urlData?.publicUrl || '';
+          
+          // Upload için signed URL yerine, client-side'dan direkt upload yapılacak
+          // Bu durumda upload URL olarak path döndürüyoruz
+          // Client-side'da bu path kullanılarak direkt upload yapılacak
+          // RLS policy'leri sayesinde güvenli
+
+          return {
+            uploadUrl: filePath, // Client-side'da bu path kullanılarak direkt upload yapılacak
+            path: filePath,
+            publicUrl,
+          };
+        } catch (error: any) {
+          console.error("getUploadUrl error:", error);
+          
+          if (error instanceof TRPCError) {
+            throw error;
+          }
+          
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: error?.message || "Upload URL alınamadı",
+          });
+        }
       }),
 
     getPostDetail: publicProcedure
@@ -1964,44 +2012,6 @@ const appRouter = createTRPCRouter({
 
         if (error) throw new Error(error.message);
 
-<<<<<<< HEAD
-        // Bildirim gönder - post sahibine
-        try {
-          const { data: post } = await supabase
-            .from("posts")
-            .select("author_id")
-            .eq("id", input.post_id)
-            .single();
-
-          if (post && post.author_id !== user.id) {
-            const { data: authorProfile } = await supabase
-              .from("profiles")
-              .select("push_token, privacy_settings, full_name")
-              .eq("id", post.author_id)
-              .maybeSingle();
-
-            if (authorProfile) {
-              const privacySettings = authorProfile.privacy_settings as any;
-              const notificationsEnabled = privacySettings?.notifications?.push !== false;
-              const commentsEnabled = privacySettings?.notifications?.comments !== false;
-
-              // Bildirim kaydı oluştur
-              const { data: notification } = await supabase
-                .from("notifications")
-                .insert({
-                  user_id: post.author_id,
-                  type: "COMMENT",
-                  title: "Yeni Yorum",
-                  body: `${user.user_metadata?.full_name || 'Birisi'} paylaşımınıza yorum yaptı`,
-                  data: { post_id: input.post_id, comment_id: data.id, commenter_id: user.id },
-                  push_sent: false,
-                })
-                .select()
-                .single();
-
-              // Push notification gönder (eğer izin verilmişse)
-              if (notification && authorProfile.push_token && notificationsEnabled && commentsEnabled) {
-=======
         // Yorum bildirimi oluştur
         try {
           // Post veya event'in sahibini bul
@@ -2061,7 +2071,6 @@ const appRouter = createTRPCRouter({
                 .maybeSingle();
 
               if (targetProfile?.push_token) {
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
                 try {
                   const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
                   await fetch(expoPushUrl, {
@@ -2072,13 +2081,6 @@ const appRouter = createTRPCRouter({
                       'Accept-Encoding': 'gzip, deflate',
                     },
                     body: JSON.stringify({
-<<<<<<< HEAD
-                      to: authorProfile.push_token,
-                      sound: 'default',
-                      title: 'Yeni Yorum',
-                      body: `${user.user_metadata?.full_name || 'Birisi'} paylaşımınıza yorum yaptı`,
-                      data: { type: 'COMMENT', post_id: input.post_id, comment_id: data.id },
-=======
                       to: targetProfile.push_token,
                       sound: 'default',
                       title: 'Yeni Yorum',
@@ -2087,21 +2089,14 @@ const appRouter = createTRPCRouter({
                         type: 'COMMENT',
                         postId: input.post_id,
                       },
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
                       badge: 1,
                     }),
                   });
 
                   await supabase
-<<<<<<< HEAD
-                    .from("notifications")
-                    .update({ push_sent: true })
-                    .eq("id", notification.id);
-=======
                     .from('notifications')
                     .update({ push_sent: true })
                     .eq('id', notification.id);
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
                 } catch (pushError) {
                   console.error('Comment push notification error:', pushError);
                 }
@@ -2110,10 +2105,7 @@ const appRouter = createTRPCRouter({
           }
         } catch (notificationError) {
           console.error('Comment notification error:', notificationError);
-<<<<<<< HEAD
-=======
           // Bildirim hatası olsa bile yorum işlemi başarılı, devam et
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
         }
 
         return data;
@@ -3790,7 +3782,8 @@ const appRouter = createTRPCRouter({
         };
       }),
 
-    get: protectedProcedure.query(async ({ ctx }) => {
+    get: protectedProcedure
+      .query(async ({ ctx }) => {
       const { supabase, user } = ctx;
 
       if (!user) throw new Error("Unauthorized");
@@ -4205,9 +4198,9 @@ const appRouter = createTRPCRouter({
       }),
   }),
 
-  // ===================================================================
+  // ====
   // HALI SAHA UYGULAMASI ROUTER
-  // ===================================================================
+  // ====
   football: createTRPCRouter({
     // 1. "Bugün maç var mı?" - Ana özellik
     getTodayMatches: publicProcedure
@@ -4955,11 +4948,7 @@ const appRouter = createTRPCRouter({
           city: z.enum(['Trabzon', 'Giresun']),
           district: z.string(),
           match_date: z.string(),
-<<<<<<< HEAD
-          match_type: z.enum(['looking_for_opponent', 'looking_for_players']).optional().default('looking_for_opponent'),
-=======
           match_type: z.enum(['looking_for_opponent', 'looking_for_players']).optional(), // Yeni: Maç tipi
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
           team1_name: z.string().optional(),
           team2_name: z.string().optional(),
           max_players: z.number().optional(),
@@ -5038,11 +5027,7 @@ const appRouter = createTRPCRouter({
             city: input.city,
             district: input.district,
             organizer_id: user.id,
-<<<<<<< HEAD
-            status: input.match_type || (input.needed_players && input.needed_players > 0 ? 'looking_for_players' : 'looking_for_opponent'),
-=======
             status: input.match_type || (input.needed_players && input.needed_players > 0 ? 'looking_for_players' : 'looking_for_opponent'), // Maç tipine göre status belirle
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
             missing_players_count: input.needed_players || 0,
             missing_positions: input.position_needed ? [input.position_needed] : [],
             max_players: input.max_players || 10,
@@ -6530,9 +6515,9 @@ const appRouter = createTRPCRouter({
       }),
   }),
 
-  // ============================================
+  // ==
   // GÖRÜNTÜLÜ EŞLEŞME SİSTEMİ
-  // ============================================
+  // ==
   match: createTRPCRouter({
     // Kuyruğa gir
     joinQueue: protectedProcedure
@@ -8728,7 +8713,6 @@ const appRouter = createTRPCRouter({
         };
       }),
 
-<<<<<<< HEAD
     // KYC Yönetimi
     getKycRequests: protectedProcedure
       .input(
@@ -8955,8 +8939,6 @@ const appRouter = createTRPCRouter({
         return data;
       }),
 
-=======
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     // Bildirim gönderme
     sendNotification: protectedProcedure
       .input(
@@ -8966,11 +8948,7 @@ const appRouter = createTRPCRouter({
           body: z.string().min(1).max(500),
           type: z.enum(['SYSTEM', 'EVENT', 'MESSAGE', 'RESERVATION', 'FOOTBALL']).optional().default('SYSTEM'),
           data: z.record(z.string(), z.any()).optional(),
-<<<<<<< HEAD
-          mediaUrl: z.string().optional(), // URL veya file URI olabilir
-=======
           mediaUrl: z.string().url().optional(),
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -9043,39 +9021,6 @@ const appRouter = createTRPCRouter({
 
         // Bildirim kayıtlarını oluştur
         // body alanı NOT NULL olduğu için boş olamaz
-<<<<<<< HEAD
-        const bodyText = input.body?.trim() || input.title?.trim() || 'Bildirim';
-        
-        if (!bodyText || bodyText.length === 0) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Mesaj içeriği boş olamaz',
-          });
-        }
-        
-        // Data objesini oluştur (medya URL'i varsa ekle)
-        const notificationData: any = { ...(input.data || {}) };
-        if (input.mediaUrl) {
-          // Eğer file:// URI ise, Supabase Storage'a yükle
-          let finalMediaUrl = input.mediaUrl;
-          if (input.mediaUrl.startsWith('file://')) {
-            // Frontend'den gelen file URI'lerini backend'de işleme
-            // Şimdilik sadece URL'leri kabul et
-            console.warn('File URI detected, skipping media upload');
-            finalMediaUrl = '';
-          }
-          if (finalMediaUrl) {
-            notificationData.mediaUrl = finalMediaUrl;
-          }
-        }
-        
-        const notifications = targetUserIds.map((userId) => ({
-          user_id: userId,
-          type: input.type,
-          title: input.title,
-          body: bodyText, // notifications tablosunda body kolonu var
-          data: notificationData,
-=======
         if (!input.body || input.body.trim().length === 0) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
@@ -9107,7 +9052,6 @@ const appRouter = createTRPCRouter({
             is_admin: true,
             verified: true, // Admin bildirimleri için verified flag'i
           },
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
           push_sent: false,
           is_deleted: false,
         }));
@@ -9145,14 +9089,6 @@ const appRouter = createTRPCRouter({
         if (pushTokens.length > 0) {
           try {
             const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
-<<<<<<< HEAD
-            const messages = pushTokens.map((token) => ({
-              to: token,
-              sound: 'default',
-              title: input.title,
-              body: input.body,
-              data: input.data || {},
-=======
             const adminTitle = input.type === 'SYSTEM' ? `MyTrabzonTeam: ${input.title}` : input.title;
             const messages = pushTokens.map((token) => ({
               to: token,
@@ -9164,7 +9100,6 @@ const appRouter = createTRPCRouter({
                 sender: 'mytrabzonteam',
                 sender_name: 'MyTrabzonTeam',
               },
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
               badge: 1,
             }));
 
@@ -9207,8 +9142,6 @@ const appRouter = createTRPCRouter({
           pushSentCount: pushTokens.length,
         };
       }),
-<<<<<<< HEAD
-=======
 
     // Kullanıcı iletişim bilgilerini getir
     getUserContacts: protectedProcedure
@@ -9391,12 +9324,11 @@ const appRouter = createTRPCRouter({
           message: 'Email gönderimi başarılı (simüle edildi)',
         };
       }),
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   }),
 
-  // ===================================================================
+  // ====
   // OLAY VAR BİLDİRİM SİSTEMİ
-  // ===================================================================
+  // ====
   event: createTRPCRouter({
     createEvent: protectedProcedure
       .input(
@@ -9428,29 +9360,6 @@ const appRouter = createTRPCRouter({
           ? new Date(input.expires_at)
           : new Date(Date.now() + 2 * 60 * 60 * 1000);
 
-<<<<<<< HEAD
-        const { data: event, error } = await supabase
-          .from('events')
-          .insert({
-            user_id: user.id,
-            title: input.title,
-            description: input.description,
-            category: input.category,
-            severity: input.severity,
-            district: input.district || null,
-            city: input.city,
-            latitude: input.latitude,
-            longitude: input.longitude,
-            media_urls: input.media_urls,
-            audio_url: input.audio_url,
-            start_date: now.toISOString(),
-            expires_at: expiresAt.toISOString(),
-            is_active: true, // Açıkça set et
-            is_deleted: false, // Açıkça set et
-          })
-          .select()
-          .single();
-=======
         // İlçe zorunlu - "Tümü" seçeneği kaldırıldı, sadece tek ilçe kabul ediliyor
         if (!input.district || input.district.trim() === '') {
           throw new TRPCError({ 
@@ -9482,7 +9391,6 @@ const appRouter = createTRPCRouter({
           .from('events')
           .insert([eventToInsert])
           .select();
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 
         if (error) {
           throw new TRPCError({ 
@@ -9491,12 +9399,6 @@ const appRouter = createTRPCRouter({
           });
         }
 
-<<<<<<< HEAD
-        // Algoritma: Etkilenecek kullanıcıları bul ve bildirim oluştur
-        // Log kaldırıldı - egress optimizasyonu
-        try {
-          await createNotificationsForEvent(supabase, event, input.severity, input.district || '', input.city);
-=======
         // İlk event'i döndür (bildirimler için)
         const firstEvent = events?.[0];
         if (!firstEvent) {
@@ -9515,17 +9417,12 @@ const appRouter = createTRPCRouter({
             input.district,
             input.city
           );
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
         } catch (notificationError) {
           console.error('❌ Notification creation failed:', notificationError);
           // Bildirim hatası olsa bile event oluşturuldu, devam et
         }
 
-<<<<<<< HEAD
-        return event;
-=======
         return firstEvent;
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
       }),
 
     getEvents: publicProcedure
@@ -9540,27 +9437,7 @@ const appRouter = createTRPCRouter({
         })
       )
       .query(async ({ ctx, input }) => {
-<<<<<<< HEAD
-        const { supabase, user } = ctx;
-
-        // Engellenen kullanıcıların ID'lerini al (eğer kullanıcı giriş yaptıysa)
-        let blockedUserIds: string[] = [];
-        if (user) {
-          const { data: blockedUsers } = await supabase
-            .from('user_blocks')
-            .select('blocked_id, blocker_id')
-            .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
-          
-          if (blockedUsers) {
-            // Hem engellediğimiz hem de bizi engelleyen kullanıcıları filtrele
-            blockedUserIds = blockedUsers.map(b => 
-              b.blocker_id === user.id ? b.blocked_id : b.blocker_id
-            );
-          }
-        }
-=======
         const { supabase } = ctx;
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 
         // Log kaldırıldı - egress optimizasyonu
         
@@ -9573,26 +9450,11 @@ const appRouter = createTRPCRouter({
           .order('created_at', { ascending: false })
           .range(input.offset, input.offset + input.limit - 1);
 
-<<<<<<< HEAD
-        // Engellenen kullanıcıların event'lerini filtrele
-        if (blockedUserIds.length > 0) {
-          query = query.not('user_id', 'in', `(${blockedUserIds.join(',')})`);
-        }
-
-        // District filtresi: district null olan event'ler tüm ilçelerde görünmeli
-        // Eğer district belirtilmişse, o district'e ait event'ler VEYA district null olan event'ler gösterilmeli
-        if (input.district) {
-          // Belirli bir ilçe için: o ilçeye ait event'ler VEYA district null olan event'ler
-          query = query.or(`district.eq.${input.district},district.is.null`);
-        }
-        // Eğer district belirtilmemişse, tüm event'ler görünür (district null olanlar dahil)
-=======
         if (input.district && input.district.trim() !== '') {
           // Sadece belirli bir district seçildiyse filtrele
           query = query.eq('district', input.district);
         }
         // District belirtilmediyse tüm district'lerden event'leri getir
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
         if (input.city) {
           query = query.eq('city', input.city);
         }
@@ -9618,11 +9480,7 @@ const appRouter = createTRPCRouter({
           if (userIds.length > 0) {
             const { data: profileData, error: profileError } = await supabase
               .from('profiles')
-<<<<<<< HEAD
-              .select('id, full_name, avatar_url, username')
-=======
               .select('id, full_name, avatar_url, username, verified')
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
               .in('id', userIds);
             
             if (profileError) {
@@ -9726,10 +9584,6 @@ const appRouter = createTRPCRouter({
       )
       .mutation(async ({ ctx, input }) => {
         const { supabase, user } = ctx;
-<<<<<<< HEAD
-        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-=======
         if (!user) {
           console.error('addEventComment: User not found in context');
           throw new TRPCError({ 
@@ -9774,30 +9628,19 @@ const appRouter = createTRPCRouter({
         }
 
         // Yorum ekle
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
         const { data, error } = await supabase
           .from('event_comments')
           .insert({
             event_id: input.event_id,
             user_id: user.id,
-<<<<<<< HEAD
-            content: input.content,
-=======
             content: input.content.trim(),
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
           })
           .select(`
             *,
-            user:profiles!event_comments_user_id_fkey(id, full_name, avatar_url, username)
+            user:profiles!event_comments_user_id_fkey(id, full_name, avatar_url, username, verified)
           `)
           .single();
 
-<<<<<<< HEAD
-        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
-
-        // Comment count'u artır
-        await supabase.rpc('increment_event_comments', { event_id_param: input.event_id });
-=======
         if (error) {
           console.error('Event comment insert error:', error);
           throw new TRPCError({ 
@@ -9832,7 +9675,6 @@ const appRouter = createTRPCRouter({
           console.warn('Failed to increment comment count:', rpcErr);
           // RPC hatası kritik değil, yorum zaten eklendi
         }
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 
         return data;
       }),
@@ -9852,11 +9694,7 @@ const appRouter = createTRPCRouter({
           .from('event_comments')
           .select(`
             *,
-<<<<<<< HEAD
-            user:profiles!event_comments_user_id_fkey(id, full_name, avatar_url, username)
-=======
             user:profiles!event_comments_user_id_fkey(id, full_name, avatar_url, username, verified)
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
           `)
           .eq('event_id', input.event_id)
           .order('created_at', { ascending: false })
@@ -9867,7 +9705,6 @@ const appRouter = createTRPCRouter({
         return { comments: data || [] };
       }),
 
-<<<<<<< HEAD
     updateEvent: protectedProcedure
       .input(
         z.object({
@@ -9955,86 +9792,17 @@ const appRouter = createTRPCRouter({
       .input(
         z.object({
           eventId: z.string().uuid(),
-=======
-    deleteEvent: protectedProcedure
-      .input(
-        z.object({
-          event_id: z.string().uuid(),
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
         })
       )
       .mutation(async ({ ctx, input }) => {
         const { supabase, user } = ctx;
         if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
 
-<<<<<<< HEAD
-        // Event'i bul ve kullanıcının kendi event'i olduğunu kontrol et
-        const { data: event, error: fetchError } = await supabase
-          .from('events')
-          .select('*')
-          .eq('id', input.eventId)
-          .eq('user_id', user.id)
-          .single();
-
-        if (fetchError || !event) {
-          throw new TRPCError({ 
-            code: 'NOT_FOUND', 
-            message: 'Olay bulunamadı veya yetkisiz erişim' 
-          });
-        }
-
-        // Media dosyalarını sil (eğer varsa)
-        if (event.media_urls && Array.isArray(event.media_urls) && event.media_urls.length > 0) {
-          for (const mediaUrl of event.media_urls) {
-            if (mediaUrl) {
-              // Storage path'ini çıkar
-              const path = mediaUrl.split('/storage/v1/object/public/events/')[1] || 
-                           mediaUrl.split('events/')[1];
-              if (path) {
-                try {
-                  await supabase.storage.from('events').remove([path]);
-                } catch (storageError) {
-                  // Storage hatası olsa bile event silme işlemine devam et
-                }
-              }
-            }
-          }
-        }
-
-        // Audio dosyasını sil (eğer varsa)
-        if (event.audio_url) {
-          const audioPath = event.audio_url.split('/storage/v1/object/public/events/')[1] || 
-                           event.audio_url.split('events/')[1];
-          if (audioPath) {
-            try {
-              await supabase.storage.from('events').remove([audioPath]);
-            } catch (storageError) {
-              // Storage hatası olsa bile event silme işlemine devam et
-            }
-          }
-        }
-
-        // Event'i sil (soft delete - is_deleted = true)
-        const { error } = await supabase
-          .from('events')
-          .update({ 
-            is_deleted: true,
-            is_active: false 
-          })
-          .eq('id', input.eventId)
-          .eq('user_id', user.id);
-
-        if (error) {
-          throw new TRPCError({ 
-            code: 'INTERNAL_SERVER_ERROR', 
-            message: error.message 
-          });
-=======
         // Kullanıcının own olup olmadığını kontrol et
         const { data: existingEvent, error: fetchError } = await supabase
           .from('events')
           .select('id, user_id')
-          .eq('id', input.event_id)
+          .eq('id', input.eventId)
           .eq('is_deleted', false)
           .single();
 
@@ -10053,12 +9821,11 @@ const appRouter = createTRPCRouter({
             is_active: false,
             updated_at: new Date().toISOString(),
           })
-          .eq('id', input.event_id)
+          .eq('id', input.eventId)
           .eq('user_id', user.id);
 
         if (deleteError) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: deleteError.message });
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
         }
 
         return { success: true };
@@ -10099,10 +9866,6 @@ const appRouter = createTRPCRouter({
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
         }
 
-<<<<<<< HEAD
-        return {
-          notifications: data || [],
-=======
         // Gönderen kişilerin verified durumlarını ekle
         const notificationsWithSenderInfo = await Promise.all(
           (data || []).map(async (notification: any) => {
@@ -10127,7 +9890,6 @@ const appRouter = createTRPCRouter({
 
         return {
           notifications: notificationsWithSenderInfo || [],
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
           total: count || 0,
           hasMore: count ? input.offset + input.limit < count : false,
         };
@@ -10240,9 +10002,9 @@ const appRouter = createTRPCRouter({
       }),
   }),
 
-  // ===================================================================
+  // ====
   // YOLCULUK PAYLAŞIMI ROUTER
-  // ===================================================================
+  // ====
   ride: createTRPCRouter({
     createRide: protectedProcedure
       .input(
@@ -11521,9 +11283,9 @@ async function createNotificationsForEvent(
   }
 }
 
-// ============================================
+// ==
 // Helper Functions for Proximity System
-// ============================================
+// ==
 
 // Mesafe hesaplama (Haversine formülü - kilometre cinsinden)
 function calculateDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {

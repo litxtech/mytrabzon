@@ -22,6 +22,7 @@ import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
 import { trpc } from '@/lib/trpc';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 import { Send, Paperclip, Smile, MoreVertical, ImageIcon, Plus, Heart, MessageCircle, Share2, Phone, Video as VideoIcon, Users, Search, Check, X, UserMinus, Trash2, LogOut, Edit3, XCircle } from 'lucide-react-native';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 import * as DocumentPicker from 'expo-document-picker';
@@ -38,6 +39,7 @@ export default function ChatRoomScreen() {
   const { roomId } = useLocalSearchParams<{ roomId: string }>();
   const router = useRouter();
   const { user } = useAuth();
+  const { guard } = useAuthGuard();
   const insets = useSafeAreaInsets();
   const { messages, loadMessages, subscribeToRoom, unsubscribeFromRoom, sendTypingIndicator, typingIndicators } = useChat();
   const [messageText, setMessageText] = useState('');
@@ -470,16 +472,18 @@ export default function ChatRoomScreen() {
   }, [roomId]);
 
   const handleSendMessage = () => {
-    if (!messageText.trim() || !roomId) return;
+    guard(() => {
+      if (!messageText.trim() || !roomId) return;
 
-    sendMessageMutation.mutate({
-      roomId,
-      content: messageText.trim(),
-      replyTo: replyTo?.id,
-    });
-    
-    // Mesaj gönderildikten sonra klavyeyi kapat
-    Keyboard.dismiss();
+      sendMessageMutation.mutate({
+        roomId,
+        content: messageText.trim(),
+        replyTo: replyTo?.id,
+      });
+      
+      // Mesaj gönderildikten sonra klavyeyi kapat
+      Keyboard.dismiss();
+    }, 'Mesaj göndermek');
   };
 
   const handlePickDocument = async () => {
@@ -860,7 +864,10 @@ export default function ChatRoomScreen() {
             style={styles.postAvatar}
           />
           <View style={styles.postHeaderInfo}>
-            <Text style={styles.postAuthor}>{item.author?.full_name}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.postAuthor}>{item.author?.full_name}</Text>
+              {item.author?.verified && <VerifiedBadgeIcon size={16} />}
+            </View>
             <View style={styles.postMeta}>
               <Text style={styles.postDistrict}>
                 {DISTRICT_BADGES[item.district as keyof typeof DISTRICT_BADGES] || '📍'} {item.district}
@@ -925,7 +932,26 @@ export default function ChatRoomScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          title: room?.name || 'Sohbet',
+          title: room?.type === 'direct' && otherUser 
+            ? (otherUser as any).full_name || 'Kullanıcı'
+            : room?.name || 'Sohbet',
+          headerTitle: room?.type === 'direct' && otherUser ? () => (
+            <TouchableOpacity
+              onPress={() => {
+                const userId = (otherUser as any).id || (otherUser as any).user_id;
+                if (userId) {
+                  router.push(`/profile/${userId}` as any);
+                }
+              }}
+              activeOpacity={0.7}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+            >
+              <Text style={{ fontSize: FONT_SIZES.lg, fontWeight: '600', color: COLORS.text }}>
+                {(otherUser as any).full_name || 'Kullanıcı'}
+              </Text>
+              {(otherUser as any).verified && <VerifiedBadgeIcon size={18} />}
+            </TouchableOpacity>
+          ) : undefined,
           headerRight: () => (
             <View style={styles.headerRight}>
               {room?.type === 'direct' && otherUser && (
@@ -1117,7 +1143,7 @@ export default function ChatRoomScreen() {
         {activeTab === 'posts' && isGroup && (
           <TouchableOpacity
             style={styles.fab}
-            onPress={() => router.push(`/create-post?room_id=${roomId}` as any)}
+            onPress={() => guard(() => router.push(`/create-post?room_id=${roomId}` as any), 'Grup gönderisi oluşturmak')}
           >
             <Plus size={28} color={COLORS.white} />
           </TouchableOpacity>

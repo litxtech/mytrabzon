@@ -318,7 +318,14 @@ export function Footer() {
   const [modalVisible, setModalVisible] = useState(false);
   const [showPlatformPolicy, setShowPlatformPolicy] = useState(false);
 
-  const { data: policies } = (trpc as any).admin.getPolicies.useQuery();
+  // Policy'leri çek (hata durumunda sessizce handle et)
+  const { data: policies } = (trpc as any).admin.getPolicies.useQuery(undefined, {
+    retry: false,
+    refetchOnWindowFocus: false,
+    onError: () => {
+      // Sessizce handle et, hata mesajı gösterme
+    },
+  });
 
   const handlePolicyPress = (policy: any) => {
     setSelectedPolicy(policy);

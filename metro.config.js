@@ -4,8 +4,8 @@ const { getDefaultConfig } = require('expo/metro-config');
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
-// Web platformunu devre dışı bırak - sadece mobil (iOS/Android)
-config.resolver.platforms = ['ios', 'android', 'native'];
+// Web platformunu da dahil et
+config.resolver.platforms = ['ios', 'android', 'native', 'web'];
 
 // Hot reload ve fast refresh için optimizasyonlar
 config.server = {

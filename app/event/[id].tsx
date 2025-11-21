@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -27,25 +27,24 @@ import {
   Send,
   ArrowLeft,
   AlertCircle,
-<<<<<<< HEAD
-  MoreVertical,
-=======
   Trash2,
   MoreVertical,
   Edit3,
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { formatTimeAgo } from '@/lib/time-utils';
 import { VideoPlayer } from '@/components/VideoPlayer';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
+import { Share } from 'react-native';
 
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user, profile } = useAuth();
   const { theme } = useTheme();
+  const { guard } = useAuthGuard();
   const insets = useSafeAreaInsets();
   const [commentText, setCommentText] = useState('');
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
@@ -53,9 +52,32 @@ export default function EventDetailScreen() {
   const [menuVisibleCommentId, setMenuVisibleCommentId] = useState<string | null>(null);
   const [showFullScreenImage, setShowFullScreenImage] = useState(false);
   const [showFullScreenVideo, setShowFullScreenVideo] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [showEventMenu, setShowEventMenu] = useState(false);
   const utils = trpc.useUtils();
   const commentInputRef = useRef<TextInput>(null);
   const flatListRef = useRef<FlatList>(null);
+
+  // Klavye event listener'ları
+  useEffect(() => {
+    const keyboardWillShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+    );
+    const keyboardWillHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      keyboardWillShowListener.remove();
+      keyboardWillHideListener.remove();
+    };
+  }, []);
 
   const { data: eventsData, isLoading, refetch } = trpc.event.getEvents.useQuery({
     limit: 100,
@@ -100,21 +122,10 @@ export default function EventDetailScreen() {
 
   const deleteEventMutation = trpc.event.deleteEvent.useMutation({
     onSuccess: async () => {
-      Alert.alert('Başarılı', 'Olay silindi');
-      await utils.event.getEvents.invalidate();
-      router.back();
-    },
-    onError: (error) => {
-      const message = error instanceof Error ? error.message : 'Olay silinemedi';
-      Alert.alert('Hata', message);
-    },
-  });
-
-  const deleteEventMutation = trpc.event.deleteEvent.useMutation({
-    onSuccess: () => {
       Alert.alert('Başarılı', 'Olay silindi', [
         { text: 'Tamam', onPress: () => router.back() },
       ]);
+      await utils.event.getEvents.invalidate();
     },
     onError: (error) => {
       Alert.alert('Hata', error.message);
@@ -156,64 +167,94 @@ export default function EventDetailScreen() {
     offset: 0,
   }, { enabled: !!id });
 
-  const handleLike = async () => {
-    if (!event) return;
-    try {
-      await likeEventMutation.mutateAsync({ event_id: event.id });
-    } catch (error) {
-      console.error('Event like error:', error);
-    }
+  const handleLike = () => {
+    guard(() => {
+      if (!event) return;
+      
+      // Optimistic update - anında UI'ı güncelle
+      utils.event.getEvents.setData(
+        { limit: 100, offset: 0 },
+        (oldData: any) => {
+          if (!oldData) return oldData;
+          return {
+            ...oldData,
+            events: oldData.events.map((e: any) => {
+              if (e.id === event.id) {
+                const newIsLiked = !e.is_liked;
+                return {
+                  ...e,
+                  is_liked: newIsLiked,
+                  like_count: newIsLiked ? (e.like_count || 0) + 1 : Math.max((e.like_count || 0) - 1, 0),
+                };
+              }
+              return e;
+            }),
+          };
+        }
+      );
+      
+      // Anında mutation'ı çalıştır (async/await kaldırıldı - hızlı tepki için)
+      likeEventMutation.mutate({ event_id: event.id }, {
+        onError: () => {
+          // Hata durumunda geri al
+          refetch();
+        },
+      });
+    }, 'Beğenmek');
   };
 
   const handleShare = () => {
-    if (!event) return;
-    
-    // Event'i post olarak paylaşmak için create-post ekranına yönlendir
-    const eventContent = `🚨 Olay Var: ${event.title}\n\n${event.description || ''}\n\n📍 ${event.district}${event.city ? `, ${event.city}` : ''}`;
-    
-    router.push({
-      pathname: '/create-post',
-      params: {
-        shareEvent: event.id,
-        content: eventContent,
-        mediaUrls: event.media_urls ? JSON.stringify(event.media_urls) : undefined,
-      } as any,
-    });
+    guard(() => {
+      if (!event) return;
+      
+      // Event'i post olarak paylaşmak için create-post ekranına yönlendir
+      const eventContent = `🚨 Olay Var: ${event.title}\n\n${event.description || ''}\n\n📍 ${event.district}${event.city ? `, ${event.city}` : ''}`;
+      
+      router.push({
+        pathname: '/create-post',
+        params: {
+          shareEvent: event.id,
+          content: eventContent,
+          mediaUrls: event.media_urls ? JSON.stringify(event.media_urls) : undefined,
+        } as any,
+      });
+    }, 'Gönderi paylaşmak');
   };
 
-  const handleAddComment = async () => {
-    if (!commentText.trim()) {
-      Alert.alert('Uyarı', 'Lütfen bir yorum yazın');
-      return;
-    }
-    
-    if (!event || !event.id) {
-      Alert.alert('Hata', 'Olay bulunamadı');
-      return;
-    }
+  const handleAddComment = () => {
+    guard(() => {
+      if (!commentText.trim()) {
+        return;
+      }
+      
+      if (!event || !event.id) {
+        Alert.alert('Hata', 'Olay bulunamadı');
+        return;
+      }
 
-    if (!user) {
-      Alert.alert('Hata', 'Yorum yapmak için giriş yapmanız gerekiyor');
-      return;
-    }
+      if (addCommentMutation.isPending) {
+        return; // Zaten gönderiliyor
+      }
 
-    if (addCommentMutation.isPending) {
-      return; // Zaten gönderiliyor
-    }
+      // Optimistic update - anında UI'ı güncelle
+      const commentContent = commentText.trim();
+      setCommentText(''); // Anında temizle (hızlı tepki için)
+      
+      // Klavyeyi kapat ve input'u blur et
+      Keyboard.dismiss();
+      commentInputRef.current?.blur();
 
-    // Klavyeyi kapat ve input'u blur et
-    Keyboard.dismiss();
-    commentInputRef.current?.blur();
-
-    try {
-      await addCommentMutation.mutateAsync({
+      // Anında mutation'ı çalıştır (async/await kaldırıldı - hızlı tepki için)
+      addCommentMutation.mutate({
         event_id: event.id,
-        content: commentText.trim(),
+        content: commentContent,
+      }, {
+        onError: () => {
+          // Hata durumunda metni geri yükle
+          setCommentText(commentContent);
+        },
       });
-    } catch (error: any) {
-      // Error handling mutation'ın onError'ında yapılıyor
-      console.error('Comment error:', error);
-    }
+    }, 'Yorum yapmak');
   };
 
   const deleteCommentMutation = (trpc as any).event.deleteEventComment?.useMutation({
@@ -288,7 +329,7 @@ export default function EventDetailScreen() {
         {
           text: 'Sil',
           style: 'destructive',
-          onPress: () => deleteEventMutation.mutate({ event_id: event.id }),
+          onPress: () => deleteEventMutation.mutate({ eventId: event.id }),
         },
       ]
     );
@@ -356,21 +397,29 @@ export default function EventDetailScreen() {
           />
         </TouchableOpacity>
         <View style={styles.commentContent}>
-          <View style={styles.commentAuthorContainer}>
-            <TouchableOpacity
-              onPress={() => {
-                if (comment.user?.id) {
-                  router.push(`/profile/${comment.user.id}` as any);
-                }
-              }}
-              activeOpacity={0.7}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-            >
-              <Text style={styles.commentAuthor}>
-                {comment.user?.full_name || 'İsimsiz'}
-              </Text>
-              {comment.user?.verified && <VerifiedBadgeIcon size={14} />}
-            </TouchableOpacity>
+          {/* İsim ve Kullanıcı Bilgileri - Üstte */}
+          <View style={styles.commentHeaderRow}>
+            <View style={styles.commentAuthorContainer}>
+              <TouchableOpacity
+                onPress={() => {
+                  if (comment.user?.id) {
+                    router.push(`/profile/${comment.user.id}` as any);
+                  }
+                }}
+                activeOpacity={0.7}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              >
+                <Text style={styles.commentAuthor}>
+                  {comment.user?.full_name || 'İsimsiz'}
+                </Text>
+                {comment.user?.verified && <VerifiedBadgeIcon size={14} />}
+              </TouchableOpacity>
+              {comment.user?.username && (
+                <Text style={styles.commentUsername}>
+                  @{comment.user.username}
+                </Text>
+              )}
+            </View>
             {isOwner && !isEditing && deleteCommentMutation && (
               <TouchableOpacity
                 style={styles.commentMenuButton}
@@ -381,13 +430,8 @@ export default function EventDetailScreen() {
               </TouchableOpacity>
             )}
           </View>
-          {comment.user?.username && (
-            <View style={styles.commentUsernameContainer}>
-              <Text style={styles.commentUsername}>
-                @{comment.user.username}
-              </Text>
-            </View>
-          )}
+          
+          {/* Yorum Metni - Altta */}
           {isEditing ? (
             <View style={styles.editContainer}>
               <TextInput
@@ -426,12 +470,14 @@ export default function EventDetailScreen() {
                   {comment.content}
                 </Text>
               </View>
-              <Text style={styles.commentTime}>
-                {new Date(comment.created_at).toLocaleDateString('tr-TR', {
-                  day: 'numeric',
-                  month: 'short',
-                })}
-              </Text>
+              <View style={styles.commentFooter}>
+                <Text style={styles.commentTime}>
+                  {new Date(comment.created_at).toLocaleDateString('tr-TR', {
+                    day: 'numeric',
+                    month: 'short',
+                  })}
+                </Text>
+              </View>
             </>
           )}
         </View>
@@ -491,7 +537,7 @@ export default function EventDetailScreen() {
           {isVideo ? (
             <VideoPlayer
               videoUrl={firstMedia}
-              postId={event.id}
+              postId={`event_${event.id}`}
               isLiked={event.is_liked || false}
               likeCount={event.like_count || 0}
               commentCount={event.comment_count || 0}
@@ -547,14 +593,10 @@ export default function EventDetailScreen() {
         </TouchableOpacity>
         {event.user_id === user?.id && (
           <TouchableOpacity
-            style={[styles.actionButton, styles.deleteButton]}
-            onPress={handleDeleteEvent}
-            disabled={deleteEventMutation.isPending}
+            style={styles.actionButton}
+            onPress={() => setShowEventMenu(true)}
           >
-            <Trash2 size={24} color={theme.colors.error} />
-            <Text style={[styles.actionText, { color: theme.colors.error }]}>
-              {deleteEventMutation.isPending ? 'Siliniyor...' : 'Sil'}
-            </Text>
+            <MoreVertical size={24} color={theme.colors.textLight} />
           </TouchableOpacity>
         )}
       </View>
@@ -571,9 +613,9 @@ export default function EventDetailScreen() {
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-      enabled={Platform.OS === 'ios'}
+      enabled={true}
     >
       <Stack.Screen
         options={{
@@ -621,53 +663,58 @@ export default function EventDetailScreen() {
           }
         />
 
-        {/* Comment Input - En Altta Sabit */}
-        {!showFullScreenImage && !showFullScreenVideo && (
-          <View style={[styles.commentInputContainer, { 
+      </View>
+
+      {/* Comment Input - Klavyenin Üstünde Sabit (Absolute Position) */}
+      {!showFullScreenImage && !showFullScreenVideo && (
+        <View style={[
+          styles.commentInputContainer, 
+          { 
             paddingBottom: Math.max(insets.bottom, SPACING.sm),
             backgroundColor: theme.colors.card,
             borderTopColor: theme.colors.border,
-          }]}>
-            <Image
-              source={{
-                uri: (profile?.avatar_url as string | undefined) || 'https://via.placeholder.com/32',
-              }}
-              style={styles.commentInputAvatar}
-            />
-            <TextInput
-              ref={commentInputRef}
-              style={[styles.commentInput, {
-                backgroundColor: theme.colors.background,
-                color: theme.colors.text,
-              }]}
-              placeholder="Yorum yaz..."
-              placeholderTextColor={theme.colors.textLight}
-              value={commentText}
-              onChangeText={setCommentText}
-              multiline
-              maxLength={1000}
-              textAlignVertical="top"
-              blurOnSubmit={true}
-              returnKeyType="send"
-              onSubmitEditing={handleAddComment}
-            />
-            <TouchableOpacity
-              style={[
-                styles.sendButton,
-                !commentText.trim() && styles.sendButtonDisabled,
-              ]}
-              onPress={handleAddComment}
-              disabled={!commentText.trim() || addCommentMutation.isPending}
-            >
-              {addCommentMutation.isPending ? (
-                <ActivityIndicator size="small" color={COLORS.white} />
-              ) : (
-                <Send size={20} color={COLORS.white} />
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
+            bottom: keyboardHeight > 0 ? keyboardHeight : 0,
+          }
+        ]}>
+          <Image
+            source={{
+              uri: (profile?.avatar_url as string | undefined) || 'https://via.placeholder.com/32',
+            }}
+            style={styles.commentInputAvatar}
+          />
+          <TextInput
+            ref={commentInputRef}
+            style={[styles.commentInput, {
+              backgroundColor: theme.colors.background,
+              color: theme.colors.text,
+            }]}
+            placeholder="Yorum yaz..."
+            placeholderTextColor={theme.colors.textLight}
+            value={commentText}
+            onChangeText={setCommentText}
+            multiline
+            maxLength={1000}
+            textAlignVertical="top"
+            blurOnSubmit={true}
+            returnKeyType="send"
+            onSubmitEditing={handleAddComment}
+          />
+          <TouchableOpacity
+            style={[
+              styles.sendButton,
+              !commentText.trim() && styles.sendButtonDisabled,
+            ]}
+            onPress={handleAddComment}
+            disabled={!commentText.trim() || addCommentMutation.isPending}
+          >
+            {addCommentMutation.isPending ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <Send size={20} color={COLORS.white} />
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Tam Ekran Görsel Modal */}
       <Modal
@@ -709,41 +756,76 @@ export default function EventDetailScreen() {
 
       {/* Tam Ekran Video Modal */}
       {showFullScreenVideo && firstMedia && isVideo && (
-        <Modal
-          visible={showFullScreenVideo}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => {
+        <VideoPlayer
+          videoUrl={firstMedia}
+          postId={`event_${event.id}`}
+          isLiked={event.is_liked || false}
+          likeCount={event.like_count || 0}
+          commentCount={event.comment_count || 0}
+          shareCount={0}
+          onLike={handleLike}
+          onComment={() => {
+            // Yorum paneli açılacak - VideoPlayer içinde CommentSheet kullanılıyor
+            // Event'ler için postId event_ prefix'i ile gönderiliyor
+          }}
+          onShare={async () => {
+            // Event paylaşımı - Share API kullan
+            try {
+              const eventContent = `🚨 Olay Var: ${event.title}\n\n${event.description || ''}\n\n📍 ${event.district}${event.city ? `, ${event.city}` : ''}`;
+              await Share.share({
+                message: eventContent,
+                url: firstMedia,
+              });
+            } catch (error) {
+              console.error('Share error:', error);
+            }
+          }}
+          onTag={() => {}}
+          onClose={() => {
             Keyboard.dismiss();
             setShowFullScreenVideo(false);
           }}
-          statusBarTranslucent={true}
-        >
-          <VideoPlayer
-            videoUrl={firstMedia}
-            postId={event.id}
-            isLiked={event.is_liked || false}
-            likeCount={event.like_count || 0}
-            commentCount={event.comment_count || 0}
-            shareCount={0}
-            onLike={handleLike}
-            onComment={() => {}}
-            onShare={handleShare}
-            onTag={() => {}}
-            onClose={() => {
-              Keyboard.dismiss();
-              setShowFullScreenVideo(false);
-            }}
-            autoPlay={true}
-            previewMode={false}
-          />
-        </Modal>
+          autoPlay={true}
+          previewMode={false}
+        />
+      )}
+
+      {/* Event Menü Modal */}
+      {showEventMenu && (
+        <View style={styles.menuOverlay} onTouchEnd={() => setShowEventMenu(false)}>
+          <View style={[styles.menuContainer, { backgroundColor: theme.colors.card }]}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowEventMenu(false);
+                router.push(`/event/create?edit=${event.id}` as any);
+              }}
+            >
+              <Edit3 size={18} color={theme.colors.text} />
+              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Düzenle</Text>
+            </TouchableOpacity>
+            <View style={[styles.menuDivider, { backgroundColor: theme.colors.border }]} />
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowEventMenu(false);
+                handleDeleteEvent();
+              }}
+              disabled={deleteEventMutation.isPending}
+            >
+              <Trash2 size={18} color={COLORS.error} />
+              <Text style={[styles.menuItemText, { color: COLORS.error }]}>
+                {deleteEventMutation.isPending ? 'Siliniyor...' : 'Sil'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       )}
 
       {/* Yorum Menü Modal */}
       {menuVisibleCommentId && deleteCommentMutation && (
         <View style={styles.menuOverlay} onTouchEnd={() => setMenuVisibleCommentId(null)}>
-          <View style={styles.menuContainer}>
+          <View style={[styles.menuContainer, { backgroundColor: theme.colors.card }]}>
             {updateCommentMutation && (
               <>
                 <TouchableOpacity
@@ -755,10 +837,10 @@ export default function EventDetailScreen() {
                     }
                   }}
                 >
-                  <Edit3 size={18} color={COLORS.text} />
-                  <Text style={styles.menuItemText}>Düzenle</Text>
+                  <Edit3 size={18} color={theme.colors.text} />
+                  <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Düzenle</Text>
                 </TouchableOpacity>
-                <View style={styles.menuDivider} />
+                <View style={[styles.menuDivider, { backgroundColor: theme.colors.border }]} />
               </>
             )}
             <TouchableOpacity
@@ -909,43 +991,67 @@ const styles = StyleSheet.create({
     flex: 1,
     flexShrink: 1,
     backgroundColor: COLORS.background,
-    padding: SPACING.sm,
+    padding: SPACING.md,
     borderRadius: 12,
+  },
+  commentHeaderRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'flex-start' as const,
+    marginBottom: SPACING.xs + 2,
   },
   commentAuthorContainer: {
     flex: 1,
     flexShrink: 1,
-    marginBottom: 2,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    flexWrap: 'wrap' as const,
   },
   commentAuthor: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600' as const,
+    fontSize: FONT_SIZES.sm + 1,
+    fontWeight: '700' as const,
     color: COLORS.text,
-  },
-  commentUsernameContainer: {
-    flex: 1,
-    flexShrink: 1,
-    marginBottom: 2,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: (FONT_SIZES.sm + 1) * 1.2,
+    }),
   },
   commentUsername: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
+    fontWeight: '500' as const,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.xs * 1.3,
+    }),
   },
   commentTextContainer: {
     flex: 1,
     flexShrink: 1,
-    marginBottom: 4,
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.xs,
   },
   commentText: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.text,
-    lineHeight: 18,
+    lineHeight: Platform.OS === 'android' ? FONT_SIZES.sm * 1.5 : 20,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+    }),
+  },
+  commentFooter: {
+    marginTop: SPACING.xs - 2,
   },
   commentTime: {
-    fontSize: FONT_SIZES.xs,
+    fontSize: FONT_SIZES.xs - 1,
     color: COLORS.textLight,
+    opacity: 0.7,
   },
   commentInputContainer: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     backgroundColor: COLORS.white,
@@ -962,7 +1068,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 10,
-    zIndex: 100,
+    zIndex: 1000,
   },
   fullScreenModal: {
     flex: 1,

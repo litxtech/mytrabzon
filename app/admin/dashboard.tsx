@@ -62,7 +62,10 @@ export default function AdminDashboardScreen() {
       // tRPC ile admin kontrolü yap (backend'de bypass var)
       try {
         const adminCheck = await utils.admin.checkAdmin.fetch();
-        console.log('Admin check result:', adminCheck);
+        // Remove console.log for production
+        if (__DEV__) {
+          console.log('Admin check result:', adminCheck);
+        }
         if (adminCheck?.isAdmin) {
           setIsAdmin(true);
         } else {
@@ -72,8 +75,11 @@ export default function AdminDashboardScreen() {
           ]);
         }
       } catch (err: any) {
-        console.error('Admin check exception:', err);
-        console.error('Error details:', JSON.stringify(err, null, 2));
+        // Log errors only in development
+        if (__DEV__) {
+          console.error('Admin check exception:', err);
+          console.error('Error details:', JSON.stringify(err, null, 2));
+        }
         setIsAdmin(false);
         // Özel admin ise yine de erişim ver
         if (user.id === SPECIAL_ADMIN_ID) {

@@ -32,6 +32,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { formatTimeAgo } from '@/lib/time-utils';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 import { useRouter } from 'expo-router';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 
 // Expo Go için fallback type
 export type CommentSheetRef = BottomSheetModal | { present: () => void; dismiss: () => void };
@@ -47,6 +48,7 @@ export const CommentSheet = forwardRef<CommentSheetRef, CommentSheetProps>(
     const router = useRouter();
     const { theme } = useTheme();
     const { user, profile } = useAuth();
+    const { guard } = useAuthGuard();
     const [commentText, setCommentText] = useState('');
     const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
     const [editingCommentText, setEditingCommentText] = useState('');
@@ -189,15 +191,17 @@ export const CommentSheet = forwardRef<CommentSheetRef, CommentSheetProps>(
     });
 
     const handleSendComment = useCallback(() => {
-      if (!commentText.trim() || !postId) return;
-      
-      const actualPostId = postId.startsWith('event_') ? postId.replace('event_', '') : postId;
-      
-      createCommentMutation.mutate({
-        post_id: actualPostId,
-        content: commentText.trim(),
-      });
-    }, [commentText, postId, createCommentMutation]);
+      guard(() => {
+        if (!commentText.trim() || !postId) return;
+        
+        const actualPostId = postId.startsWith('event_') ? postId.replace('event_', '') : postId;
+        
+        createCommentMutation.mutate({
+          post_id: actualPostId,
+          content: commentText.trim(),
+        });
+      }, 'Yorum yapmak');
+    }, [commentText, postId, createCommentMutation, guard]);
 
     const handleDeleteComment = (commentId: string) => {
       Alert.alert(
@@ -334,25 +338,41 @@ export const CommentSheet = forwardRef<CommentSheetRef, CommentSheetProps>(
             />
           </TouchableOpacity>
           <View style={styles.commentContent}>
+            {/* İsim ve Kullanıcı Bilgileri - Üstte */}
             <View style={styles.commentHeader}>
-              <TouchableOpacity
-                onPress={() => {
-                  if (item.user?.id) {
-                    router.push(`/profile/${item.user.id}` as any);
-                  }
-                }}
-                activeOpacity={0.7}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-              >
-                <Text style={[styles.commentAuthor, { color: COLORS.white }]}>
-                  {item.user?.full_name || 'İsimsiz'}
+              <View style={styles.commentAuthorContainer}>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (item.user?.id) {
+                      router.push(`/profile/${item.user.id}` as any);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                >
+                  <Text style={[styles.commentAuthor, { color: COLORS.white }]}>
+                    {item.user?.full_name || 'İsimsiz'}
+                  </Text>
+                  {item.user?.verified && <VerifiedBadgeIcon size={14} />}
+                </TouchableOpacity>
+              </View>
+              <View style={styles.commentHeaderRight}>
+                <Text style={[styles.commentTime, { color: 'rgba(255, 255, 255, 0.6)' }]}>
+                  {formatTimeAgo(item.created_at)}
                 </Text>
-                {item.user?.verified && <VerifiedBadgeIcon size={14} />}
-              </TouchableOpacity>
-              <Text style={[styles.commentTime, { color: 'rgba(255, 255, 255, 0.6)' }]}>
-                {formatTimeAgo(item.created_at)}
-              </Text>
+                {isOwner && !isEditing && (
+                  <TouchableOpacity
+                    style={styles.menuButton}
+                    onPress={() => setMenuVisibleCommentId(menuVisibleCommentId === item.id ? null : item.id)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <MoreVertical size={16} color="rgba(255, 255, 255, 0.6)" />
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
+            
+            {/* Yorum Metni - Altta */}
             {isEditing ? (
               <View style={styles.editContainer}>
                 <TextInput
@@ -385,20 +405,11 @@ export const CommentSheet = forwardRef<CommentSheetRef, CommentSheetProps>(
                 </View>
               </View>
             ) : (
-              <>
+              <View style={styles.commentTextContainer}>
                 <Text style={[styles.commentText, { color: COLORS.white }]}>
                   {item.content}
                 </Text>
-                {isOwner && (
-                  <TouchableOpacity
-                    style={styles.menuButton}
-                    onPress={() => setMenuVisibleCommentId(menuVisibleCommentId === item.id ? null : item.id)}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <MoreVertical size={16} color="rgba(255, 255, 255, 0.6)" />
-                  </TouchableOpacity>
-                )}
-              </>
+              </View>
             )}
           </View>
         </TouchableOpacity>
@@ -580,20 +591,40 @@ const styles = StyleSheet.create({
   },
   commentHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: SPACING.xs + 2,
+  },
+  commentAuthorContainer: {
+    flex: 1,
+    flexShrink: 1,
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
-    marginBottom: SPACING.xs / 2,
+    gap: 8,
+    flexWrap: 'wrap',
   },
   commentAuthor: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
+    fontSize: FONT_SIZES.sm + 1,
+    fontWeight: '700',
+  },
+  commentHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
   },
   commentTime: {
-    fontSize: FONT_SIZES.xs,
+    fontSize: FONT_SIZES.xs - 1,
+    opacity: 0.7,
+  },
+  commentTextContainer: {
+    marginTop: SPACING.xs,
   },
   commentText: {
     fontSize: FONT_SIZES.sm,
-    lineHeight: 18,
+    lineHeight: Platform.OS === 'android' ? FONT_SIZES.sm * 1.5 : 20,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+    }),
   },
   emptyContainer: {
     padding: SPACING.xl,

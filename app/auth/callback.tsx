@@ -97,10 +97,14 @@ export default function AuthCallbackScreen() {
 
               setLoading(false);
               
-              if (profile?.full_name) {
-                router.replace('/(tabs)/feed');
-              } else {
+              // Email doğrulama sonrası - kullanıcı bilgileri ekranına yönlendir
+              // Profil tamamlanmamışsa onboarding'e gönder
+              if (!profile || !profile.full_name) {
+                console.log('🔐 [AuthCallback] Profile incomplete, redirecting to onboarding');
                 router.replace('/auth/onboarding');
+              } else {
+                console.log('🔐 [AuthCallback] Profile complete, redirecting to feed');
+                router.replace('/(tabs)/feed');
               }
               return;
             }
@@ -135,10 +139,14 @@ export default function AuthCallbackScreen() {
 
             setLoading(false);
             
-            if (profile?.full_name) {
-              router.replace('/(tabs)/feed');
-            } else {
+            // Email doğrulama sonrası - kullanıcı bilgileri ekranına yönlendir
+            // Profil tamamlanmamışsa onboarding'e gönder
+            if (!profile || !profile.full_name) {
+              console.log('🔐 [AuthCallback] Profile incomplete, redirecting to onboarding');
               router.replace('/auth/onboarding');
+            } else {
+              console.log('🔐 [AuthCallback] Profile complete, redirecting to feed');
+              router.replace('/(tabs)/feed');
             }
             return;
           }
@@ -158,10 +166,14 @@ export default function AuthCallbackScreen() {
 
           setLoading(false);
           
-          if (profile?.full_name) {
-            router.replace('/(tabs)/feed');
-          } else {
+          // Email doğrulama sonrası - kullanıcı bilgileri ekranına yönlendir
+          // Profil tamamlanmamışsa onboarding'e gönder
+          if (!profile || !profile.full_name) {
+            console.log('🔐 [AuthCallback] Profile incomplete, redirecting to onboarding');
             router.replace('/auth/onboarding');
+          } else {
+            console.log('🔐 [AuthCallback] Profile complete, redirecting to feed');
+            router.replace('/(tabs)/feed');
           }
           return;
         }

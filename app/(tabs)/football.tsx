@@ -19,6 +19,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { AppLogo } from '@/components/AppLogo';
 import { Calendar, MapPin, Clock, AlertCircle, ChevronRight, Plus, MoreVertical, Edit, Trash2 } from 'lucide-react-native';
 import { Footer } from '@/components/Footer';
+import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 
 export default function FootballScreen() {
   const router = useRouter();
@@ -137,9 +138,12 @@ export default function FootballScreen() {
                   </View>
                 )}
                 <View style={styles.organizerInfo}>
-                  <Text style={[styles.organizerName, { color: theme.colors.text }]}>
-                    {item.organizer.full_name || 'Organizatör'}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={[styles.organizerName, { color: theme.colors.text }]}>
+                      {item.organizer.full_name || 'Organizatör'}
+                    </Text>
+                    {item.organizer.verified && <VerifiedBadgeIcon size={16} />}
+                  </View>
                   <Text style={[styles.organizerMeta, { color: theme.colors.textLight }]}>
                     {item.city} • {formatTime(item)}
                   </Text>

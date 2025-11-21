@@ -14,6 +14,23 @@ export const compressImage = async (
     format?: 'jpeg' | 'png';
   }
 ): Promise<string> => {
+  // Guard: URI kontrolü
+  if (!uri || uri.trim() === '') {
+    throw new Error('EMPTY_URI: Image URI is empty');
+  }
+
+  // Guard: Sadece local file URI'leri kabul et
+  const isLocalFile = uri.startsWith('file://') || 
+                      uri.startsWith('ph://') || 
+                      uri.startsWith('content://') ||
+                      uri.startsWith('assets-library://');
+  
+  if (!isLocalFile) {
+    // Remote URL veya geçersiz URI - compress edilemez, orijinali döndür
+    console.warn('UNSUPPORTED_URI: compressImage only works with local files, returning original URI');
+    return uri;
+  }
+
   try {
     // expo-image-manipulator paketini dinamik olarak yükle
     let ImageManipulator: any;

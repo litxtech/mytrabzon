@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -35,15 +35,14 @@ import {
 } from 'lucide-react-native';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
 import { OptimizedImage } from '@/components/OptimizedImage';
-<<<<<<< HEAD
-=======
 import { VideoPlayer } from '@/components/VideoPlayer';
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user, profile } = useAuth();
+  const { guard } = useAuthGuard();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const utils = trpc.useUtils();
@@ -51,8 +50,30 @@ export default function PostDetailScreen() {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentText, setEditingCommentText] = useState('');
   const [menuVisibleCommentId, setMenuVisibleCommentId] = useState<string | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const commentInputRef = useRef<TextInput>(null);
   const flatListRef = useRef<FlatList>(null);
+
+  // Klavye event listener'ları
+  useEffect(() => {
+    const keyboardWillShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+    );
+    const keyboardWillHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      keyboardWillShowListener.remove();
+      keyboardWillHideListener.remove();
+    };
+  }, []);
 
   const formatCount = (count: number | null | undefined): string => {
     if (!count) return '0';
@@ -209,45 +230,71 @@ export default function PostDetailScreen() {
     );
   };
 
-  const handleLike = async () => {
-    if (!user) {
-      Alert.alert('Hata', 'Beğenmek için giriş yapmalısınız');
-      return;
-    }
-    try {
-      await likePostMutation.mutateAsync({ postId: id! });
-    } catch (error) {
-      console.error('Like error:', error);
-    }
+  const handleLike = () => {
+    guard(() => {
+      // Optimistic update - anında UI'ı güncelle
+      if (post) {
+        queryClient.setQueryData(['post', 'getPostDetail', { postId: id }], (oldData: any) => {
+          if (!oldData) return oldData;
+          const newIsLiked = !oldData.is_liked;
+          return {
+            ...oldData,
+            is_liked: newIsLiked,
+            like_count: newIsLiked ? (oldData.like_count || 0) + 1 : Math.max((oldData.like_count || 0) - 1, 0),
+          };
+        });
+      }
+      
+      // Anında mutation'ı çalıştır (async/await kaldırıldı - hızlı tepki için)
+      likePostMutation.mutate({ postId: id! }, {
+        onError: () => {
+          // Hata durumunda geri al
+          if (post) {
+            queryClient.setQueryData(['post', 'getPostDetail', { postId: id }], (oldData: any) => {
+              if (!oldData) return oldData;
+              return {
+                ...oldData,
+                is_liked: post.is_liked,
+                like_count: post.like_count,
+              };
+            });
+          }
+        },
+      });
+    }, 'Beğenmek');
   };
 
-  const handleAddComment = async () => {
-    if (!user) {
-      Alert.alert('Hata', 'Yorum yapmak için giriş yapmalısınız');
-      return;
-    }
-    if (!commentText.trim()) {
-      return;
-    }
-    // Klavyeyi kapat ve input'u blur et
-    Keyboard.dismiss();
-    commentInputRef.current?.blur();
-    const commentContent = commentText.trim();
-    setCommentText('');
-    try {
-      await addCommentMutation.mutateAsync({
+  const handleAddComment = () => {
+    guard(() => {
+      if (!commentText.trim()) {
+        return;
+      }
+      
+      // Optimistic update - anında UI'ı güncelle
+      const commentContent = commentText.trim();
+      setCommentText(''); // Anında temizle (hızlı tepki için)
+      
+      // Klavyeyi kapat ve input'u blur et
+      Keyboard.dismiss();
+      commentInputRef.current?.blur();
+      
+      // Anında mutation'ı çalıştır (async/await kaldırıldı - hızlı tepki için)
+      addCommentMutation.mutate({
         post_id: id!,
         content: commentContent,
+      }, {
+        onError: () => {
+          // Hata durumunda metni geri yükle
+          setCommentText(commentContent);
+        },
+        onSuccess: () => {
+          // Yorum eklendikten sonra FlatList'i en alta kaydır
+          setTimeout(() => {
+            flatListRef.current?.scrollToEnd({ animated: true });
+          }, 100);
+        },
       });
-      // Yorum eklendikten sonra FlatList'i en alta kaydır
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    } catch (error) {
-      console.error('Comment error:', error);
-      Alert.alert('Hata', 'Yorum eklenirken bir hata oluştu');
-      setCommentText(commentContent); // Hata durumunda metni geri yükle
-    }
+    }, 'Yorum yapmak');
   };
 
   const handleDeleteComment = (commentId: string) => {
@@ -325,21 +372,29 @@ export default function PostDetailScreen() {
           />
         </TouchableOpacity>
         <View style={styles.commentContent}>
-          <View style={styles.commentAuthorContainer}>
-            <TouchableOpacity
-              onPress={() => {
-                if (comment.user?.id) {
-                  router.push(`/profile/${comment.user.id}` as any);
-                }
-              }}
-              activeOpacity={0.7}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-            >
-              <Text style={styles.commentAuthor}>
-                {comment.user?.full_name || 'İsimsiz'}
-              </Text>
-              {comment.user?.verified && <VerifiedBadgeIcon size={14} />}
-            </TouchableOpacity>
+          {/* İsim ve Kullanıcı Bilgileri - Üstte */}
+          <View style={styles.commentHeaderRow}>
+            <View style={styles.commentAuthorContainer}>
+              <TouchableOpacity
+                onPress={() => {
+                  if (comment.user?.id) {
+                    router.push(`/profile/${comment.user.id}` as any);
+                  }
+                }}
+                activeOpacity={0.7}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              >
+                <Text style={styles.commentAuthor}>
+                  {comment.user?.full_name || 'İsimsiz'}
+                </Text>
+                {comment.user?.verified && <VerifiedBadgeIcon size={14} />}
+              </TouchableOpacity>
+              {comment.user?.username && (
+                <Text style={styles.commentUsername}>
+                  @{comment.user.username}
+                </Text>
+              )}
+            </View>
             {isOwner && !isEditing && (
               <TouchableOpacity
                 style={styles.commentMenuButton}
@@ -350,13 +405,8 @@ export default function PostDetailScreen() {
               </TouchableOpacity>
             )}
           </View>
-          {comment.user?.username && (
-            <View style={styles.commentUsernameContainer}>
-              <Text style={styles.commentUsername}>
-                @{comment.user.username}
-              </Text>
-            </View>
-          )}
+          
+          {/* Yorum Metni - Altta */}
           {isEditing ? (
             <View style={styles.editContainer}>
               <TextInput
@@ -395,12 +445,14 @@ export default function PostDetailScreen() {
                   {comment.content}
                 </Text>
               </View>
-              <Text style={styles.commentTime}>
-                {new Date(comment.created_at).toLocaleDateString('tr-TR', {
-                  day: 'numeric',
-                  month: 'short',
-                })}
-              </Text>
+              <View style={styles.commentFooter}>
+                <Text style={styles.commentTime}>
+                  {new Date(comment.created_at).toLocaleDateString('tr-TR', {
+                    day: 'numeric',
+                    month: 'short',
+                  })}
+                </Text>
+              </View>
             </>
           )}
         </View>
@@ -542,9 +594,9 @@ export default function PostDetailScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-      enabled={Platform.OS === 'ios'}
+      enabled={true}
     >
       <Stack.Screen
         options={{
@@ -608,79 +660,56 @@ export default function PostDetailScreen() {
           renderItem={renderComment}
           keyExtractor={(item) => item.id}
           ListHeaderComponent={renderListHeader}
-          contentContainerStyle={{ paddingBottom: 120 }} // Input için boşluk
+          contentContainerStyle={{ paddingBottom: 100 }} // Input için boşluk
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           showsVerticalScrollIndicator={true}
           style={{ flex: 1 }}
         />
+      </View>
 
-        {/* Yorum Input - Klavyenin Üstünde Sabit */}
-        <View style={[styles.commentInputWrapper, { paddingBottom: Math.max(insets.bottom, SPACING.sm) }]}>
-          <View style={styles.commentInputContainer}>
-            <Image
-              source={{
-                uri: profile?.avatar_url || user?.user_metadata?.avatar_url || 'https://via.placeholder.com/32',
-              }}
-              style={styles.commentInputAvatar}
-            />
-            <TextInput
-              ref={commentInputRef}
-              style={styles.commentInput}
-              placeholder="Yorum yaz..."
-              placeholderTextColor={COLORS.textLight}
-              value={commentText}
-              onChangeText={setCommentText}
-              multiline
-              maxLength={1000}
-              textAlignVertical="top"
-              blurOnSubmit={false}
-              returnKeyType="default"
-            />
-            <TouchableOpacity
-              style={[
-                styles.sendButton,
-                !commentText.trim() && styles.sendButtonDisabled,
-              ]}
-              onPress={handleAddComment}
-              disabled={!commentText.trim() || addCommentMutation.isPending}
-            >
-<<<<<<< HEAD
-              <Image
-                source={{
-                  uri: post.author?.avatar_url || 'https://via.placeholder.com/40',
-                }}
-                style={styles.avatar}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.postHeaderInfo}
-              onPress={() => post.author_id && router.push(`/profile/${post.author_id}` as any)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.postAuthorContainer}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={styles.postAuthor}>
-                    {Array.isArray(post.author) ? post.author[0]?.full_name : post.author?.full_name}
-                  </Text>
-                  {(Array.isArray(post.author) ? post.author[0]?.verified : post.author?.verified) && <VerifiedBadgeIcon size={16} />}
-                </View>
-              </View>
-              {(Array.isArray(post.author) ? post.author[0]?.username : post.author?.username) && (
-                <View style={styles.postUsernameContainer}>
-                  <Text style={styles.postUsername}>
-                    @{Array.isArray(post.author) ? post.author[0]?.username : post.author?.username}
-                  </Text>
-                </View>
-=======
-              {addCommentMutation.isPending ? (
-                <ActivityIndicator size="small" color={COLORS.white} />
-              ) : (
-                <Send size={20} color={COLORS.white} />
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
-              )}
-            </TouchableOpacity>
-          </View>
+      {/* Yorum Input - Klavyenin Üstünde Sabit (Absolute Position) */}
+      <View style={[
+        styles.commentInputWrapper, 
+        { 
+          paddingBottom: Math.max(insets.bottom, SPACING.sm),
+          bottom: keyboardHeight > 0 ? keyboardHeight : 0,
+        }
+      ]}>
+        <View style={styles.commentInputContainer}>
+          <Image
+            source={{
+              uri: profile?.avatar_url || user?.user_metadata?.avatar_url || 'https://via.placeholder.com/32',
+            }}
+            style={styles.commentInputAvatar}
+          />
+          <TextInput
+            ref={commentInputRef}
+            style={styles.commentInput}
+            placeholder="Yorum yaz..."
+            placeholderTextColor={COLORS.textLight}
+            value={commentText}
+            onChangeText={setCommentText}
+            multiline
+            maxLength={1000}
+            textAlignVertical="top"
+            blurOnSubmit={false}
+            returnKeyType="default"
+          />
+          <TouchableOpacity
+            style={[
+              styles.sendButton,
+              !commentText.trim() && styles.sendButtonDisabled,
+            ]}
+            onPress={handleAddComment}
+            disabled={!commentText.trim() || addCommentMutation.isPending}
+          >
+            {addCommentMutation.isPending ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <Send size={20} color={COLORS.white} />
+            )}
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -932,31 +961,36 @@ const styles = StyleSheet.create({
     flex: 1,
     flexShrink: 1,
     backgroundColor: COLORS.background,
-    padding: SPACING.sm,
+    padding: SPACING.md,
     borderRadius: 12,
+  },
+  commentHeaderRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'flex-start' as const,
+    marginBottom: SPACING.xs + 2,
   },
   commentAuthorContainer: {
     flex: 1,
     flexShrink: 1,
-    marginBottom: 2,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    flexWrap: 'wrap' as const,
   },
   commentAuthor: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600' as const,
+    fontSize: FONT_SIZES.sm + 1,
+    fontWeight: '700' as const,
     color: COLORS.text,
     ...(Platform.OS === 'android' && {
       includeFontPadding: false,
-      lineHeight: FONT_SIZES.sm * 1.3,
+      lineHeight: (FONT_SIZES.sm + 1) * 1.2,
     }),
-  },
-  commentUsernameContainer: {
-    flex: 1,
-    flexShrink: 1,
-    marginBottom: 2,
   },
   commentUsername: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
+    fontWeight: '500' as const,
     ...(Platform.OS === 'android' && {
       includeFontPadding: false,
       lineHeight: FONT_SIZES.xs * 1.3,
@@ -965,21 +999,29 @@ const styles = StyleSheet.create({
   commentTextContainer: {
     flex: 1,
     flexShrink: 1,
-    marginBottom: 4,
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.xs,
   },
   commentText: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.text,
-    lineHeight: Platform.OS === 'android' ? FONT_SIZES.sm * 1.4 : 18,
+    lineHeight: Platform.OS === 'android' ? FONT_SIZES.sm * 1.5 : 20,
     ...(Platform.OS === 'android' && {
       includeFontPadding: false,
     }),
   },
+  commentFooter: {
+    marginTop: SPACING.xs - 2,
+  },
   commentTime: {
-    fontSize: FONT_SIZES.xs,
+    fontSize: FONT_SIZES.xs - 1,
     color: COLORS.textLight,
+    opacity: 0.7,
   },
   commentInputWrapper: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
     backgroundColor: COLORS.white,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
@@ -991,6 +1033,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 5,
+    zIndex: 1000,
   },
   commentInputContainer: {
     flexDirection: 'row' as const,

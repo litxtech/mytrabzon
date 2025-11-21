@@ -17,10 +17,36 @@ function admin() {
 
 app.post("/", async (c) => {
   try {
-    const { email, code, password, isRegister } = await c.req.json();
+    let requestBody: any;
+    try {
+      requestBody = await c.req.json();
+    } catch (parseError: any) {
+      console.error("JSON parse error:", parseError);
+      return c.json({ error: "Invalid JSON format" }, 400);
+    }
 
-    if (!email || !code) {
+    const { email, code, password, isRegister } = requestBody || {};
+
+    // Güvenli validation
+    if (!email || typeof email !== 'string' || !code || typeof code !== 'string') {
       return c.json({ error: "Email and code required" }, 400);
+    }
+
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedCode = code.trim();
+
+    if (trimmedEmail.length === 0 || trimmedCode.length === 0) {
+      return c.json({ error: "Email and code cannot be empty" }, 400);
+    }
+
+    // Email uzunluk kontrolü
+    if (trimmedEmail.length > 254) {
+      return c.json({ error: "Invalid email format" }, 400);
+    }
+
+    // Kod uzunluk kontrolü
+    if (trimmedCode.length > 10) {
+      return c.json({ error: "Invalid code format" }, 400);
     }
 
     const supabase = admin();
@@ -29,8 +55,8 @@ app.post("/", async (c) => {
     const { data: otpData, error: otpError } = await supabase
       .from("otp_codes")
       .select("*")
-      .eq("email", email)
-      .eq("code", code)
+      .eq("email", trimmedEmail)
+      .eq("code", trimmedCode)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -62,9 +88,14 @@ app.post("/", async (c) => {
         return c.json({ error: "Password required for registration" }, 400);
       }
 
+      // Password validation
+      if (!password || typeof password !== 'string' || password.length < 6) {
+        return c.json({ error: "Password must be at least 6 characters" }, 400);
+      }
+
       const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email,
-        password,
+        email: trimmedEmail,
+        password: password.trim(),
         email_confirm: true,
       });
 
@@ -87,7 +118,7 @@ app.post("/", async (c) => {
       });
     } else {
       // Giriş modunda - kullanıcıyı bul
-      const { data: authData, error: authError } = await supabase.auth.admin.getUserByEmail(email);
+      const { data: authData, error: authError } = await supabase.auth.admin.getUserByEmail(trimmedEmail);
 
       if (authError || !authData.user) {
         return c.json({ error: "user_not_found", message: "Kullanıcı bulunamadı" }, 404);

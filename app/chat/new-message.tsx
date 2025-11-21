@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, MessageCircle, Search, Check } from 'lucide-react-native';
+import { ArrowLeft, Search } from 'lucide-react-native';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,7 +24,7 @@ export default function NewMessageScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [search, setSearch] = useState('');
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
 
   const { data: usersData, isLoading } = trpc.user.getAllUsers.useQuery({
     search: search || undefined,
@@ -32,31 +32,34 @@ export default function NewMessageScreen() {
 
   const createRoomMutation = trpc.chat.createRoom.useMutation({
     onSuccess: (room) => {
-      Alert.alert('Başarılı', 'Mesaj başarıyla gönderildi!', [
-        {
-          text: 'Tamam',
-          onPress: () => router.replace(`/chat/${room.id}` as any),
-        },
-      ]);
+      // Room oluşturuldu, mesaj ekranına yönlendir
+      setLoadingUserId(null); // Loading'i temizle
+      router.replace(`/chat/${room.id}` as any);
     },
     onError: (error) => {
-      Alert.alert('Hata', error.message || 'Mesaj gönderilemedi');
+      setLoadingUserId(null); // Hata durumunda loading'i temizle
+      Alert.alert('Hata', error.message || 'Mesaj odası oluşturulamadı');
     },
   });
 
-  const handleSendMessage = async () => {
-    if (!selectedUserId) {
-      Alert.alert('Hata', 'Lütfen bir kullanıcı seçin');
+  const handleUserSelect = async (userId: string) => {
+    if (!userId) {
+      Alert.alert('Hata', 'Kullanıcı seçilemedi');
       return;
     }
 
+    // Sadece bu kullanıcı için loading göster
+    setLoadingUserId(userId);
+
     try {
+      // Kullanıcı seçildiğinde room oluştur ve mesaj ekranına yönlendir
       await createRoomMutation.mutateAsync({
         type: 'direct',
-        memberIds: [selectedUserId],
+        memberIds: [userId],
       });
     } catch (error) {
-      console.error('Create message error:', error);
+      console.error('Create room error:', error);
+      setLoadingUserId(null); // Hata durumunda loading'i temizle
     }
   };
 
@@ -102,14 +105,15 @@ export default function NewMessageScreen() {
             keyExtractor={(item) => item.id}
             scrollEnabled={false}
             renderItem={({ item }) => {
-              const isSelected = selectedUserId === item.id;
+              const isCreating = loadingUserId === item.id && createRoomMutation.isPending;
               return (
                 <TouchableOpacity
                   style={[
                     styles.userItem,
-                    isSelected && styles.userItemSelected,
+                    isCreating && styles.userItemDisabled,
                   ]}
-                  onPress={() => setSelectedUserId(item.id)}
+                  onPress={() => handleUserSelect(item.id)}
+                  disabled={createRoomMutation.isPending}
                 >
                   <Image
                     source={{ uri: item.avatar_url || 'https://via.placeholder.com/50' }}
@@ -127,10 +131,8 @@ export default function NewMessageScreen() {
                       <Text style={styles.userDistrict}>{item.district}</Text>
                     )}
                   </View>
-                  {isSelected && (
-                    <View style={styles.checkIcon}>
-                      <Check size={20} color={COLORS.white} />
-                    </View>
+                  {isCreating && (
+                    <ActivityIndicator size="small" color={COLORS.primary} />
                   )}
                 </TouchableOpacity>
               );
@@ -145,23 +147,6 @@ export default function NewMessageScreen() {
           />
         )}
 
-        <TouchableOpacity
-          style={[
-            styles.sendButton,
-            (!selectedUserId || createRoomMutation.isPending) && styles.sendButtonDisabled,
-          ]}
-          onPress={handleSendMessage}
-          disabled={!selectedUserId || createRoomMutation.isPending}
-        >
-          {createRoomMutation.isPending ? (
-            <ActivityIndicator color={COLORS.white} />
-          ) : (
-            <>
-              <MessageCircle size={20} color={COLORS.white} />
-              <Text style={styles.sendButtonText}>Mesaj Gönder</Text>
-            </>
-          )}
-        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -220,9 +205,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  userItemSelected: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primary + '10',
+  userItemDisabled: {
+    opacity: 0.6,
   },
   userAvatar: {
     width: 40,
@@ -249,14 +233,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.textLight,
   },
-  checkIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   emptyContainer: {
     padding: SPACING.xl,
     alignItems: 'center',
@@ -264,24 +240,6 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: FONT_SIZES.md,
     color: COLORS.textLight,
-  },
-  sendButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.primary,
-    padding: SPACING.md,
-    borderRadius: 12,
-    gap: SPACING.sm,
-    marginTop: SPACING.lg,
-  },
-  sendButtonDisabled: {
-    opacity: 0.5,
-  },
-  sendButtonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
   },
 });
 

@@ -23,13 +23,10 @@ import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
 import { DISTRICTS, DISTRICT_BADGES } from '@/constants/districts';
 import { Post, District } from '@/types/database';
-<<<<<<< HEAD
-import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, MoreVertical, AlertCircle, Car, Search, AlertTriangle } from 'lucide-react-native';
-=======
-import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, MoreVertical, AlertCircle, Trash2, Car, Search } from 'lucide-react-native';
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
+import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, MoreVertical, AlertCircle, Trash2, Car, Search, AlertTriangle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 import { AppLogo } from '@/components/AppLogo';
 import { SupporterBadge } from '@/components/SupporterBadge';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
@@ -45,11 +42,15 @@ export default function FeedScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { theme } = useTheme();
+  const { guard } = useAuthGuard();
   const utils = trpc.useUtils();
   const [selectedDistrict, setSelectedDistrict] = useState<District | 'all'>('all');
   const [sortType, setSortType] = useState<SortType>('new');
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedPostMedia, setSelectedPostMedia] = useState<any[]>([]); // Post medya listesi
+  const [selectedMediaIndex, setSelectedMediaIndex] = useState(0); // Seçili medya index'i
+  const modalScrollViewRef = useRef<ScrollView>(null);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [videoModalVisible, setVideoModalVisible] = useState(false);
   const [warningModalVisible, setWarningModalVisible] = useState(false);
@@ -149,48 +150,39 @@ export default function FeedScreen() {
     },
   });
 
-  // Debounce için ref
-  const likeTimeoutRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  
   const handleLike = useCallback((postId: string) => {
-    // Önceki timeout'u iptal et
-    if (likeTimeoutRef.current[postId]) {
-      clearTimeout(likeTimeoutRef.current[postId]);
-    }
-    
-    // Optimistic update - anında UI'ı güncelle
-    utils.post.getPosts.setData(
-      { district: selectedDistrict === 'all' ? undefined : selectedDistrict, sort: sortType, limit: 20, offset: 0 },
-      (old: any) => {
-        if (!old?.posts) return old;
-        return {
-          ...old,
-          posts: old.posts.map((post: Post) => {
-            if (post.id === postId) {
-              const isCurrentlyLiked = post.is_liked;
-              return {
-                ...post,
-                is_liked: !isCurrentlyLiked,
-                like_count: (post.like_count || 0) + (isCurrentlyLiked ? -1 : 1),
-              };
-            }
-            return post;
-          }),
-        };
-      }
-    );
-    
-    // 300ms debounce ile mutation'ı çalıştır
-    likeTimeoutRef.current[postId] = setTimeout(() => {
+    guard(() => {
+      // Optimistic update - anında UI'ı güncelle (debounce kaldırıldı - anında tepki)
+      utils.post.getPosts.setData(
+        { district: selectedDistrict === 'all' ? undefined : selectedDistrict, sort: sortType, limit: 20, offset: 0 },
+        (old: any) => {
+          if (!old?.posts) return old;
+          return {
+            ...old,
+            posts: old.posts.map((post: Post) => {
+              if (post.id === postId) {
+                const isCurrentlyLiked = post.is_liked;
+                return {
+                  ...post,
+                  is_liked: !isCurrentlyLiked,
+                  like_count: (post.like_count || 0) + (isCurrentlyLiked ? -1 : 1),
+                };
+              }
+              return post;
+            }),
+          };
+        }
+      );
+      
+      // Anında mutation'ı çalıştır (debounce kaldırıldı - hızlı tepki için)
       likePostMutation.mutate({ postId }, {
         onError: () => {
           // Hata durumunda geri al
           refetch();
         },
       });
-      delete likeTimeoutRef.current[postId];
-    }, 300);
-  }, [likePostMutation, utils, selectedDistrict, sortType, refetch]);
+    }, 'Beğenmek');
+  }, [likePostMutation, utils, selectedDistrict, sortType, refetch, guard]);
 
   const renderSortTabs = useMemo(() => (
     <View style={[styles.sortContainer, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
@@ -282,19 +274,6 @@ export default function FeedScreen() {
     },
     onError: (error) => Alert.alert('Hata', error.message),
   });
-
-<<<<<<< HEAD
-  const resolveWarningMutation = (trpc as any).admin.resolveWarning.useMutation({
-    onSuccess: () => {
-      refetch();
-    },
-    onError: (error: any) => {
-      console.error('Uyarı çözülemedi:', error);
-    },
-  });
-
-=======
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   const handlePostOptions = useCallback((post: Post) => {
     if (post.author_id !== user?.id) return;
     Alert.alert('Gönderi', 'Seçenekler', [
@@ -386,13 +365,6 @@ export default function FeedScreen() {
           </TouchableOpacity>
           {event.user_id === user?.id && (
             <TouchableOpacity
-<<<<<<< HEAD
-              style={styles.postMenuButton}
-              onPress={() => handleEventOptions(event)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <MoreVertical size={18} color={theme.colors.textLight} />
-=======
               style={styles.eventDeleteButton}
               onPress={() => {
                 Alert.alert(
@@ -403,7 +375,7 @@ export default function FeedScreen() {
                     {
                       text: 'Sil',
                       style: 'destructive',
-                      onPress: () => deleteEventMutation.mutate({ event_id: event.id }),
+                      onPress: () => deleteEventMutation.mutate({ eventId: event.id }),
                     },
                   ]
                 );
@@ -411,7 +383,6 @@ export default function FeedScreen() {
               disabled={deleteEventMutation.isPending}
             >
               <Trash2 size={18} color={theme.colors.error} />
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
             </TouchableOpacity>
           )}
         </View>
@@ -438,7 +409,7 @@ export default function FeedScreen() {
               >
                 <VideoPlayer
                   videoUrl={firstMedia}
-                  postId={event.id}
+                  postId={`event_${event.id}`}
                   isLiked={event.is_liked || false}
                   likeCount={event.like_count || 0}
                   commentCount={event.comment_count || 0}
@@ -462,6 +433,8 @@ export default function FeedScreen() {
               <TouchableOpacity
                 onPress={() => {
                   setSelectedImage(firstMedia);
+                  setSelectedPostMedia([{ path: firstMedia }]);
+                  setSelectedMediaIndex(0);
                   setImageModalVisible(true);
                 }}
                 activeOpacity={0.9}
@@ -512,16 +485,18 @@ export default function FeedScreen() {
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => {
-              // Event'i post olarak paylaşmak için create-post ekranına yönlendir
-              const eventContent = `🚨 Olay Var: ${event.title}\n\n${event.description || ''}\n\n📍 ${event.district}${event.city ? `, ${event.city}` : ''}`;
-              router.push({
-                pathname: '/create-post',
-                params: {
-                  shareEvent: event.id,
-                  content: eventContent,
-                  mediaUrls: event.media_urls ? JSON.stringify(event.media_urls) : undefined,
-                } as any,
-              });
+              guard(() => {
+                // Event'i post olarak paylaşmak için create-post ekranına yönlendir
+                const eventContent = `🚨 Olay Var: ${event.title}\n\n${event.description || ''}\n\n📍 ${event.district}${event.city ? `, ${event.city}` : ''}`;
+                router.push({
+                  pathname: '/create-post',
+                  params: {
+                    shareEvent: event.id,
+                    content: eventContent,
+                    mediaUrls: event.media_urls ? JSON.stringify(event.media_urls) : undefined,
+                  } as any,
+                });
+              }, 'Gönderi paylaşmak');
             }}
           >
             <Share2 size={20} color={theme.colors.textLight} />
@@ -532,11 +507,7 @@ export default function FeedScreen() {
         </View>
       </View>
     );
-<<<<<<< HEAD
-  }, [router, theme, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible, refetchEvents, formatCount, likeEventMutation, user?.id, handleEventOptions]);
-=======
   }, [router, theme, user?.id, setSelectedVideo, setVideoModalVisible, setSelectedImage, setImageModalVisible, refetchEvents, formatCount, likeEventMutation, deleteEventMutation]);
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 
   const renderPost = useCallback(({ item }: { item: Post }) => {
     const firstMedia = item.media && item.media.length > 0 ? item.media[0] : null;
@@ -638,70 +609,163 @@ export default function FeedScreen() {
           </Text>
         </TouchableOpacity>
 
-        {firstMedia && (
+        {item.media && item.media.length > 0 && (
           <>
-            {isVideo && firstMedia.path && typeof firstMedia.path === 'string' && firstMedia.path.trim() !== '' ? (
-              <View style={styles.videoContainer}>
-                <VideoPlayer
-                  videoUrl={firstMedia.path.trim()}
-                  postId={item.id}
-                  isLiked={item.is_liked}
-                  isSaved={false}
-                  likeCount={item.like_count}
-                  commentCount={item.comment_count}
-                  shareCount={item.share_count}
-                  onLike={() => handleLike(item.id)}
-                  onComment={() => router.push(`/post/${item.id}` as any)}
-                  onShare={async () => {
-                    // VideoPlayer component'i içinde paylaş modal'ı açılacak
-                    // Burada sadece normal paylaş işlemi yapılır
-                    try {
-                      await Share.share({
-                        message: `${item.author?.full_name} - ${item.content || 'Gönderi'}`,
-                        url: firstMedia.path,
-                      });
-                    } catch (error) {
-                      console.error('Share error:', error);
-                    }
-                  }}
-                  onTag={() => {
-                    router.push(`/post/${item.id}` as any);
-                  }}
-                  onSave={() => {
-                    // Kaydetme fonksiyonu - post.savePost mutation'ı kullanılabilir
-                    Alert.alert('Bilgi', 'Kaydetme özelliği yakında eklenecek');
-                  }}
-                  autoPlay={true}
-                  previewMode={true}
-                  onFullScreen={() => {
-                    // Video feed sayfasına yönlendir
-                    router.push(`/video-feed?postId=${item.id}` as any);
-                  }}
-                />
-              </View>
-            ) : (
-              <TouchableOpacity
-                onPress={() => {
-                  setSelectedImage(firstMedia.path);
-                  setImageModalVisible(true);
-                }}
-                activeOpacity={0.9}
-                style={styles.imageContainer}
+            {/* Birden fazla medya varsa yatay scroll */}
+            {item.media.length > 1 ? (
+              <ScrollView
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                style={styles.mediaScrollView}
+                contentContainerStyle={styles.mediaScrollContent}
+                snapToInterval={Dimensions.get('window').width}
+                decelerationRate="fast"
               >
-                <OptimizedImage
-                  source={firstMedia.path}
-                  isThumbnail={true}
-                  style={styles.postImage}
-                />
-              </TouchableOpacity>
+                {item.media.map((mediaItem: any, mediaIndex: number) => {
+                  const isMediaVideo = mediaItem.type === 'video' || mediaItem.path?.match(/\.(mp4|mov|avi|webm)$/i);
+                  
+                  return (
+                    <View key={mediaIndex} style={styles.mediaItemContainer}>
+                      {isMediaVideo && mediaItem.path && typeof mediaItem.path === 'string' && mediaItem.path.trim() !== '' ? (
+                        <View style={styles.videoContainer}>
+                          <VideoPlayer
+                            videoUrl={mediaItem.path.trim()}
+                            postId={item.id}
+                            isLiked={item.is_liked}
+                            isSaved={false}
+                            likeCount={item.like_count}
+                            commentCount={item.comment_count}
+                            shareCount={item.share_count}
+                            onLike={() => handleLike(item.id)}
+                            onComment={() => router.push(`/post/${item.id}` as any)}
+                            onShare={() => {
+                              guard(() => {
+                                // Uygulama içi paylaşım - create-post ekranına yönlendir
+                                const shareContent = item.content || '';
+                                const shareMediaUrls = item.media && item.media.length > 0 
+                                  ? JSON.stringify(item.media.map((m: any) => m.path))
+                                  : undefined;
+                                
+                                router.push({
+                                  pathname: '/create-post',
+                                  params: {
+                                    content: shareContent,
+                                    mediaUrls: shareMediaUrls,
+                                  } as any,
+                                });
+                              }, 'Paylaşmak');
+                            }}
+                            onTag={() => {
+                              router.push(`/post/${item.id}` as any);
+                            }}
+                            onSave={() => {
+                              Alert.alert('Bilgi', 'Kaydetme özelliği yakında eklenecek');
+                            }}
+                            autoPlay={mediaIndex === 0}
+                            previewMode={true}
+                            onFullScreen={() => {
+                              router.push(`/video-feed?postId=${item.id}` as any);
+                            }}
+                          />
+                        </View>
+                      ) : (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSelectedPostMedia(item.media || []);
+                      setSelectedMediaIndex(mediaIndex);
+                      setImageModalVisible(true);
+                    }}
+                          activeOpacity={0.9}
+                          style={styles.imageContainer}
+                        >
+                          <OptimizedImage
+                            source={mediaItem.path}
+                            isThumbnail={true}
+                            style={styles.postImage}
+                            contentFit="cover"
+                          />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            ) : (
+              // Tek medya varsa normal gösterim
+              <>
+                {firstMedia && isVideo && firstMedia.path && typeof firstMedia.path === 'string' && firstMedia.path.trim() !== '' ? (
+                  <View style={styles.videoContainer}>
+                    <VideoPlayer
+                      videoUrl={firstMedia.path.trim()}
+                      postId={item.id}
+                      isLiked={item.is_liked}
+                      isSaved={false}
+                      likeCount={item.like_count}
+                      commentCount={item.comment_count}
+                      shareCount={item.share_count}
+                      onLike={() => handleLike(item.id)}
+                      onComment={() => router.push(`/post/${item.id}` as any)}
+                      onShare={() => {
+                        guard(() => {
+                          // Uygulama içi paylaşım - create-post ekranına yönlendir
+                          const shareContent = item.content || '';
+                          const shareMediaUrls = item.media && item.media.length > 0 
+                            ? JSON.stringify(item.media.map((m: any) => m.path))
+                            : undefined;
+                          
+                          router.push({
+                            pathname: '/create-post',
+                            params: {
+                              content: shareContent,
+                              mediaUrls: shareMediaUrls,
+                            } as any,
+                          });
+                        }, 'Paylaşmak');
+                      }}
+                      onTag={() => {
+                        router.push(`/post/${item.id}` as any);
+                      }}
+                      onSave={() => {
+                        Alert.alert('Bilgi', 'Kaydetme özelliği yakında eklenecek');
+                      }}
+                      autoPlay={true}
+                      previewMode={true}
+                      onFullScreen={() => {
+                        router.push(`/video-feed?postId=${item.id}` as any);
+                      }}
+                    />
+                  </View>
+                ) : firstMedia ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      const mediaArray = item.media || [];
+                      setSelectedPostMedia(mediaArray);
+                      setSelectedMediaIndex(0);
+                      setSelectedImage(mediaArray[0]?.path || null);
+                      setImageModalVisible(true);
+                    }}
+                    activeOpacity={0.9}
+                    style={styles.imageContainer}
+                  >
+                    <OptimizedImage
+                      source={firstMedia.path}
+                      isThumbnail={true}
+                      style={styles.postImage}
+                      contentFit="cover"
+                    />
+                  </TouchableOpacity>
+                ) : null}
+              </>
+            )}
+            
+            {/* Medya sayısı göstergesi (birden fazla medya varsa) */}
+            {item.media.length > 1 && (
+              <View style={styles.mediaCountBadge}>
+                <Text style={styles.mediaCountText}>{item.media.length}</Text>
+              </View>
             )}
           </>
-        )}
-
-        {item.media && item.media.length > 1 && (
-          <View style={styles.mediaCountBadge}>
-            <Text style={styles.mediaCountText}>+{item.media.length - 1}</Text>
-          </View>
         )}
 
         <View style={[styles.postActions, { borderTopColor: theme.colors.border }]}>
@@ -762,11 +826,8 @@ export default function FeedScreen() {
     <View style={[styles.container, { backgroundColor: theme.colors.background, paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.md) : 0 }]}>
       <View style={[styles.header, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border, paddingTop: Math.max(insets.top, Platform.OS === 'android' ? SPACING.lg : SPACING.md) }]}>
         <AppLogo size="medium" style={styles.headerLogo} />
-<<<<<<< HEAD
-        <View style={styles.headerButtons}>
-          <WhatsAppComplaintButton />
-=======
         <View style={styles.headerActions}>
+          <WhatsAppComplaintButton />
           <TouchableOpacity
             style={[styles.headerActionButton, { backgroundColor: theme.colors.primary }]}
             onPress={() => router.push('/ride/search')}
@@ -781,7 +842,6 @@ export default function FeedScreen() {
           >
             <Car size={18} color={theme.colors.primary} />
           </TouchableOpacity>
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
           <TouchableOpacity
             style={[styles.usersButton, { backgroundColor: theme.colors.surface }]}
             onPress={() => router.push('/all-users')}
@@ -849,7 +909,7 @@ export default function FeedScreen() {
           <Text style={[styles.emptySubtext, { color: theme.colors.textLight }]}>İlk gönderiyi sen oluştur!</Text>
           <TouchableOpacity
             style={[styles.createButton, { backgroundColor: theme.colors.primary }]}
-            onPress={() => router.push('/create-post')}
+            onPress={() => guard(() => router.push('/create-post'), 'Gönderi oluşturmak')}
           >
             <Plus size={20} color={COLORS.white} />
             <Text style={[styles.createButtonText, { color: COLORS.white }]}>Gönderi Oluştur</Text>
@@ -1012,9 +1072,6 @@ export default function FeedScreen() {
                           onPress: async () => {
                             try {
                               await deletePostMutation.mutateAsync({ postId: selectedWarningPost.id });
-                              if (selectedWarning?.id) {
-                                await resolveWarningMutation.mutateAsync({ warningId: selectedWarning.id });
-                              }
                               setWarningModalVisible(false);
                               refetch();
                             } catch (error: any) {
@@ -1047,46 +1104,121 @@ export default function FeedScreen() {
 
       <TouchableOpacity
         style={[styles.fab, { bottom: (Platform.OS === 'android' ? Math.max(insets.bottom, SPACING.lg) : SPACING.lg) + 60 }]}
-        onPress={() => router.push('/create-post')}
+        onPress={() => guard(() => router.push('/create-post'), 'Gönderi oluşturmak')}
       >
         <Plus size={24} color={COLORS.white} />
       </TouchableOpacity>
 
-      {/* Full Screen Image Modal */}
+      {/* Full Screen Image Modal - Yatay Scroll ile */}
       <Modal
         visible={imageModalVisible}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setImageModalVisible(false)}
+        onRequestClose={() => {
+          setImageModalVisible(false);
+          setSelectedPostMedia([]);
+          setSelectedMediaIndex(0);
+        }}
       >
         <View style={styles.fullScreenModal}>
           <TouchableOpacity
             style={styles.modalCloseButton}
-            onPress={() => setImageModalVisible(false)}
+            onPress={() => {
+              setImageModalVisible(false);
+              setSelectedPostMedia([]);
+              setSelectedMediaIndex(0);
+            }}
             hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           >
             <Text style={styles.modalCloseText}>✕</Text>
           </TouchableOpacity>
-          <ScrollView
-            contentContainerStyle={styles.modalImageContainer}
-            maximumZoomScale={3}
-            minimumZoomScale={1}
-            showsVerticalScrollIndicator={false}
-            showsHorizontalScrollIndicator={false}
-          >
-            {selectedImage && (
-              <Image
-                source={{ uri: selectedImage }}
-                style={styles.fullScreenImage}
-                contentFit="contain"
-                transition={200}
-                cachePolicy="memory-disk"
-                priority="high"
-                allowDownscaling={false}
-                contentPosition="center"
-              />
-            )}
-          </ScrollView>
+          
+          {/* Birden fazla resim varsa yatay scroll */}
+          {selectedPostMedia.length > 1 ? (
+            <ScrollView
+              ref={modalScrollViewRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              style={styles.modalMediaScrollView}
+              contentContainerStyle={styles.modalMediaScrollContent}
+              onLayout={() => {
+                // Modal açıldığında seçili index'e scroll yap
+                if (modalScrollViewRef.current && selectedMediaIndex > 0) {
+                  setTimeout(() => {
+                    modalScrollViewRef.current?.scrollTo({ 
+                      x: Dimensions.get('window').width * selectedMediaIndex, 
+                      animated: false 
+                    });
+                  }, 100);
+                }
+              }}
+              onScroll={(event) => {
+                const offsetX = event.nativeEvent.contentOffset.x;
+                const width = Dimensions.get('window').width;
+                const index = Math.round(offsetX / width);
+                setSelectedMediaIndex(index);
+              }}
+              scrollEventThrottle={16}
+            >
+              {selectedPostMedia.map((mediaItem: any, index: number) => (
+                <View
+                  key={index}
+                  style={{ width: Dimensions.get('window').width, flex: 1 }}
+                >
+                  <ScrollView
+                    contentContainerStyle={styles.modalImageContainer}
+                    maximumZoomScale={3}
+                    minimumZoomScale={1}
+                    showsVerticalScrollIndicator={false}
+                    showsHorizontalScrollIndicator={false}
+                  >
+                    <Image
+                      source={{ uri: mediaItem.path }}
+                      style={styles.fullScreenImage}
+                      contentFit="contain"
+                      transition={200}
+                      cachePolicy="memory-disk"
+                      priority="high"
+                      allowDownscaling={false}
+                      contentPosition="center"
+                    />
+                  </ScrollView>
+                </View>
+              ))}
+            </ScrollView>
+          ) : (
+            // Tek resim varsa normal gösterim
+            <ScrollView
+              contentContainerStyle={styles.modalImageContainer}
+              maximumZoomScale={3}
+              minimumZoomScale={1}
+              showsVerticalScrollIndicator={false}
+              showsHorizontalScrollIndicator={false}
+            >
+              {(selectedImage || (selectedPostMedia.length > 0 && selectedPostMedia[0]?.path)) && (
+                <Image
+                  source={{ uri: selectedImage || selectedPostMedia[0]?.path }}
+                  style={styles.fullScreenImage}
+                  contentFit="contain"
+                  transition={200}
+                  cachePolicy="memory-disk"
+                  priority="high"
+                  allowDownscaling={false}
+                  contentPosition="center"
+                />
+              )}
+            </ScrollView>
+          )}
+          
+          {/* Medya sayacı (birden fazla resim varsa) */}
+          {selectedPostMedia.length > 1 && (
+            <View style={styles.modalMediaCounter}>
+              <Text style={styles.modalMediaCounterText}>
+                {selectedMediaIndex + 1} / {selectedPostMedia.length}
+              </Text>
+            </View>
+          )}
         </View>
       </Modal>
 
@@ -1145,17 +1277,11 @@ const styles = StyleSheet.create({
   headerLogo: {
     marginLeft: -SPACING.xs, // Logo için hafif margin ayarı
   },
-<<<<<<< HEAD
-  headerButtons: {
-=======
   headerActions: {
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: SPACING.xs,
   },
-<<<<<<< HEAD
-=======
   headerActionButton: {
     width: 36,
     height: 36,
@@ -1163,7 +1289,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
   },
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   usersButton: {
     width: 44,
     height: 44,
@@ -1221,18 +1346,21 @@ const styles = StyleSheet.create({
   },
   postCard: {
     marginHorizontal: 0,
-    marginVertical: SPACING.sm,
+    marginVertical: 0,
     borderRadius: 0,
     width: '100%',
     overflow: 'hidden',
     borderWidth: 0,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   postHeader: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    padding: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
     width: '100%',
   },
   postMenuButton: {
@@ -1322,28 +1450,30 @@ const styles = StyleSheet.create({
     }),
   },
   imageContainer: {
-    width: '100%',
+    width: Dimensions.get('window').width,
     marginHorizontal: 0,
     paddingHorizontal: 0,
     marginTop: 0,
-    marginBottom: 0,
+    marginBottom: SPACING.sm,
+    flexShrink: 0,
   },
   postImage: {
     width: '100%',
-    height: undefined,
-    aspectRatio: 1,
-    maxHeight: Dimensions.get('window').height * 0.7,
+    aspectRatio: 16 / 9,
+    borderRadius: 12,
+    overflow: 'hidden',
     marginHorizontal: 0,
     paddingHorizontal: 0,
     marginTop: 0,
     marginBottom: 0,
   },
   videoContainer: {
-    width: '100%',
+    width: Dimensions.get('window').width,
     marginHorizontal: 0,
     paddingHorizontal: 0,
     marginTop: 0,
     marginBottom: 0,
+    flexShrink: 0,
   },
   fullScreenModal: {
     flex: 1,
@@ -1385,6 +1515,16 @@ const styles = StyleSheet.create({
     marginTop: 0,
     // resizeMode removed - expo-image uses contentFit prop instead
   },
+  mediaScrollView: {
+    width: '100%',
+  },
+  mediaScrollContent: {
+    flexDirection: 'row',
+  },
+  mediaItemContainer: {
+    width: Dimensions.get('window').width,
+    flexShrink: 0,
+  },
   mediaCountBadge: {
     position: 'absolute' as const,
     top: 70,
@@ -1393,6 +1533,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     paddingVertical: 4,
     borderRadius: 12,
+  },
+  modalMediaScrollView: {
+    flex: 1,
+    width: '100%',
+  },
+  modalMediaScrollContent: {
+    alignItems: 'center',
+  },
+  modalMediaCounter: {
+    position: 'absolute',
+    bottom: 30,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: 20,
+  },
+  modalMediaCounterText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
   },
   mediaCountText: {
     color: COLORS.white,

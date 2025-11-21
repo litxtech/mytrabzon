@@ -56,11 +56,21 @@ const adminBaseUrl = getAdminBaseUrl();
 // Shared headers function
 const getAuthHeaders = async () => {
   try {
+    // Supabase instance kontrolü
+    if (!supabase || !supabase.auth) {
+      console.warn("⚠️ Supabase instance not available");
+      return {
+        "Content-Type": "application/json",
+      };
+    }
+
     const { data, error } = await supabase.auth.getSession();
     
     if (error) {
-      console.warn("Failed to get session for tRPC header:", error.message);
-      return {};
+      console.warn("⚠️ Failed to get session for tRPC header:", error.message);
+      return {
+        "Content-Type": "application/json",
+      };
     }
     
     const token = data?.session?.access_token;
@@ -78,8 +88,10 @@ const getAuthHeaders = async () => {
         console.warn("⚠️ No auth token available - request will be unauthenticated");
       }
     }
-  } catch (error) {
-    console.error("Failed to attach Supabase auth header", error);
+  } catch (error: any) {
+    // Hata yönetimi - sessizce devam et, sadece log
+    console.error("❌ Failed to attach Supabase auth header:", error?.message || error);
+    // Hata durumunda bile Content-Type header'ını döndür
   }
 
   return {
@@ -121,12 +133,78 @@ export const trpcClient = trpc.createClient({
             
             // Daha kullanıcı dostu hata mesajları
             let userFriendlyError = '';
-            if (response.status === 404) {
+            
+            // WORKER_LIMIT hatası kontrolü (status 546 veya error text'te)
+            // Nested JSON'u da kontrol et (error field içinde JSON string olabilir)
+            let parsedErrorJson: any = null;
+            try {
+              parsedErrorJson = JSON.parse(errorText);
+              // Nested error field'ı da kontrol et
+              if (parsedErrorJson.error && typeof parsedErrorJson.error === 'string') {
+                try {
+                  const nestedError = JSON.parse(parsedErrorJson.error);
+                  parsedErrorJson.error = nestedError;
+                } catch (e) {
+                  // Nested parse başarısız, devam et
+                }
+              }
+            } catch (e) {
+              // Parse başarısız, devam et
+            }
+            
+            const isWorkerLimitError = 
+              response.status === 546 ||
+              errorText.includes('WORKER_LIMIT') ||
+              errorText.includes('compute resources') ||
+              errorText.includes('not having enough compute') ||
+              parsedErrorJson?.error?.code === 'WORKER_LIMIT' ||
+              parsedErrorJson?.error?.message?.includes('WORKER_LIMIT') ||
+              parsedErrorJson?.code === 'WORKER_LIMIT' ||
+              parsedErrorJson?.message?.includes('WORKER_LIMIT');
+            
+            if (isWorkerLimitError) {
+              userFriendlyError = 'Sunucu yoğun. Lütfen birkaç dakika sonra tekrar deneyin veya daha küçük bir video seçin.';
+            } else if (response.status === 404) {
               userFriendlyError = 'Veri bulunamadı';
             } else if (response.status === 401 || response.status === 403) {
+              // 401/403 hatalarını sessizce handle et (özellikle public endpoint'ler için)
+              // Eğer URL'de "getPolicies" veya "getRequiredPolicies" varsa, sessizce devam et
+              const urlString = url.toString();
+              const isPublicPolicyEndpoint = urlString.includes('getPolicies') || urlString.includes('getRequiredPolicies');
+              
+              if (isPublicPolicyEndpoint) {
+                // Public policy endpoint'leri için sessizce devam et
+                if (__DEV__) {
+                  console.log('ℹ️ Public policy endpoint - 401 hatası sessizce handle edildi');
+                }
+                // Boş bir response döndür (query sessizce başarısız olacak)
+                return new Response(JSON.stringify({ data: [] }), {
+                  status: 200,
+                  headers: { 'Content-Type': 'application/json' },
+                });
+              }
+              
               userFriendlyError = 'Yetkisiz erişim. Lütfen tekrar giriş yapın.';
             } else if (response.status >= 500) {
-              userFriendlyError = 'Sunucu hatası. Lütfen daha sonra tekrar deneyin.';
+              // tRPC hatasından mesaj çıkarmaya çalış
+              if (parsedErrorJson) {
+                // WORKER_LIMIT kontrolü JSON içinde de yap (zaten yukarıda kontrol edildi ama tekrar kontrol)
+                if (parsedErrorJson.error?.code === 'WORKER_LIMIT' || 
+                    parsedErrorJson.error?.message?.includes('WORKER_LIMIT') ||
+                    parsedErrorJson.code === 'WORKER_LIMIT' ||
+                    parsedErrorJson.message?.includes('WORKER_LIMIT')) {
+                  userFriendlyError = 'Sunucu yoğun. Lütfen birkaç dakika sonra tekrar deneyin veya daha küçük bir video seçin.';
+                } else if (parsedErrorJson.error?.message) {
+                  userFriendlyError = parsedErrorJson.error.message;
+                } else if (parsedErrorJson.message) {
+                  userFriendlyError = parsedErrorJson.message;
+                } else {
+                  userFriendlyError = 'Sunucu hatası. Lütfen daha sonra tekrar deneyin.';
+                }
+              } else {
+                // JSON parse başarısız, genel mesaj kullan
+                userFriendlyError = `Sunucu hatası. Lütfen daha sonra tekrar deneyin.`;
+              }
             } else if (response.status === 0 || response.statusText === 'Failed to fetch') {
               userFriendlyError = 'İnternet bağlantınızı kontrol edin';
             } else {

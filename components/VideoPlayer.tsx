@@ -108,24 +108,33 @@ export function VideoPlayer({
   const lastTap = useRef<number>(0);
   const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Audio session state
+  const [audioSessionReady, setAudioSessionReady] = useState(false);
+
   // Audio session'ı aktif et (sadece bir kez)
   useEffect(() => {
     let mounted = true;
-    Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      staysActiveInBackground: false,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
-    })
-      .then(() => {
-        // Audio session activated silently
-      })
-      .catch((err) => {
+    const activateAudioSession = async () => {
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          staysActiveInBackground: false,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
         if (mounted) {
-          console.error('❌ Audio session error:', err);
+          setAudioSessionReady(true);
         }
-      });
+      } catch (err) {
+        if (mounted) {
+          console.warn('⚠️ Audio session activation warning:', err);
+          // Hata olsa bile devam et (bazı durumlarda çalışabilir)
+          setAudioSessionReady(true);
+        }
+      }
+    };
+    activateAudioSession();
     return () => {
       mounted = false;
     };
@@ -133,27 +142,63 @@ export function VideoPlayer({
 
   // autoPlay değiştiğinde video'yu başlat
   useEffect(() => {
-    if (autoPlay && videoRef.current && !isLoading) {
-      // Video yüklendikten sonra başlat
-      const timer = setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.playAsync().catch(console.error);
-          setIsPlaying(true);
+    if (autoPlay && videoRef.current && !isLoading && audioSessionReady) {
+      // Video yüklendikten sonra başlat - audio session hazır olmalı
+      const timer = setTimeout(async () => {
+        if (videoRef.current && audioSessionReady) {
+          try {
+            // Audio session'ı tekrar kontrol et
+            await Audio.setAudioModeAsync({
+              allowsRecordingIOS: false,
+              staysActiveInBackground: false,
+              playsInSilentModeIOS: true,
+              shouldDuckAndroid: true,
+              playThroughEarpieceAndroid: false,
+            });
+            await videoRef.current.playAsync();
+            setIsPlaying(true);
+          } catch (error) {
+            console.warn('⚠️ Video play error (autoPlay):', error);
+            // Retry after a delay
+            setTimeout(async () => {
+              try {
+                if (videoRef.current) {
+                  await videoRef.current.playAsync();
+                  setIsPlaying(true);
+                }
+              } catch (retryError) {
+                console.warn('⚠️ Video play retry error:', retryError);
+              }
+            }, 500);
+          }
         }
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [autoPlay, isLoading]);
+  }, [autoPlay, isLoading, audioSessionReady]);
 
   // Video yüklendiğinde otomatik başlat (previewMode için)
   useEffect(() => {
-    if (previewMode && autoPlay && videoRef.current && !isLoading && !isPlaying) {
-      const timer = setTimeout(() => {
-        videoRef.current?.playAsync().catch(console.error);
+    if (previewMode && autoPlay && videoRef.current && !isLoading && !isPlaying && audioSessionReady) {
+      const timer = setTimeout(async () => {
+        if (videoRef.current && audioSessionReady) {
+          try {
+            await Audio.setAudioModeAsync({
+              allowsRecordingIOS: false,
+              staysActiveInBackground: false,
+              playsInSilentModeIOS: true,
+              shouldDuckAndroid: true,
+              playThroughEarpieceAndroid: false,
+            });
+            await videoRef.current.playAsync();
+          } catch (error) {
+            console.warn('⚠️ Video play error (previewMode):', error);
+          }
+        }
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [previewMode, autoPlay, isLoading, isPlaying]);
+  }, [previewMode, autoPlay, isLoading, isPlaying, audioSessionReady]);
 
   useEffect(() => {
     return () => {
@@ -172,16 +217,41 @@ export function VideoPlayer({
       setDuration(status.durationMillis || 0);
       setPosition(status.positionMillis || 0);
       
-      // İlk yüklemede autoPlay true ise başlat
-      if (autoPlay && wasLoading && !status.isPlaying && !status.didJustFinish) {
-        setTimeout(() => {
-          videoRef.current?.playAsync().catch((err) => {
-            console.error('Video play error:', err);
-            // Hata durumunda tekrar dene
-            setTimeout(() => {
-              videoRef.current?.playAsync().catch(console.error);
-            }, 500);
-          });
+      // İlk yüklemede autoPlay true ise başlat - audio session hazır olmalı
+      if (autoPlay && wasLoading && !status.isPlaying && !status.didJustFinish && audioSessionReady) {
+        setTimeout(async () => {
+          if (videoRef.current && audioSessionReady) {
+            try {
+              // Audio session'ı tekrar kontrol et
+              await Audio.setAudioModeAsync({
+                allowsRecordingIOS: false,
+                staysActiveInBackground: false,
+                playsInSilentModeIOS: true,
+                shouldDuckAndroid: true,
+                playThroughEarpieceAndroid: false,
+              });
+              await videoRef.current.playAsync();
+            } catch (err) {
+              console.warn('⚠️ Video play error (status update):', err);
+              // Hata durumunda tekrar dene
+              setTimeout(async () => {
+                try {
+                  if (videoRef.current) {
+                    await Audio.setAudioModeAsync({
+                      allowsRecordingIOS: false,
+                      staysActiveInBackground: false,
+                      playsInSilentModeIOS: true,
+                      shouldDuckAndroid: true,
+                      playThroughEarpieceAndroid: false,
+                    });
+                    await videoRef.current.playAsync();
+                  }
+                } catch (retryError) {
+                  console.warn('⚠️ Video play retry error:', retryError);
+                }
+              }, 500);
+            }
+          }
         }, 200);
       }
     } else if (status.error) {
@@ -196,6 +266,21 @@ export function VideoPlayer({
         if (isPlaying) {
           await videoRef.current.pauseAsync();
         } else {
+          // Play öncesi audio session'ı kontrol et
+          if (!audioSessionReady) {
+            try {
+              await Audio.setAudioModeAsync({
+                allowsRecordingIOS: false,
+                staysActiveInBackground: false,
+                playsInSilentModeIOS: true,
+                shouldDuckAndroid: true,
+                playThroughEarpieceAndroid: false,
+              });
+              setAudioSessionReady(true);
+            } catch (audioError) {
+              console.warn('⚠️ Audio session activation warning:', audioError);
+            }
+          }
           await videoRef.current.playAsync();
         }
       } catch (error) {
@@ -512,7 +597,10 @@ export function VideoPlayer({
         <Video
           key={`normal-video-${postId}-${videoUrl.substring(0, 20)}`}
           ref={videoRef}
-          source={{ uri: videoUrl.trim() }}
+          source={{ 
+            uri: videoUrl.trim(),
+            overrideFileExtensionAndroid: 'mp4', // Android için format belirt
+          }}
           style={styles.normalVideo}
           resizeMode={ResizeMode.COVER}
           isLooping
@@ -523,6 +611,7 @@ export function VideoPlayer({
           onError={(error) => {
             console.error('Normal Video error:', error);
             setIsLoading(false);
+            setIsPlaying(false);
           }}
           onLoadStart={() => {
             setIsLoading(true);
@@ -628,37 +717,46 @@ function FullScreenVideoPlayer({
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        // Sola veya sağa swipe
+        // Sola veya sağa swipe - daha hassas
         // Yatay hareket varsa ve yatay hareket dikey hareketten fazlaysa
-        return Math.abs(gestureState.dx) > 30 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
+        return Math.abs(gestureState.dx) > 20 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.2;
       },
       onPanResponderRelease: (_, gestureState) => {
-        // Sola veya sağa yeterince çekildiyse çık (eşik: 80px)
-        if (Math.abs(gestureState.dx) > 80 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5) {
+        // Sola veya sağa yeterince çekildiyse çık (eşik: 60px - daha kolay çıkış)
+        if (Math.abs(gestureState.dx) > 60 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.2) {
           onClose?.();
         }
       },
     })
   ).current;
 
+  // Audio session state
+  const [audioSessionReady, setAudioSessionReady] = useState(false);
+
   // Audio session'ı aktif et (sadece bir kez)
   useEffect(() => {
     let mounted = true;
-    Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      staysActiveInBackground: false,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
-    })
-      .then(() => {
-        // Audio session activated silently
-      })
-      .catch((err) => {
+    const activateAudioSession = async () => {
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          staysActiveInBackground: false,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
         if (mounted) {
-          console.error('❌ Audio session error (FullScreen):', err);
+          setAudioSessionReady(true);
         }
-      });
+      } catch (err) {
+        if (mounted) {
+          console.warn('⚠️ Audio session activation warning (FullScreen):', err);
+          // Hata olsa bile devam et (bazı durumlarda çalışabilir)
+          setAudioSessionReady(true);
+        }
+      }
+    };
+    activateAudioSession();
     return () => {
       mounted = false;
     };
@@ -666,23 +764,52 @@ function FullScreenVideoPlayer({
 
   useEffect(() => {
     // Tam ekran açıldığında video'yu otomatik başlat (sadece bir kez)
-    if (videoRef.current && !hasStartedRef.current) {
+    if (videoRef.current && !hasStartedRef.current && audioSessionReady) {
       hasStartedRef.current = true;
       setIsPlaying(true);
       isPlayingRef.current = true;
       // Video hazır olduğunda başlat
-      const timer = setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.playAsync().catch((err) => {
-            console.warn('Video play error:', err);
+      const timer = setTimeout(async () => {
+        if (videoRef.current && audioSessionReady) {
+          try {
+            // Audio session'ı tekrar kontrol et
+            await Audio.setAudioModeAsync({
+              allowsRecordingIOS: false,
+              staysActiveInBackground: false,
+              playsInSilentModeIOS: true,
+              shouldDuckAndroid: true,
+              playThroughEarpieceAndroid: false,
+            });
+            await videoRef.current.playAsync();
+          } catch (err) {
+            console.warn('⚠️ Video play error (FullScreen auto-start):', err);
             setIsPlaying(false);
             isPlayingRef.current = false;
-          });
+            // Retry after delay
+            setTimeout(async () => {
+              try {
+                if (videoRef.current) {
+                  await Audio.setAudioModeAsync({
+                    allowsRecordingIOS: false,
+                    staysActiveInBackground: false,
+                    playsInSilentModeIOS: true,
+                    shouldDuckAndroid: true,
+                    playThroughEarpieceAndroid: false,
+                  });
+                  await videoRef.current.playAsync();
+                  setIsPlaying(true);
+                  isPlayingRef.current = true;
+                }
+              } catch (retryError) {
+                console.warn('⚠️ Video play retry error (FullScreen):', retryError);
+              }
+            }, 500);
+          }
         }
       }, 500); // Audio session'ın aktif olması için biraz bekle
       return () => clearTimeout(timer);
     }
-  }, []);
+  }, [audioSessionReady]);
 
 
   useEffect(() => {
@@ -732,6 +859,21 @@ function FullScreenVideoPlayer({
       setIsPlaying(newPlayingState); // Optimistic update
       
       if (newPlayingState) {
+        // Play öncesi audio session'ı kontrol et
+        if (!audioSessionReady) {
+          try {
+            await Audio.setAudioModeAsync({
+              allowsRecordingIOS: false,
+              staysActiveInBackground: false,
+              playsInSilentModeIOS: true,
+              shouldDuckAndroid: true,
+              playThroughEarpieceAndroid: false,
+            });
+            setAudioSessionReady(true);
+          } catch (audioError) {
+            console.warn('⚠️ Audio session activation warning (FullScreen):', audioError);
+          }
+        }
         await videoRef.current.playAsync();
       } else {
         await videoRef.current.pauseAsync();
@@ -861,6 +1003,8 @@ function FullScreenVideoPlayer({
               <TouchableOpacity
                 style={styles.closeButton}
                 onPress={onClose}
+                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                activeOpacity={0.7}
               >
                 <X size={28} color={COLORS.white} />
               </TouchableOpacity>
@@ -1128,10 +1272,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   topBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingTop: SPACING.md,
     paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.sm,
+    zIndex: 10000, // Çok yüksek z-index - her zaman üstte
     paddingVertical: SPACING.md,
   },
   closeButton: {
@@ -1141,6 +1292,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 10001, // En üstte
   },
   centerControls: {
     flex: 1,

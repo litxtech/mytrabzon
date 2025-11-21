@@ -305,15 +305,6 @@ export default function VideoFeedScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: '#000' }]}>
-      {/* Kapat Butonu */}
-      <TouchableOpacity
-        style={[styles.closeButton, { top: insets.top + SPACING.md }]}
-        onPress={() => router.back()}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <X size={24} color={COLORS.white} />
-      </TouchableOpacity>
-
       <FlatList
         ref={flatListRef}
         data={videos}
