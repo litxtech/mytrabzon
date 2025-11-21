@@ -146,8 +146,7 @@
             }
           }
         }
-      ],
-      "./plugins/withFollyFix.js"
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
