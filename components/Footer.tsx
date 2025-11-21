@@ -348,10 +348,11 @@ export function Footer() {
     other: 'Diğer',
   };
 
-  // Aktif politikaları sırala (display_order'a göre)
+  // Aktif politikaları sırala (display_order'a göre, maksimum 20 adet)
   const activePolicies = policies
     ?.filter((p: any) => p.is_active)
-    .sort((a: any, b: any) => a.display_order - b.display_order) || [];
+    .sort((a: any, b: any) => (a.display_order || 999) - (b.display_order || 999))
+    .slice(0, 20) || [];
 
   return (
     <>
@@ -365,14 +366,18 @@ export function Footer() {
           <Text style={styles.policyLink}>Uygulama Hakkında & Platform Politikası</Text>
         </TouchableOpacity>
         
-        {/* Politikalar */}
+        {/* Politikalar - Sıralı ve Düzenli */}
         {activePolicies.length > 0 && (
           <>
             <View style={styles.divider} />
             <View style={styles.policiesContainer}>
               {activePolicies.map((policy: any, index: number) => (
                 <React.Fragment key={policy.id}>
-                  <TouchableOpacity onPress={() => handlePolicyPress(policy)}>
+                  <TouchableOpacity 
+                    onPress={() => handlePolicyPress(policy)}
+                    style={styles.policyButton}
+                    activeOpacity={0.7}
+                  >
                     <Text style={styles.policyLink}>
                       {policyTypeLabels[policy.policy_type] || policy.title}
                     </Text>
@@ -520,10 +525,6 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
     textDecorationLine: 'underline' as const,
   },
-  separator: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textLight,
-  },
   copyright: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
@@ -541,11 +542,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center' as const,
     gap: SPACING.xs,
     marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    maxWidth: '100%',
+  },
+  policyButton: {
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    minHeight: 32,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
   policyLink: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
     textDecorationLine: 'underline' as const,
+    textAlign: 'center' as const,
+  },
+  separator: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+    opacity: 0.6,
+    marginHorizontal: SPACING.xs,
   },
   modalOverlay: {
     flex: 1,

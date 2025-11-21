@@ -36,6 +36,13 @@ export const getPostDetailProcedure = publicProcedure
           supporter_badge,
           supporter_badge_visible,
           supporter_badge_color
+        ),
+        warnings:post_warnings!post_warnings_post_id_fkey(
+          id,
+          warning_reason,
+          warning_message,
+          is_resolved,
+          created_at
         )
       `
       )

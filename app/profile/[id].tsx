@@ -43,6 +43,7 @@ import { CallButtons } from '@/components/CallButtons';
 import { SupporterBadge } from '@/components/SupporterBadge';
 import { Footer } from '@/components/Footer';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
+import { OptimizedImage } from '@/components/OptimizedImage';
 
 // Mesaj butonu component'i
 function MessageButton({ targetUserId }: { targetUserId: string }) {
@@ -161,26 +162,20 @@ export default function UserProfileScreen() {
         });
       }
     },
-    onSuccess: async () => {
-      // Önce takip durumunu güncelle
-      await refetchFollowStatus();
-      
-      // Sonra istatistikleri güncelle
-      await refetchFollowStats();
-      
-      // Profil bilgisini güncelle
-      await refetchProfile();
-      
-      // Liste query'lerini invalidate et (takipçi/takip listeleri için)
+    onSuccess: () => {
+      // Sadece invalidate et, refetch yapma (optimistic update zaten yapıldı)
+      utils.user.checkFollowStatus.invalidate({ user_id: id! });
+      utils.user.getFollowStats.invalidate({ user_id: id! });
+      if (currentUser?.id) {
+        utils.user.getFollowStats.invalidate({ user_id: currentUser.id });
+      }
+      // Liste query'lerini background'da güncelle
       utils.user.getFollowers.invalidate({ user_id: id! });
       utils.user.getFollowing.invalidate({ user_id: id! });
       if (currentUser?.id) {
         utils.user.getFollowers.invalidate({ user_id: currentUser.id });
         utils.user.getFollowing.invalidate({ user_id: currentUser.id });
       }
-      
-      // Takip durumu query'sini de invalidate et
-      utils.user.checkFollowStatus.invalidate({ user_id: id! });
     },
     onError: () => {
       // Hata durumunda optimistic update'i geri al
@@ -189,6 +184,7 @@ export default function UserProfileScreen() {
         utils.user.getFollowStats.invalidate({ user_id: currentUser.id });
       }
       updateFollowStatusCache(false);
+      refetchFollowStatus();
     },
   });
 
@@ -746,9 +742,9 @@ export default function UserProfileScreen() {
                     <View style={styles.postOverlay}>
                       <View style={styles.postStats}>
                         <Heart size={16} color={COLORS.white} />
-                        <Text style={styles.postStatText}>{item.likes_count || 0}</Text>
+                        <Text style={styles.postStatText}>{item.like_count || 0}</Text>
                         <MessageCircle size={16} color={COLORS.white} style={styles.postStatIcon} />
-                        <Text style={styles.postStatText}>{item.comments_count || 0}</Text>
+                        <Text style={styles.postStatText}>{item.comment_count || 0}</Text>
                       </View>
                     </View>
                     {isVideo && (

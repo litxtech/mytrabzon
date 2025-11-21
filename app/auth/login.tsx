@@ -1323,47 +1323,52 @@ export default function LoginScreen() {
           {renderForm()}
 
           <View style={styles.footer}>
-            {/* Politikalar - Simetrik Düzen */}
-            {policies && policies.length > 0 && (
-              <View style={styles.policiesContainer}>
-                {policies
-                  .filter((p: any) => p.is_active)
-                  .sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0))
-                  .map((policy: any, index: number) => {
-                    const policyTypeLabels: Record<string, string> = {
-                      terms: 'Kullanım Şartları',
-                      privacy: 'Gizlilik Politikası',
-                      community: 'Topluluk Kuralları',
-                      cookie: 'Çerez Politikası',
-                      refund: 'İade Politikası',
-                      child_safety: 'Çocuk Güvenliği',
-                      payment: 'Ödeme Politikası',
-                      moderation: 'Moderasyon',
-                      data_storage: 'Veri Saklama',
-                      eula: 'Lisans Sözleşmesi',
-                      university: 'Üniversite Modu',
-                      event: 'Etkinlik Politikası',
-                      other: 'Diğer',
-                    };
-                    
-                    return (
-                      <React.Fragment key={policy.id}>
-                        <TouchableOpacity 
-                          onPress={() => handlePolicyPress(policy.policy_type)}
-                          style={styles.policyButton}
-                        >
-                          <Text style={styles.policyButtonText}>
-                            {policyTypeLabels[policy.policy_type] || policy.title}
-                          </Text>
-                        </TouchableOpacity>
-                        {index < policies.filter((p: any) => p.is_active).length - 1 && (
-                          <Text style={styles.policySeparator}>•</Text>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-              </View>
-            )}
+            {/* Politikalar - Sıralı ve Düzenli */}
+            {policies && policies.length > 0 && (() => {
+              const policyTypeLabels: Record<string, string> = {
+                terms: 'Kullanım Şartları',
+                privacy: 'Gizlilik Politikası',
+                community: 'Topluluk Kuralları',
+                cookie: 'Çerez Politikası',
+                refund: 'İade Politikası',
+                child_safety: 'Çocuk Güvenliği',
+                payment: 'Ödeme Politikası',
+                moderation: 'Moderasyon',
+                data_storage: 'Veri Saklama',
+                eula: 'Lisans Sözleşmesi',
+                university: 'Üniversite Modu',
+                event: 'Etkinlik Politikası',
+                other: 'Diğer',
+              };
+              
+              const activePolicies = policies
+                .filter((p: any) => p.is_active)
+                .sort((a: any, b: any) => (a.display_order || 999) - (b.display_order || 999))
+                .slice(0, 20); // Maksimum 20 politika
+              
+              if (activePolicies.length === 0) return null;
+              
+              return (
+                <View style={styles.policiesContainer}>
+                  {activePolicies.map((policy: any, index: number) => (
+                    <React.Fragment key={policy.id}>
+                      <TouchableOpacity 
+                        onPress={() => handlePolicyPress(policy.policy_type)}
+                        style={styles.policyButton}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.policyButtonText}>
+                          {policyTypeLabels[policy.policy_type] || policy.title}
+                        </Text>
+                      </TouchableOpacity>
+                      {index < activePolicies.length - 1 && (
+                        <Text style={styles.policySeparator}>•</Text>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </View>
+              );
+            })()}
             
             <Text style={styles.terms}>
               Devam ederek{' '}
@@ -1680,20 +1685,25 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     gap: SPACING.xs,
     marginBottom: SPACING.lg,
-    paddingHorizontal: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    maxWidth: '100%',
   },
   policyButton: {
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.sm,
+    minHeight: 32,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
   policyButtonText: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.white,
-    opacity: 0.8,
+    opacity: 0.85,
     textDecorationLine: 'underline' as const,
+    textAlign: 'center' as const,
     ...(Platform.OS === 'android' && {
       includeFontPadding: false,
-      lineHeight: FONT_SIZES.xs * 1.3,
+      lineHeight: FONT_SIZES.xs * 1.4,
     }),
   },
   policySeparator: {
@@ -1701,6 +1711,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     opacity: 0.5,
     marginHorizontal: SPACING.xs,
+    lineHeight: FONT_SIZES.xs * 1.4,
   },
   terms: {
     fontSize: FONT_SIZES.xs,

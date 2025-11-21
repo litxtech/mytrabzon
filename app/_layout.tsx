@@ -5,11 +5,29 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { trpc, trpcClient } from "@/lib/trpc";
 import { AuthContext } from "@/contexts/AuthContext";
 import { ChatContext } from "@/contexts/ChatContext";
-import { StyleSheet, Linking, Alert } from "react-native";
+import { StyleSheet, Linking, Alert, Platform } from "react-native";
 import * as Notifications from 'expo-notifications';
 import { registerForPushNotifications, addNotificationResponseReceivedListener } from "@/lib/notifications";
 import { supabase } from "@/lib/supabase";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+
+// Development mode'da shake gesture için
+if (__DEV__ && Platform.OS === 'android') {
+  // React Native'in DevMenu'sunu kullan
+  try {
+    const { NativeModules } = require('react-native');
+    if (NativeModules.DevMenu) {
+      // DevMenu zaten mevcut ve shake gesture otomatik çalışır
+    }
+  } catch (e) {
+    // DevMenu yoksa, manuel shake gesture ekle
+    const { DeviceEventEmitter } = require('react-native');
+    DeviceEventEmitter.addListener('hardwareBackPress', () => {
+      // Back button ile dev menu açılabilir
+      return false;
+    });
+  }
+}
 
 // Development'ta hot reload için QueryClient'i optimize et
 const queryClient = new QueryClient({
@@ -84,6 +102,24 @@ export default function RootLayout() {
   const responseListener = useRef<Notifications.Subscription | null>(null);
   const deepLinkListener = useRef<{ remove: () => void } | null>(null);
   const router = useRouter();
+
+  // Android'de shake gesture için DevMenu'yu enable et
+  useEffect(() => {
+    if (__DEV__ && Platform.OS === 'android') {
+      try {
+        const { NativeModules } = require('react-native');
+        // React Native'in DevMenu'su otomatik olarak shake gesture'ı handle eder
+        if (NativeModules.DevMenu) {
+          console.log('✅ DevMenu is available - shake gesture should work');
+        } else {
+          console.warn('⚠️ DevMenu not available - install expo-dev-client for shake gesture');
+        }
+      } catch (e) {
+        console.warn('⚠️ Could not access DevMenu:', e);
+      }
+    }
+  }, []);
+
   const handleCallNavigation = useCallback((callData: any) => {
     if (!callData?.callerId) {
       return;

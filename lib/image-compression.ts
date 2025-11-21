@@ -27,9 +27,15 @@ export const compressImage = async (
 
     const maxWidth = options?.maxWidth || 1080;
     const quality = options?.quality || 0.8;
-    const format = options?.format === 'png' 
-      ? ImageManipulator.SaveFormat.PNG 
-      : ImageManipulator.SaveFormat.JPEG;
+    // Format belirtilmemişse, orijinal dosyanın formatını korumaya çalış
+    // Ancak varsayılan olarak JPEG kullan (daha küçük dosya boyutu)
+    let format = ImageManipulator.SaveFormat.JPEG;
+    if (options?.format === 'png') {
+      format = ImageManipulator.SaveFormat.PNG;
+    } else if (uri.toLowerCase().endsWith('.png')) {
+      // Eğer orijinal PNG ise ve format belirtilmemişse, PNG olarak koru
+      format = ImageManipulator.SaveFormat.PNG;
+    }
 
     // Resize ve compress
     const manipulatedImage = await ImageManipulator.manipulateAsync(
@@ -41,7 +47,19 @@ export const compressImage = async (
       }
     );
 
-    return manipulatedImage.uri;
+    // Döndürülen URI'nin formatını kontrol et
+    // expo-image-manipulator genellikle format'a göre uzantı ekler
+    // Ancak güvenli tarafta olmak için, kullanılan format'a göre format bilgisini döndür
+    const returnedUri = manipulatedImage.uri;
+    
+    // Eğer URI'de uzantı yoksa veya belirsizse, kullanılan format'a göre belirle
+    if (!returnedUri.toLowerCase().match(/\.(jpg|jpeg|png)$/i)) {
+      // URI'de uzantı yok, format'a göre ekle (sadece bilgi amaçlı, gerçek dosya format'ı zaten doğru)
+      // Bu durumda, kullanılan format'ı kabul et
+      return returnedUri;
+    }
+    
+    return returnedUri;
   } catch (error) {
     console.error('Image compression error:', error);
     // Hata durumunda orijinal URI'yi döndür

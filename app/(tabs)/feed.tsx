@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -23,7 +23,7 @@ import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
 import { DISTRICTS, DISTRICT_BADGES } from '@/constants/districts';
 import { Post, District } from '@/types/database';
-import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, MoreVertical, AlertCircle, Car, Search } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, Plus, Users, TrendingUp, MoreVertical, AlertCircle, Car, Search, AlertTriangle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLogo } from '@/components/AppLogo';
@@ -48,6 +48,9 @@ export default function FeedScreen() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [videoModalVisible, setVideoModalVisible] = useState(false);
+  const [warningModalVisible, setWarningModalVisible] = useState(false);
+  const [selectedWarning, setSelectedWarning] = useState<any>(null);
+  const [selectedWarningPost, setSelectedWarningPost] = useState<Post | null>(null);
 
   const formatCount = useCallback((count: number | null | undefined): string => {
     if (!count) return '0';
@@ -136,13 +139,48 @@ export default function FeedScreen() {
     },
   });
 
-  const handleLike = useCallback(async (postId: string) => {
-    try {
-      await likePostMutation.mutateAsync({ postId });
-    } catch (error) {
-      console.error('Like error:', error);
+  // Debounce için ref
+  const likeTimeoutRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  
+  const handleLike = useCallback((postId: string) => {
+    // Önceki timeout'u iptal et
+    if (likeTimeoutRef.current[postId]) {
+      clearTimeout(likeTimeoutRef.current[postId]);
     }
-  }, [likePostMutation]);
+    
+    // Optimistic update - anında UI'ı güncelle
+    utils.post.getPosts.setData(
+      { district: selectedDistrict === 'all' ? undefined : selectedDistrict, sort: sortType, limit: 20, offset: 0 },
+      (old: any) => {
+        if (!old?.posts) return old;
+        return {
+          ...old,
+          posts: old.posts.map((post: Post) => {
+            if (post.id === postId) {
+              const isCurrentlyLiked = post.is_liked;
+              return {
+                ...post,
+                is_liked: !isCurrentlyLiked,
+                like_count: (post.like_count || 0) + (isCurrentlyLiked ? -1 : 1),
+              };
+            }
+            return post;
+          }),
+        };
+      }
+    );
+    
+    // 300ms debounce ile mutation'ı çalıştır
+    likeTimeoutRef.current[postId] = setTimeout(() => {
+      likePostMutation.mutate({ postId }, {
+        onError: () => {
+          // Hata durumunda geri al
+          refetch();
+        },
+      });
+      delete likeTimeoutRef.current[postId];
+    }, 300);
+  }, [likePostMutation, utils, selectedDistrict, sortType, refetch]);
 
   const renderSortTabs = useMemo(() => (
     <View style={[styles.sortContainer, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
@@ -233,6 +271,15 @@ export default function FeedScreen() {
       refetchEvents();
     },
     onError: (error) => Alert.alert('Hata', error.message),
+  });
+
+  const resolveWarningMutation = (trpc as any).admin.resolveWarning.useMutation({
+    onSuccess: () => {
+      refetch();
+    },
+    onError: (error: any) => {
+      console.error('Uyarı çözülemedi:', error);
+    },
   });
 
   const handlePostOptions = useCallback((post: Post) => {
@@ -520,6 +567,23 @@ export default function FeedScreen() {
               <MoreVertical size={18} color={theme.colors.textLight} />
             </TouchableOpacity>
           )}
+          {/* Uyarı Badge - Sağ üstte küçük */}
+          {(item as any).warnings && Array.isArray((item as any).warnings) && (item as any).warnings.length > 0 && (item as any).warnings.some((w: any) => !w.is_resolved) && (
+            <TouchableOpacity
+              style={styles.warningBadge}
+              onPress={() => {
+                const activeWarning = (item as any).warnings.find((w: any) => !w.is_resolved);
+                if (activeWarning) {
+                  setSelectedWarning(activeWarning);
+                  setSelectedWarningPost(item);
+                  setWarningModalVisible(true);
+                }
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <AlertTriangle size={16} color="#F59E0B" fill="#F59E0B" />
+            </TouchableOpacity>
+          )}
         </View>
 
         <TouchableOpacity
@@ -741,6 +805,141 @@ export default function FeedScreen() {
           }
           ListFooterComponent={<Footer />}
         />
+      )}
+
+      {/* Uyarı Modal */}
+      {warningModalVisible && (
+        <Modal
+          visible={warningModalVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setWarningModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity
+              style={styles.modalOverlayTouchable}
+              activeOpacity={1}
+              onPress={() => setWarningModalVisible(false)}
+            />
+            <View style={[styles.warningModalContent, { backgroundColor: theme.colors.card }]}>
+            <View style={styles.warningModalHeader}>
+              <View style={styles.warningIconContainer}>
+                <AlertTriangle size={24} color="#F59E0B" fill="#F59E0B" />
+              </View>
+              <Text style={[styles.warningModalTitle, { color: theme.colors.text }]}>
+                Platform Politikası Uyarısı
+              </Text>
+              <TouchableOpacity
+                onPress={() => setWarningModalVisible(false)}
+                style={styles.closeButton}
+              >
+                <Text style={[styles.closeButtonText, { color: theme.colors.textLight }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.warningModalBody}>
+              <Text style={[styles.warningReason, { color: theme.colors.text }]}>
+                <Text style={{ fontWeight: '700' }}>Uyarı Nedeni:</Text> {selectedWarning?.warning_reason}
+              </Text>
+              
+              {selectedWarning?.warning_message && (
+                <Text style={[styles.warningMessage, { color: theme.colors.text }]}>
+                  {selectedWarning.warning_message}
+                </Text>
+              )}
+
+              <View style={[styles.warningDivider, { backgroundColor: theme.colors.border }]} />
+
+              <Text style={[styles.warningContentTitle, { color: theme.colors.text }]}>
+                Uyarı Verilen İçerik:
+              </Text>
+
+              {selectedWarningPost && (
+                <View style={[styles.warningPostPreview, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
+                  <View style={styles.warningPostHeader}>
+                    <OptimizedImage
+                      source={selectedWarningPost.author?.avatar_url || 'https://via.placeholder.com/40'}
+                      style={styles.warningPostAvatar}
+                      isThumbnail={true}
+                    />
+                    <View style={styles.warningPostAuthorInfo}>
+                      <Text style={[styles.warningPostAuthor, { color: theme.colors.text }]}>
+                        {selectedWarningPost.author?.full_name}
+                      </Text>
+                      <Text style={[styles.warningPostDate, { color: theme.colors.textLight }]}>
+                        {formatTimeAgo(selectedWarningPost.created_at)}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.warningPostContent, { color: theme.colors.text }]}>
+                    {selectedWarningPost.content}
+                  </Text>
+                  {selectedWarningPost.media && selectedWarningPost.media.length > 0 && (
+                    <View style={styles.warningPostMedia}>
+                      <OptimizedImage
+                        source={selectedWarningPost.media[0].path}
+                        style={styles.warningPostImage}
+                        isThumbnail={true}
+                      />
+                    </View>
+                  )}
+                </View>
+              )}
+
+              <View style={[styles.warningDivider, { backgroundColor: theme.colors.border }]} />
+
+              <Text style={[styles.warningActionText, { color: theme.colors.textLight }]}>
+                Bu içeriği silerek uyarıyı kaldırabilirsiniz. Eğer içeriği silmezseniz, admin paneli tarafından silinebilir.
+              </Text>
+            </ScrollView>
+
+            <View style={[styles.warningModalFooter, { borderTopColor: theme.colors.border }]}>
+              <TouchableOpacity
+                style={[styles.warningModalButton, styles.warningModalButtonSecondary, { backgroundColor: theme.colors.border }]}
+                onPress={() => setWarningModalVisible(false)}
+              >
+                <Text style={[styles.warningModalButtonText, { color: theme.colors.text }]}>
+                  Kapat
+                </Text>
+              </TouchableOpacity>
+              {selectedWarningPost && selectedWarningPost.author_id === user?.id && (
+                <TouchableOpacity
+                  style={[styles.warningModalButton, styles.warningModalButtonPrimary]}
+                  onPress={() => {
+                    Alert.alert(
+                      'Gönderiyi Sil',
+                      'Bu gönderiyi silmek istediğinizden emin misiniz? Uyarı da kaldırılacak.',
+                      [
+                        { text: 'İptal', style: 'cancel' },
+                        {
+                          text: 'Sil',
+                          style: 'destructive',
+                          onPress: async () => {
+                            try {
+                              await deletePostMutation.mutateAsync({ postId: selectedWarningPost.id });
+                              if (selectedWarning?.id) {
+                                await resolveWarningMutation.mutateAsync({ warningId: selectedWarning.id });
+                              }
+                              setWarningModalVisible(false);
+                              refetch();
+                            } catch (error: any) {
+                              Alert.alert('Hata', error.message || 'Gönderi silinemedi');
+                            }
+                          },
+                        },
+                      ]
+                    );
+                  }}
+                >
+                  <Text style={[styles.warningModalButtonText, { color: COLORS.white }]}>
+                    Gönderiyi Sil
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
       )}
 
       {/* Olay Var Button */}
@@ -1204,5 +1403,157 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '700' as const,
     color: COLORS.white,
+  },
+  warningBadge: {
+    position: 'absolute' as const,
+    top: SPACING.sm,
+    right: SPACING.sm,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F59E0B20',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    borderWidth: 2,
+    borderColor: '#F59E0B',
+    zIndex: 10,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    position: 'relative' as const,
+  },
+  modalOverlayTouchable: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  warningModalContent: {
+    width: '90%',
+    maxHeight: '80%',
+    borderRadius: 16,
+    padding: SPACING.md,
+  },
+  warningModalHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginBottom: SPACING.md,
+    gap: SPACING.sm,
+  },
+  warningIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F59E0B20',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  warningModalTitle: {
+    flex: 1,
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700' as const,
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  closeButtonText: {
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '700' as const,
+  },
+  warningModalBody: {
+    maxHeight: 400,
+  },
+  warningReason: {
+    fontSize: FONT_SIZES.md,
+    marginBottom: SPACING.sm,
+    lineHeight: 22,
+  },
+  warningMessage: {
+    fontSize: FONT_SIZES.sm,
+    marginBottom: SPACING.md,
+    lineHeight: 20,
+  },
+  warningDivider: {
+    height: 1,
+    marginVertical: SPACING.md,
+  },
+  warningContentTitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700' as const,
+    marginBottom: SPACING.sm,
+  },
+  warningPostPreview: {
+    borderRadius: 12,
+    padding: SPACING.md,
+    borderWidth: 1,
+    marginBottom: SPACING.md,
+  },
+  warningPostHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginBottom: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  warningPostAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  warningPostAuthorInfo: {
+    flex: 1,
+  },
+  warningPostAuthor: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '700' as const,
+  },
+  warningPostDate: {
+    fontSize: FONT_SIZES.xs,
+    marginTop: 2,
+  },
+  warningPostContent: {
+    fontSize: FONT_SIZES.sm,
+    lineHeight: 20,
+    marginBottom: SPACING.sm,
+  },
+  warningPostMedia: {
+    marginTop: SPACING.sm,
+  },
+  warningPostImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+  },
+  warningActionText: {
+    fontSize: FONT_SIZES.sm,
+    lineHeight: 18,
+    textAlign: 'center' as const,
+    marginTop: SPACING.sm,
+  },
+  warningModalFooter: {
+    flexDirection: 'row' as const,
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+  },
+  warningModalButton: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    borderRadius: 8,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  warningModalButtonSecondary: {
+    // backgroundColor dinamik olarak theme.colors.border
+  },
+  warningModalButtonPrimary: {
+    backgroundColor: COLORS.error,
+  },
+  warningModalButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600' as const,
   },
 });

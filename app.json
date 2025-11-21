@@ -96,6 +96,7 @@
           "origin": "https://rork.com/"
         }
       ],
+      "expo-dev-client",
       "expo-font",
       "expo-web-browser",
       [

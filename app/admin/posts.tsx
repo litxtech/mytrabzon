@@ -12,7 +12,7 @@ import {
   Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Search, Trash2, Eye } from 'lucide-react-native';
+import { ArrowLeft, Search, Trash2, Eye, AlertTriangle } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { trpc } from '../../lib/trpc';
@@ -40,6 +40,16 @@ export default function AdminPostsScreen() {
     },
   });
 
+  const warnPostMutation = (trpc as any).admin.warnPost.useMutation({
+    onSuccess: () => {
+      refetch();
+      Alert.alert('Başarılı', 'Uyarı verildi');
+    },
+    onError: (error: any) => {
+      Alert.alert('Hata', error.message || 'Uyarı verilemedi');
+    },
+  });
+
   const onRefresh = async () => {
     setRefreshing(true);
     await refetch();
@@ -60,6 +70,42 @@ export default function AdminPostsScreen() {
           },
         },
       ]
+    );
+  };
+
+  const handleWarn = (postId: string) => {
+    Alert.prompt(
+      'Uyarı Ver',
+      'Uyarı nedeni:',
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Uyarı Ver',
+          onPress: (reason) => {
+            if (reason && reason.trim()) {
+              Alert.prompt(
+                'Uyarı Mesajı (Opsiyonel)',
+                'Kullanıcıya gösterilecek mesaj:',
+                [
+                  { text: 'İptal', style: 'cancel' },
+                  {
+                    text: 'Gönder',
+                    onPress: (message) => {
+                      warnPostMutation.mutate({
+                        postId,
+                        warningReason: reason.trim(),
+                        warningMessage: message?.trim() || undefined,
+                      });
+                    },
+                  },
+                ],
+                'plain-text'
+              );
+            }
+          },
+        },
+      ],
+      'plain-text'
     );
   };
 
@@ -146,6 +192,13 @@ export default function AdminPostsScreen() {
                 >
                   <Eye size={18} color={COLORS.primary} />
                   <Text style={styles.actionButtonText}>Görüntüle</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.warnButton]}
+                  onPress={() => handleWarn(post.id)}
+                >
+                  <AlertTriangle size={18} color={COLORS.warning || '#F59E0B'} />
+                  <Text style={[styles.actionButtonText, styles.warnButtonText]}>Uyarı</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.actionButton, styles.deleteButton]}
@@ -312,6 +365,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary + '20',
     borderColor: COLORS.primary,
   },
+  warnButton: {
+    backgroundColor: (COLORS.warning || '#F59E0B') + '20',
+    borderColor: COLORS.warning || '#F59E0B',
+  },
   deleteButton: {
     backgroundColor: COLORS.error + '20',
     borderColor: COLORS.error,
@@ -320,6 +377,9 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
     color: COLORS.primary,
+  },
+  warnButtonText: {
+    color: COLORS.warning || '#F59E0B',
   },
   deleteButtonText: {
     color: COLORS.error,

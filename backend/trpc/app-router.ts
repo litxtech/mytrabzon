@@ -79,6 +79,8 @@ import { getRideDetailProcedure as adminGetRideDetailProcedure } from "./routes/
 import { generateRidePdfProcedure } from "./routes/admin/generate-ride-pdf/route";
 import { getAllPostsProcedure } from "./routes/admin/get-all-posts/route";
 import { getAllCommentsProcedure } from "./routes/admin/get-all-comments/route";
+import { warnPostProcedure } from "./routes/admin/warn-post/route";
+import { resolveWarningProcedure } from "./routes/admin/resolve-warning/route";
 import { createKycProcedure } from "./routes/kyc/create-kyc/route";
 import { getKycProcedure } from "./routes/kyc/get-kyc/route";
 import {
@@ -194,6 +196,8 @@ export const appRouter = createTRPCRouter({
     deleteUser: deleteUsersProcedure,
     deletePost: adminDeletePostProcedure,
     deleteComment: adminDeleteCommentProcedure,
+    warnPost: warnPostProcedure,
+    resolveWarning: resolveWarningProcedure,
   }),
   kyc: createTRPCRouter({
     create: createKycProcedure,

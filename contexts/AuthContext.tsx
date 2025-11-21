@@ -76,13 +76,25 @@ export const [AuthContext, useAuth] = createContextHook(() => {
 
   useEffect(() => {
     let mounted = true;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    
+    // Android için ULTRA AGRESIF timeout - 500ms içinde session alınamazsa loading'i false yap
+    timeoutId = setTimeout(() => {
+      if (mounted) {
+        setLoading(false);
+      }
+    }, 500);
     
     // Session'ı al ve koru - otomatik çıkış yapma
     supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      
       if (!mounted) return;
       
       if (error) {
-        console.error('Error getting session:', error);
         // Hata olsa bile session'ı korumaya çalış - refresh token ile yenilenebilir
         if (mounted) {
           setLoading(false);
@@ -97,30 +109,39 @@ export const [AuthContext, useAuth] = createContextHook(() => {
       setUser(nextUser);
 
       if (nextUser) {
-        setLoading(true);
+        // Profile yükleme için de agresif timeout
+        const profileTimeout = setTimeout(() => {
+          if (mounted) {
+            setLoading(false);
+          }
+        }, 1000);
+        
         try {
           const profileData = await loadProfile(nextUser.id);
+          clearTimeout(profileTimeout);
+          
           if (mounted) {
             setProfile(profileData);
+            setLoading(false);
           }
         } catch (error) {
-          console.error('Error loading profile after session fetch:', error);
+          clearTimeout(profileTimeout);
           // Hata olsa bile session'ı koru - otomatik çıkış yapma
-          // setProfile(null); // Kaldırıldı - session korunacak
-        } finally {
           if (mounted) {
             setLoading(false);
           }
         }
       } else {
         // Session yoksa bile otomatik çıkış yapma - refresh token ile yenilenebilir
-        // setProfile(null); // Kaldırıldı
         if (mounted) {
           setLoading(false);
         }
       }
     }).catch((error) => {
-      console.error('Unexpected error in getSession:', error);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
       if (mounted) {
         setLoading(false);
       }
@@ -128,6 +149,9 @@ export const [AuthContext, useAuth] = createContextHook(() => {
 
     return () => {
       mounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
   }, [loadProfile]);
 

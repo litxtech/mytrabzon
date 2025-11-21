@@ -200,8 +200,30 @@ export default function CreatePostScreen() {
           // Local file ise upload et
           // Image'ları compress et (video'lar zaten compress edilmiş olmalı)
           let finalUri = media.uri;
+          let actualFormat: 'jpeg' | 'png' = 'jpeg';
+          
           if (media.type === 'image') {
-            finalUri = await compressImage(media.uri, { maxWidth: 1080, quality: 0.8 });
+            // Orijinal format'ı kontrol et
+            const originalIsPng = media.uri.toLowerCase().endsWith('.png');
+            
+            // compressImage fonksiyonu orijinal format'ı korur (PNG ise PNG, değilse JPEG)
+            finalUri = await compressImage(media.uri, { 
+              maxWidth: 1080, 
+              quality: 0.8,
+              // Format belirtilmezse, compressImage orijinal format'ı korur
+            });
+            
+            // Compress edilmiş URI'nin formatını kontrol et
+            // Önce finalUri'nin uzantısına bak (en güvenilir yöntem)
+            const uriLower = finalUri.toLowerCase();
+            if (uriLower.endsWith('.png')) {
+              actualFormat = 'png';
+            } else if (uriLower.endsWith('.jpg') || uriLower.endsWith('.jpeg')) {
+              actualFormat = 'jpeg';
+            } else {
+              // Uzantı yoksa veya belirsizse, orijinal format'a göre karar ver
+              actualFormat = originalIsPng ? 'png' : 'jpeg';
+            }
           }
           
           const base64 = await FileSystem.readAsStringAsync(finalUri, {
@@ -209,13 +231,14 @@ export default function CreatePostScreen() {
           });
 
           const isVideo = media.type === 'video';
+          // Compress edilmiş URI'nin gerçek formatını kullan
           const fileType = isVideo
             ? 'video/mp4'
-            : media.uri.toLowerCase().endsWith('.png')
+            : actualFormat === 'png'
             ? 'image/png'
             : 'image/jpeg';
 
-          const extension = isVideo ? 'mp4' : fileType.split('/')[1];
+          const extension = isVideo ? 'mp4' : actualFormat;
           const fileName = `${media.type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${extension}`;
 
           const result = await uploadMediaMutation.mutateAsync({

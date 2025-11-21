@@ -30,6 +30,12 @@ function isDevice(): boolean {
  */
 export async function registerForPushNotifications(): Promise<string | null> {
   try {
+    // Expo Go ortamında push desteklenmiyor
+    if (Constants.appOwnership === 'expo') {
+      console.warn('⚠️ [PushNotifications] Expo Go\'da push bildirim kaydı devre dışı bırakıldı.');
+      return null;
+    }
+
     // Emülatör kontrolü
     if (!isDevice()) {
       console.warn('⚠️ [PushNotifications] Emülatörde çalışıyorsunuz. Push notification sadece gerçek cihazlarda çalışır.');

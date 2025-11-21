@@ -29,6 +29,7 @@ import {
 } from 'lucide-react-native';
 import { Footer } from '@/components/Footer';
 import VerifiedBadgeIcon from '@/components/VerifiedBadge';
+import { OptimizedImage } from '@/components/OptimizedImage';
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -56,11 +57,8 @@ export default function PostDetailScreen() {
   });
 
   const likePostMutation = trpc.post.likePost.useMutation({
-    onMutate: async ({ postId }) => {
-      // Optimistic update
-      await queryClient.cancelQueries({ queryKey: [['post', 'getPostDetail'], { postId: id! }] });
-      const previousData = queryClient.getQueryData([['post', 'getPostDetail'], { postId: id! }]);
-      
+    onMutate: async () => {
+      // Optimistic update - anında UI'ı güncelle
       queryClient.setQueryData([['post', 'getPostDetail'], { postId: id! }], (old: any) => {
         if (!old) return old;
         const isCurrentlyLiked = old.is_liked;
@@ -70,15 +68,13 @@ export default function PostDetailScreen() {
           like_count: (old.like_count || 0) + (isCurrentlyLiked ? -1 : 1),
         };
       });
-
-      return { previousData };
     },
-    onError: (err, variables, context) => {
-      if (context?.previousData) {
-        queryClient.setQueryData([['post', 'getPostDetail'], { postId: id! }], context.previousData);
-      }
+    onSuccess: () => {
+      // Başarılı olursa sadece invalidate et, refetch yapma (optimistic update zaten yapıldı)
+      queryClient.invalidateQueries({ queryKey: [['post', 'getPostDetail'], { postId: id! }] });
     },
-    onSettled: () => {
+    onError: () => {
+      // Hata durumunda refetch yap
       refetch();
     },
   });
@@ -222,15 +218,15 @@ export default function PostDetailScreen() {
               <View style={styles.postAuthorContainer}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Text style={styles.postAuthor}>
-                    {post.author?.full_name}
+                    {Array.isArray(post.author) ? post.author[0]?.full_name : post.author?.full_name}
                   </Text>
-                  {post.author?.verified && <VerifiedBadgeIcon size={16} />}
+                  {(Array.isArray(post.author) ? post.author[0]?.verified : post.author?.verified) && <VerifiedBadgeIcon size={16} />}
                 </View>
               </View>
-              {post.author?.username && (
+              {(Array.isArray(post.author) ? post.author[0]?.username : post.author?.username) && (
                 <View style={styles.postUsernameContainer}>
                   <Text style={styles.postUsername}>
-                    @{post.author.username}
+                    @{Array.isArray(post.author) ? post.author[0]?.username : post.author?.username}
                   </Text>
                 </View>
               )}
