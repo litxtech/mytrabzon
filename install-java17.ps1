@@ -28,7 +28,8 @@ Write-Host "   - Check 'Set JAVA_HOME variable' option" -ForegroundColor Gray
 Write-Host ""
 
 Write-Host "2. Chocolatey (PowerShell Admin required):" -ForegroundColor Cyan
-Write-Host "   choco install temurin17jdk -y" -ForegroundColor White
+Write-Host "   choco install temurin17 -y" -ForegroundColor White
+Write-Host "   NOTE: If you get lock file errors, run: .\fix-choco-lock.ps1" -ForegroundColor Yellow
 Write-Host ""
 
 Write-Host "3. Scoop:" -ForegroundColor Cyan
