@@ -1,96 +1,50 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
-# dependencies
+# Dependencies
 node_modules/
-bun.lockb
-bun.lock
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Production
+build/
+dist/
+
+# Misc
+.DS_Store
+*.pem
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Expo
 .expo/
-dist/
-web-build/
-expo-env.d.ts
+.expo-shared/
 
-# Native
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# Metro
-.metro-health-check*
-
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# macOS
-.DS_Store
-*.pem
-
-# local env files
-.env
-.env*.local
-.env.*
-
-# Sensitive files
-google-play-service-account.json
-*.p12
-*.key
-*.pem
-user-token.txt
-*.jks
-*.mobileprovision
-
-# typescript
-*.tsbuildinfo
-.vercel
-
-# Gereksiz dosyalar
--1
-2200
-generated-icon.png
-check-token.ps1
-utils/supabaseTest.ts
-SECURITY_AUDIT_REPORT.md
-
-# Hassas bilgiler
-SUPABASE_PASSWORD_RESET_URLS.txt
-SUPABASE_REDIRECT_URLS.txt
-*.txt
-!README.txt
-
-# Test ve geçici SQL dosyaları
-FIX_*.sql
-TEST_*.sql
-FULL_FIX_SQL.sql
-CHECK_AND_FIX_SCHEMA.sql
-VERIFY_SCHEMA.sql
-SQL_FIX_MISSING_COLUMNS.sql
-PERFORMANCE_FIX_SQL.sql
-FIX_ALL_*.sql
-FIX_CHAT_*.sql
-FIX_PROFILE_*.sql
-FIX_COMMENTS_*.sql
-FIX_TABLE_NAMES_*.sql
-FIX_MATCHES_*.sql
-UPDATE_USER_PASSWORD.sql
-GET_USER_TOKEN_SQL.sql
-AUTO_SETUP_NEW_USERS.sql
-CREATE_MISSING_PROFILES.sql
-PROTECT_SHARED_POSTS.sql
-GRUP_POSTLARI_SQL.sql
-SUPABASE_SQL_EDITOR_TAMAMLANDI.sql
-COMPLETE_SQL_SCHEMA.sql
-EDGE_FUNCTIONS_COMPLETE_SQL.sql
-constants/fix-*.sql
-constants/user-directory.sql
-constants/profile-update-schema.sql
-constants/POSTS_SCHEMA.sql
-
-# Duplicate SQL dosyaları (sadece en güncel olanlar kalacak)
-ADD_ADMIN_USER.sql
-ADD_USERNAME_SYSTEM.sql
+# Temporary files
+*.tmp
+*.temp

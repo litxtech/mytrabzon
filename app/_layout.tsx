@@ -13,9 +13,17 @@ import * as Notifications from 'expo-notifications';
 import { registerForPushNotifications, addNotificationResponseReceivedListener } from "@/lib/notifications";
 import { supabase } from "@/lib/supabase";
 import { ThemeProvider } from "@/contexts/ThemeContext";
-import "@/lib/debug-supabase"; // Supabase bağlantı testi için
+// Debug supabase'i sadece development'ta ve güvenli şekilde yükle
+if (__DEV__) {
+  try {
+    require("@/lib/debug-supabase");
+  } catch (error) {
+    console.warn('⚠️ Debug supabase yüklenemedi:', error);
+  }
+}
 import { ProximityManager } from "@/components/ProximityManager";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { setupGlobalErrorHandler } from "@/utils/crash-prevention";
 
 // Development mode'da shake gesture için
 if (__DEV__ && Platform.OS === 'android') {
@@ -111,6 +119,11 @@ export default function RootLayout() {
   const deepLinkListener = useRef<{ remove: () => void } | null>(null);
   const router = useRouter();
 
+  // Global error handler'ı kur - uygulama başlangıcında
+  useEffect(() => {
+    setupGlobalErrorHandler();
+  }, []);
+
   // Android'de shake gesture için DevMenu'yu enable et
   useEffect(() => {
     if (__DEV__ && Platform.OS === 'android') {
@@ -129,39 +142,48 @@ export default function RootLayout() {
   }, []);
 
   const handleCallNavigation = useCallback((callData: any) => {
-    if (!callData?.callerId) {
+    if (!callData?.callerId || !router) {
       return;
     }
 
-    router.push({
-      pathname: '/call/[userId]',
-      params: {
-        userId: callData.callerId,
-        userName: callData.callerName || 'Kullanıcı',
-        userAvatar: callData.callerAvatar || '',
-        callType: callData.callType || 'audio',
-        sessionId: callData.sessionId || '',
-      },
-    } as any);
+    try {
+      router.push({
+        pathname: '/call/[userId]',
+        params: {
+          userId: callData.callerId,
+          userName: callData.callerName || 'Kullanıcı',
+          userAvatar: callData.callerAvatar || '',
+          callType: callData.callType || 'audio',
+          sessionId: callData.sessionId || '',
+        },
+      } as any);
+    } catch (error) {
+      console.error('Navigation error in handleCallNavigation:', error);
+    }
   }, [router]);
 
   useEffect(() => {
+    // Uygulama başlangıcında crash'i önlemek için tüm initialization'ı try-catch ile sar
+    let isMounted = true;
 
     // Deep link handling - Uygulama açılmadan önce gelen link
     const handleInitialURL = async () => {
+      if (!isMounted) return;
       try {
         const initialUrl = await Linking.getInitialURL();
-        if (initialUrl) {
+        if (initialUrl && isMounted) {
           console.log('Initial URL:', initialUrl);
           await handleDeepLink(initialUrl);
         }
       } catch (error) {
         console.error('Error getting initial URL:', error);
+        // Crash'i önle - sessizce devam et
       }
     };
 
     // Deep link handling fonksiyonu
     const handleDeepLink = async (url: string) => {
+      if (!isMounted || !router) return; // Component unmount olduysa veya router yoksa işlem yapma
       try {
         console.log('Handling deep link:', url);
 
@@ -279,7 +301,7 @@ export default function RootLayout() {
                   const { data: profile } = await supabase
                     .from('profiles')
                     .select('full_name')
-                    .eq('id', data.session.user.id)
+                    .eq('id', data.session?.user?.id || '')
                     .single();
 
                   if (profile?.full_name) {
@@ -323,11 +345,11 @@ export default function RootLayout() {
               }
 
               if (session?.user?.id) {
-                console.log('User authenticated:', session.user.id);
+                console.log('User authenticated:', session?.user?.id);
                 const { data: profile } = await supabase
                   .from('profiles')
                   .select('*')
-                  .eq('id', session.user.id)
+                  .eq('id', session?.user?.id || '')
                   .single();
 
                 if (profile && profile.full_name) {
@@ -349,7 +371,7 @@ export default function RootLayout() {
                 const { data: profile } = await supabase
                   .from('profiles')
                   .select('*')
-                  .eq('id', session.user.id)
+                  .eq('id', session?.user?.id || '')
                   .single();
 
                 if (profile && profile.full_name) {
@@ -531,20 +553,35 @@ export default function RootLayout() {
       }
     };
 
-    // İlk URL'i kontrol et
-    handleInitialURL();
+    // İlk URL'i kontrol et - güvenli şekilde
+    handleInitialURL().catch(error => {
+      console.error('Initial URL handling failed:', error);
+    });
 
     // Deep link listener (uygulama açıkken link'e tıklanırsa)
-    deepLinkListener.current = Linking.addEventListener('url', async (event) => {
-      // OAuth callback ise direkt callback ekranına yönlendir
-      if (event.url.includes('auth/callback') || event.url.includes('callback')) {
-        console.log('🔐 [DeepLink] OAuth callback detected (app running), routing to callback screen');
-        router.replace('/auth/callback');
-        return;
-      }
-      console.log('Deep link received:', event.url);
-      await handleDeepLink(event.url);
-    });
+    try {
+      deepLinkListener.current = Linking.addEventListener('url', async (event) => {
+        if (!isMounted) return;
+        try {
+          // OAuth callback ise direkt callback ekranına yönlendir
+          if (event.url.includes('auth/callback') || event.url.includes('callback')) {
+            console.log('🔐 [DeepLink] OAuth callback detected (app running), routing to callback screen');
+            if (isMounted && router) {
+              router.replace('/auth/callback');
+            }
+            return;
+          }
+          console.log('Deep link received:', event.url);
+          if (isMounted) {
+            await handleDeepLink(event.url);
+          }
+        } catch (error) {
+          console.error('Deep link handling error:', error);
+        }
+      });
+    } catch (error) {
+      console.error('Failed to setup deep link listener:', error);
+    }
 
     // Supabase callback URL'ini dinle (browser'dan uygulamaya dönüş için)
     // OAuth provider authenticate edip Supabase callback URL'ine yönlendirdiğinde
@@ -614,27 +651,44 @@ export default function RootLayout() {
         }
 
         // Bildirim tipine göre yönlendirme
-        if (data?.type === 'NEW_MESSAGE' || data?.type === 'chat') {
-          // Yeni mesaj bildirimi - ilgili sohbet ekranına git
-          const conversationId = data?.conversationId || data?.roomId;
-          if (conversationId) {
-            console.log('📱 [Notification] Yeni mesaj bildirimi, sohbet ekranına yönlendiriliyor:', conversationId);
-            router.push(`/chat/${conversationId}` as any);
-          } else {
-            // conversationId yoksa chat listesine git
-            router.push('/(tabs)/chat' as any);
+        try {
+          if (!router) {
+            console.warn('❌ [Notification] Router is not available');
+            return;
           }
-        } else if (data?.type === 'match') {
-          router.push(`/football/match/${data.matchId}` as any);
-        } else if (data?.type === 'missing_player') {
-          router.push('/football/missing-players' as any);
-        } else if (data?.type === 'team') {
-          router.push(`/football/team/${data.teamId}` as any);
-        } else if (data?.type === 'post') {
-          router.push(`/post/${data.postId}` as any);
-        } else if (data?.type === 'EVENT' || data?.event_id) {
-          // Event bildirimi - feed'e yönlendir veya event detay sayfasına
-          router.push('/(tabs)/feed' as any);
+
+          if (data?.type === 'NEW_MESSAGE' || data?.type === 'chat') {
+            // Yeni mesaj bildirimi - ilgili sohbet ekranına git
+            const conversationId = data?.conversationId || data?.roomId;
+            if (conversationId) {
+              console.log('📱 [Notification] Yeni mesaj bildirimi, sohbet ekranına yönlendiriliyor:', conversationId);
+              router.push(`/chat/${conversationId}` as any);
+            } else {
+              // conversationId yoksa chat listesine git
+              router.push('/(tabs)/chat' as any);
+            }
+          } else if (data?.type === 'match' && data?.matchId) {
+            router.push(`/football/match/${data.matchId}` as any);
+          } else if (data?.type === 'missing_player') {
+            router.push('/football/missing-players' as any);
+          } else if (data?.type === 'team' && data?.teamId) {
+            router.push(`/football/team/${data.teamId}` as any);
+          } else if (data?.type === 'post' && data?.postId) {
+            router.push(`/post/${data.postId}` as any);
+          } else if (data?.type === 'EVENT' || data?.event_id) {
+            // Event bildirimi - feed'e yönlendir veya event detay sayfasına
+            router.push('/(tabs)/feed' as any);
+          }
+        } catch (navError) {
+          console.error('❌ [Notification] Navigation error:', navError);
+          // Hata durumunda ana sayfaya yönlendir
+          try {
+            if (router) {
+              router.push('/(tabs)/feed' as any);
+            }
+          } catch (fallbackError) {
+            console.error('❌ [Notification] Fallback navigation also failed:', fallbackError);
+          }
         }
       });
     } catch (err: any) {
@@ -642,6 +696,7 @@ export default function RootLayout() {
     }
 
     return () => {
+      isMounted = false; // Component unmount olduğunda flag'i false yap
       try {
         if (notificationListener.current) {
           notificationListener.current.remove();

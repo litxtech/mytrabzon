@@ -139,7 +139,13 @@ const fetchRoomMessages = async (roomId: string, limit: number): Promise<Message
     throw new Error(error.message ?? 'Mesajlar yüklenemedi');
   }
 
-  return (data ?? []).map((entry) => mapMessage(entry as RawMessage));
+  const safeData = Array.isArray(data) ? data : [];
+  try {
+    return safeData.map((entry) => mapMessage(entry as RawMessage));
+  } catch (error) {
+    console.error('Error mapping messages:', error);
+    return [];
+  }
 };
 
 const fetchLatestMessage = async (roomId: string): Promise<Message | null> => {
@@ -242,45 +248,74 @@ const fetchRoomsViaSupabase = async (currentUserId: string): Promise<ChatRoomWit
 
   const typedMembers = (membersRaw ?? []) as MemberWithProfile[];
 
+  // Güvenli array işlemleri için kontrol
+  const safeTypedRooms = Array.isArray(typedRooms) ? typedRooms : [];
+  const safeTypedMembers = Array.isArray(typedMembers) ? typedMembers : [];
+  
   const roomsWithDetails = await Promise.all(
-    typedRooms.map(async (room) => {
-      const roomMembers = typedMembers.filter((member) => member.room_id === room.id);
+    safeTypedRooms.map(async (room): Promise<ChatRoomWithDetails | null> => {
+      try {
+        if (!room || !room.id) {
+          console.warn('Invalid room data:', room);
+          return null;
+        }
+        
+        const roomMembers = safeTypedMembers.filter((member) => member?.room_id === room.id);
 
-      const membersWithProfiles = roomMembers.map((member) => {
-        const userProfile = member.user ?? createFallbackProfile(member.user_id);
+        const membersWithProfiles = roomMembers
+          .map((member) => {
+            if (!member) {
+              console.warn('Invalid member data:', member);
+              return null;
+            }
+            const userProfile = member.user ?? createFallbackProfile(member.user_id);
+            return {
+              id: member.id,
+              room_id: member.room_id,
+              user_id: member.user_id,
+              role: member.role,
+              unread_count: member.unread_count,
+              last_read_at: member.last_read_at,
+              joined_at: member.joined_at,
+              user: userProfile,
+            } as ChatMember & { user: UserProfile };
+          })
+          .filter((m): m is ChatMember & { user: UserProfile } => m !== null);
+
+        const otherUserProfile = room.type === 'direct'
+          ? membersWithProfiles.find((member) => member?.user_id !== currentUserId)?.user ?? null
+          : null;
+
+        let lastMessage = null;
+        try {
+          lastMessage = await fetchLatestMessage(room.id);
+        } catch (error) {
+          console.error('Error fetching latest message:', error);
+        }
+        
+        const unreadCount = membershipMap?.[room.id]?.unread_count ?? 0;
+
         return {
-          id: member.id,
-          room_id: member.room_id,
-          user_id: member.user_id,
-          role: member.role,
-          unread_count: member.unread_count,
-          last_read_at: member.last_read_at,
-          joined_at: member.joined_at,
-          user: userProfile,
-        } as ChatMember & { user: UserProfile };
-      });
-
-      const otherUserProfile = room.type === 'direct'
-        ? membersWithProfiles.find((member) => member.user_id !== currentUserId)?.user ?? null
-        : null;
-
-      const lastMessage = await fetchLatestMessage(room.id);
-      const unreadCount = membershipMap[room.id]?.unread_count ?? 0;
-
-      return {
-        ...room,
-        last_message: lastMessage,
-        last_message_at: lastMessage?.created_at ?? room.last_message_at,
-        members: membersWithProfiles,
-        unread_count: unreadCount,
-        other_user: otherUserProfile,
-      } satisfies ChatRoomWithDetails;
+          ...room,
+          last_message: lastMessage,
+          last_message_at: lastMessage?.created_at ?? room.last_message_at,
+          members: membersWithProfiles,
+          unread_count: unreadCount,
+          other_user: otherUserProfile ?? null,
+        } satisfies ChatRoomWithDetails;
+      } catch (error) {
+        console.error('Error processing room:', error);
+        return null;
+      }
     }),
   );
+  
+  // Null değerleri filtrele
+  const validRooms = roomsWithDetails.filter((room): room is ChatRoomWithDetails => room !== null);
+  
+  console.log('Chat rooms loaded via Supabase', { userId: currentUserId, roomCount: validRooms.length });
 
-  console.log('Chat rooms loaded via Supabase', { userId: currentUserId, roomCount: roomsWithDetails.length });
-
-  return roomsWithDetails;
+  return validRooms;
 };
 
 export const [ChatContext, useChat] = createContextHook(() => {
@@ -293,7 +328,7 @@ export const [ChatContext, useChat] = createContextHook(() => {
   const [error, setError] = useState<string | null>(null);
   
   const channelsRef = useRef<Record<string, RealtimeChannel>>({});
-  const typingTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const typingTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
     if (!user) {
@@ -314,20 +349,26 @@ export const [ChatContext, useChat] = createContextHook(() => {
     
     presenceChannel
       .on('presence', { event: 'sync' }, () => {
-        const state = presenceChannel.presenceState();
-        const users: Record<string, OnlineStatus> = {};
-        
-        Object.entries(state).forEach(([userId, presences]) => {
-          if (presences && presences.length > 0) {
-            users[userId] = {
-              user_id: userId,
-              is_online: true,
-              last_seen: new Date().toISOString(),
-            };
+        try {
+          const state = presenceChannel.presenceState();
+          const users: Record<string, OnlineStatus> = {};
+          
+          if (state && typeof state === 'object') {
+            Object.entries(state).forEach(([userId, presences]) => {
+              if (presences && Array.isArray(presences) && presences.length > 0) {
+                users[userId] = {
+                  user_id: userId,
+                  is_online: true,
+                  last_seen: new Date().toISOString(),
+                };
+              }
+            });
           }
-        });
-        
-        setOnlineUsers(users);
+          
+          setOnlineUsers(users);
+        } catch (error) {
+          console.error('Error processing presence state:', error);
+        }
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED' && user) {
@@ -339,26 +380,48 @@ export const [ChatContext, useChat] = createContextHook(() => {
       });
 
     return () => {
-      presenceChannel.unsubscribe();
+      try {
+        presenceChannel.unsubscribe();
+      } catch (error) {
+        console.error('Error unsubscribing presence channel:', error);
+      }
       
-      Object.values(channelsRef.current).forEach(channel => {
-        channel.unsubscribe();
-      });
+      if (channelsRef.current && typeof channelsRef.current === 'object') {
+        try {
+          Object.values(channelsRef.current).forEach(channel => {
+            if (channel && typeof channel.unsubscribe === 'function') {
+              try {
+                channel.unsubscribe();
+              } catch (error) {
+                console.error('Error unsubscribing channel:', error);
+              }
+            }
+          });
+        } catch (error) {
+          console.error('Error iterating channels:', error);
+        }
+      }
       channelsRef.current = {};
     };
   }, [user]);
 
   const subscribeToRoom = useCallback((roomId: string) => {
-    if (!user || channelsRef.current[roomId]) return;
+    if (!user || !channelsRef.current || channelsRef.current[roomId]) return;
 
     // Optimize: Sadece aktif room için channel oluştur
     // Diğer room'ların channel'larını kapat
-    Object.keys(channelsRef.current).forEach((key) => {
-      if (key !== roomId) {
-        channelsRef.current[key].unsubscribe();
-        delete channelsRef.current[key];
-      }
-    });
+    if (channelsRef.current && typeof channelsRef.current === 'object') {
+      Object.keys(channelsRef.current).forEach((key) => {
+        if (key !== roomId && channelsRef.current[key]) {
+          try {
+            channelsRef.current[key].unsubscribe();
+            delete channelsRef.current[key];
+          } catch (error) {
+            console.error('Error unsubscribing channel:', error);
+          }
+        }
+      });
+    }
 
     const channel = supabase.channel(`room:${roomId}`, {
       config: {
@@ -397,22 +460,30 @@ export const [ChatContext, useChat] = createContextHook(() => {
               };
             });
 
-            setRooms(prevRooms => prevRooms.map((roomEntry) => {
-              if (roomEntry.id !== roomId) {
-                return roomEntry;
+            setRooms(prevRooms => {
+              if (!Array.isArray(prevRooms)) return prevRooms;
+              try {
+                return prevRooms.map((roomEntry) => {
+                  if (roomEntry.id !== roomId) {
+                    return roomEntry;
+                  }
+
+                  const isSelfMessage = newestMessage.user_id === user.id;
+
+                  return {
+                    ...roomEntry,
+                    last_message: newestMessage,
+                    last_message_at: newestMessage.created_at,
+                    unread_count: isSelfMessage ? roomEntry.unread_count : roomEntry.unread_count + 1,
+                  };
+                });
+              } catch (error) {
+                console.error('Error updating rooms:', error);
+                return prevRooms;
               }
-
-              const isSelfMessage = newestMessage.user_id === user.id;
-
-              return {
-                ...roomEntry,
-                last_message: newestMessage,
-                last_message_at: newestMessage.created_at,
-                unread_count: isSelfMessage ? roomEntry.unread_count : roomEntry.unread_count + 1,
-              };
-            }));
-          } catch (fetchError) {
-            console.error('Failed to fetch latest message for room', { roomId, fetchError });
+            });
+          } catch (error) {
+            console.error('Error in postgres_changes handler:', error);
           }
         }
       )

@@ -1,9 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-<<<<<<< HEAD
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView, ScrollView, Alert, Linking, Modal } from 'react-native';
-=======
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView, ScrollView, Alert } from 'react-native';
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
 import { useRouter, usePathname } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
@@ -39,12 +35,14 @@ export default function LoginScreen() {
   const { data: requiredPolicies } = (trpc as any).user.getRequiredPolicies.useQuery();
   const consentMutation = (trpc as any).user.consentToPolicies.useMutation();
   
-<<<<<<< HEAD
   const [selectedPolicy, setSelectedPolicy] = useState<any>(null);
   const [policyModalVisible, setPolicyModalVisible] = useState(false);
 
   const handlePolicyPress = (policyType: string) => {
-=======
+    setSelectedPolicy(policies?.find((p: any) => p.policy_type === policyType));
+    setPolicyModalVisible(true);
+  };
+
   // Kullanıcı dostu hata mesajları için yardımcı fonksiyon
   const getFriendlyErrorMessage = (error: any): string => {
     const errorMessage = error?.message || error?.error || '';
@@ -114,8 +112,7 @@ export default function LoginScreen() {
     return 'Bir sorun oluştu. Lütfen tekrar deneyin.';
   };
 
-  const handlePolicyPress = (policyType: 'terms' | 'privacy') => {
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
+  const handlePolicyPressExtended = (policyType: 'terms' | 'privacy') => {
     if (policies) {
       const policy = policies.find((p: any) => p.policy_type === policyType && p.is_active);
       if (policy) {
@@ -159,7 +156,7 @@ export default function LoginScreen() {
       }
       
       // Eğer güncellenecek bir şey varsa
-      if (Object.keys(updateData).length > 0) {
+      if (updateData && typeof updateData === 'object' && Object.keys(updateData).length > 0) {
         console.log('📝 [updateProfile] Updating profile with:', updateData);
         
         const { error: updateError } = await supabase
@@ -1675,56 +1672,6 @@ export default function LoginScreen() {
           {renderForm()}
 
           <View style={styles.footer}>
-<<<<<<< HEAD
-            {/* Politikalar - Sıralı ve Düzenli */}
-            {policies && policies.length > 0 && (() => {
-              const policyTypeLabels: Record<string, string> = {
-                terms: 'Kullanım Şartları',
-                privacy: 'Gizlilik Politikası',
-                community: 'Topluluk Kuralları',
-                cookie: 'Çerez Politikası',
-                refund: 'İade Politikası',
-                child_safety: 'Çocuk Güvenliği',
-                payment: 'Ödeme Politikası',
-                moderation: 'Moderasyon',
-                data_storage: 'Veri Saklama',
-                eula: 'Lisans Sözleşmesi',
-                university: 'Üniversite Modu',
-                event: 'Etkinlik Politikası',
-                other: 'Diğer',
-              };
-              
-              const activePolicies = policies
-                .filter((p: any) => p.is_active)
-                .sort((a: any, b: any) => (a.display_order || 999) - (b.display_order || 999))
-                .slice(0, 20); // Maksimum 20 politika
-              
-              if (activePolicies.length === 0) return null;
-              
-              return (
-                <View style={styles.policiesContainer}>
-                  {activePolicies.map((policy: any, index: number) => (
-                    <React.Fragment key={policy.id}>
-                      <TouchableOpacity 
-                        onPress={() => handlePolicyPress(policy.policy_type)}
-                        style={styles.policyButton}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.policyButtonText}>
-                          {policyTypeLabels[policy.policy_type] || policy.title}
-                        </Text>
-                      </TouchableOpacity>
-                      {index < activePolicies.length - 1 && (
-                        <Text style={styles.policySeparator}>•</Text>
-                      )}
-                    </React.Fragment>
-                  ))}
-                </View>
-              );
-            })()}
-            
-=======
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
             <Text style={styles.terms}>
               Devam ederek{' '}
               <Text 
@@ -1746,7 +1693,6 @@ export default function LoginScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-<<<<<<< HEAD
       {/* Policy Modal */}
       <Modal
         visible={policyModalVisible}
@@ -1803,7 +1749,7 @@ export default function LoginScreen() {
           </View>
         </View>
       </Modal>
-=======
+      
       {/* Politika Onay Modalı */}
       {requiredPolicies?.policies && requiredPolicies.policies.length > 0 && (
         <PolicyConsentModal
@@ -1814,13 +1760,11 @@ export default function LoginScreen() {
             handlePolicyAccept(policyIds);
           }}
           onReject={() => {
-            // Zorunlu olduğu için reddetme seçeneği yok
             Alert.alert('Uyarı', 'Politikaları kabul etmeden devam edemezsiniz');
           }}
           required={true}
         />
       )}
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     </SafeAreaView>
   );
 }
@@ -1950,10 +1894,7 @@ const styles = StyleSheet.create({
   alternativeButtonsContainer: {
     width: '100%',
     alignItems: 'center' as const,
-<<<<<<< HEAD
-    marginBottom: SPACING.sm,
-    borderWidth: 1,
-    borderColor: '#357AE8',
+    marginTop: SPACING.md,
   },
   googleButtonText: {
     color: COLORS.white,
@@ -1967,13 +1908,9 @@ const styles = StyleSheet.create({
     }),
   },
   appleButton: {
-    backgroundColor: '#000000',
-    paddingVertical: SPACING.md,
-    borderRadius: 12,
-    alignItems: 'center' as const,
-    marginBottom: SPACING.sm,
-    borderWidth: 1,
-    borderColor: '#333333',
+    width: '100%',
+    height: 44,
+    marginBottom: SPACING.md,
   },
   appleButtonText: {
     color: COLORS.white,
@@ -1985,9 +1922,6 @@ const styles = StyleSheet.create({
       includeFontPadding: false,
       lineHeight: FONT_SIZES.md * 1.2,
     }),
-=======
-    marginTop: SPACING.md,
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   },
   magicLinkButton: {
     backgroundColor: 'rgba(255,255,255,0.15)',
@@ -2025,7 +1959,6 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.3)',
   },
-<<<<<<< HEAD
   dividerText: {
     color: COLORS.white,
     marginHorizontal: SPACING.md,
@@ -2035,8 +1968,6 @@ const styles = StyleSheet.create({
       lineHeight: FONT_SIZES.sm * 1.3,
     }),
   },
-=======
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   switchText: {
     color: COLORS.white,
     fontSize: FONT_SIZES.sm,
@@ -2071,7 +2002,6 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     paddingHorizontal: SPACING.md,
   },
-<<<<<<< HEAD
   policiesContainer: {
     flexDirection: 'row' as const,
     flexWrap: 'wrap' as const,
@@ -2107,8 +2037,6 @@ const styles = StyleSheet.create({
     marginHorizontal: SPACING.xs,
     lineHeight: FONT_SIZES.xs * 1.4,
   },
-=======
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   terms: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.white,
@@ -2125,7 +2053,6 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline' as const,
   },
   betaText: {
-<<<<<<< HEAD
     fontSize: FONT_SIZES.md,
     fontWeight: '700' as const,
     color: '#FFC107',
@@ -2136,21 +2063,16 @@ const styles = StyleSheet.create({
     }),
   },
   betaSubtext: {
-=======
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     fontSize: FONT_SIZES.sm,
     fontWeight: '400' as const,
     color: COLORS.white,
     opacity: 0.6,
     textAlign: 'center' as const,
-<<<<<<< HEAD
+    marginBottom: SPACING.lg,
     ...(Platform.OS === 'android' && {
       includeFontPadding: false,
       lineHeight: FONT_SIZES.sm * 1.3,
     }),
-=======
-    marginBottom: SPACING.lg,
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   },
   phoneInfoText: {
     color: COLORS.white,
@@ -2217,11 +2139,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: COLORS.textLight,
     fontStyle: 'italic' as const,
-=======
-  appleButton: {
-    width: '100%',
-    height: 44, // Küçültüldü (50'den 44'e)
-    marginBottom: SPACING.md,
   },
   policyCheckboxContainer: {
     flexDirection: 'row' as const,
@@ -2255,6 +2172,5 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     opacity: 0.9,
     flexWrap: 'wrap',
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
   },
 });

@@ -34,16 +34,36 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('❌ ErrorBoundary caught an error:', error);
     console.error('❌ Error Info:', errorInfo);
+    console.error('❌ Component Stack:', errorInfo.componentStack);
     
-    this.setState({
-      error,
-      errorInfo,
-    });
+    // Error'ı güvenli şekilde state'e kaydet
+    try {
+      this.setState({
+        error,
+        errorInfo,
+      });
+    } catch (setStateError) {
+      // State update hatası - kritik durum
+      console.error('❌ Critical: ErrorBoundary state update failed:', setStateError);
+    }
 
     // Production'da crash reporting servisine gönderilebilir
     if (!__DEV__) {
       // TODO: Crash reporting servisine gönder
       // Örnek: Sentry.captureException(error, { extra: errorInfo });
+      
+      // Error'ı localStorage'a kaydet (sonraki açılışta gönderilebilir)
+      try {
+        const errorData = {
+          message: error.message,
+          stack: error.stack,
+          componentStack: errorInfo.componentStack,
+          timestamp: new Date().toISOString(),
+        };
+        // localStorage.setItem('last_crash', JSON.stringify(errorData));
+      } catch (storageError) {
+        // Storage hatası - sessizce devam et
+      }
     }
   }
 

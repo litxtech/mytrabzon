@@ -5,11 +5,7 @@ import { Video, ResizeMode, Audio } from 'expo-av';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-<<<<<<< HEAD
-import { LogOut, Settings, HelpCircle, Trash2, Edit3, Heart, Shield, CheckCircle2, Clock, XCircle, MoreVertical, Share2, Users, MessageCircle, Trophy, X } from 'lucide-react-native';
-=======
-import { LogOut, Settings, Edit3, Heart, MoreVertical, MessageCircle, Instagram, Twitter, Facebook, Linkedin, Youtube, Shield, Car, Trophy, Search, HelpCircle, Target } from 'lucide-react-native';
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
+import { LogOut, Settings, Edit3, Heart, MoreVertical, MessageCircle, Instagram, Twitter, Facebook, Linkedin, Youtube, Shield, Car, Trophy, Search, HelpCircle, Target, Trash2, CheckCircle2, Clock, XCircle, Share2, Users, X } from 'lucide-react-native';
 import { DISTRICT_BADGES } from '../../constants/districts';
 import { useRouter } from 'expo-router';
 import { Footer } from '../../components/Footer';
@@ -176,7 +172,6 @@ export default function ProfileScreen() {
     }
   }, [user?.id, user?.email, user?.user_metadata?.email, profile?.username, user?.user_metadata?.username]);
   
-<<<<<<< HEAD
   // Takipçi ve takip sayılarını getir - gerçek zamanlı güncelleme için refetch
   const { data: followStats, refetch: refetchFollowStats } = trpc.user.getFollowStats.useQuery(
     { user_id: user?.id || '' },
@@ -186,13 +181,35 @@ export default function ProfileScreen() {
   const followersCount = followStats?.followers_count || 0;
   const followingCount = followStats?.following_count || 0;
 
-  // Takip/takipçi sayılarını periyodik olarak güncelle (her 5 saniyede bir)
+  // Takip/takipçi sayılarını periyodik olarak güncelle (her 30 saniyede bir - performans için)
   useEffect(() => {
     if (!user?.id) return;
-    const interval = setInterval(() => {
-      refetchFollowStats();
-    }, 5000);
-    return () => clearInterval(interval);
+    
+    let interval: ReturnType<typeof setInterval> | null = null;
+    let isMounted = true;
+    
+    const updateStats = () => {
+      if (isMounted && refetchFollowStats) {
+        try {
+          refetchFollowStats();
+        } catch (error) {
+          console.error('Error refetching follow stats:', error);
+        }
+      }
+    };
+    
+    // İlk güncelleme
+    updateStats();
+    
+    // Periyodik güncelleme (30 saniye - performans için optimize edildi)
+    interval = setInterval(updateStats, 30000);
+    
+    return () => {
+      isMounted = false;
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
   }, [user?.id, refetchFollowStats]);
 
   const handleLogout = async () => {
@@ -513,7 +530,7 @@ export default function ProfileScreen() {
             )}
 
             {/* Sosyal Medya Linkleri - Kompakt ve Modern */}
-            {showSocialMedia && Object.keys(socialMedia).length > 0 && (
+            {showSocialMedia && socialMedia && typeof socialMedia === 'object' && Object.keys(socialMedia).length > 0 && (
               <View style={styles.socialMediaContainer}>
                 {socialMedia.instagram && (
                   <TouchableOpacity

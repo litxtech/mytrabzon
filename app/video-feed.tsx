@@ -104,65 +104,108 @@ export default function VideoFeedScreen() {
 
   // Posts ve Events data değiştiğinde videoları işle
   useEffect(() => {
+    let isMounted = true;
     const allVideoItems: any[] = [];
     
-    // Post'lardan video içerenleri al
-    if (postsData?.posts) {
-      const videoPosts = postsData.posts.filter((post: any) => {
-        const firstMedia = post.media && post.media.length > 0 ? post.media[0] : null;
-        return firstMedia && (firstMedia.type === 'video' || firstMedia.path?.match(/\.(mp4|mov|avi|webm)$/i));
-      });
-      allVideoItems.push(...videoPosts);
-    }
-    
-    // Event'lerden video içerenleri al ve post formatına dönüştür
-    if (eventsData?.events) {
-      const videoEvents = eventsData.events
-        .map(convertEventToPost)
-        .filter((item: any) => item !== null); // Null olanları filtrele
-      allVideoItems.push(...videoEvents);
-    }
-    
-    if (allVideoItems.length > 0) {
-      // Beğeni ve yorum sayısına göre sırala - TikTok tarzı algoritma
-      const sorted = allVideoItems.sort((a: any, b: any) => {
-        // TikTok benzeri skorlama: beğeni + yorum + zaman faktörü
-        const now = Date.now();
-        const aTime = new Date(a.created_at).getTime();
-        const bTime = new Date(b.created_at).getTime();
-        
-        // Zaman faktörü (son 24 saat içindeki içerikler daha yüksek skor)
-        const aTimeFactor = (now - aTime) < 86400000 ? 1.5 : 1; // 24 saat = 86400000ms
-        const bTimeFactor = (now - bTime) < 86400000 ? 1.5 : 1;
-        
-        // Skor hesaplama: beğeni + (yorum * 2) + zaman faktörü
-        const aScore = ((a.like_count || 0) + (a.comment_count || 0) * 2) * aTimeFactor;
-        const bScore = ((b.like_count || 0) + (b.comment_count || 0) * 2) * bTimeFactor;
-        
-        return bScore - aScore;
-      });
-      
-      if (offset === 0 && eventsOffset === 0) {
-        // İlk yükleme - videoları direkt set et
-        setAllVideos(sorted);
-      } else {
-        // Daha fazla yükleme - mevcut listeye ekle
-        setAllVideos((prev) => {
-          // Duplicate kontrolü
-          const existingIds = new Set(prev.map((v: any) => v.id));
-          const newVideos = sorted.filter((v: any) => !existingIds.has(v.id));
-          return [...prev, ...newVideos];
+    try {
+      // Post'lardan video içerenleri al
+      if (postsData?.posts && Array.isArray(postsData.posts)) {
+        const videoPosts = postsData.posts.filter((post: any) => {
+          if (!post || !post.media) return false;
+          const firstMedia = Array.isArray(post.media) && post.media.length > 0 ? post.media[0] : null;
+          return firstMedia && (firstMedia.type === 'video' || firstMedia.path?.match(/\.(mp4|mov|avi|webm)$/i));
         });
+        if (isMounted) {
+          allVideoItems.push(...videoPosts);
+        }
       }
       
-      // Daha fazla video var mı kontrol et
-      const postsHasMore = postsData ? (postsData.total || 0) > offset + 20 : false;
-      const eventsHasMore = eventsData ? (eventsData.total || 0) > eventsOffset + 20 : false;
-      setHasMore(postsHasMore || eventsHasMore);
-      setIsLoadingMore(false);
-    } else if ((postsData && !postsData.posts) && (eventsData && !eventsData.events)) {
-      setHasMore(false);
-      setIsLoadingMore(false);
+      // Event'lerden video içerenleri al ve post formatına dönüştür
+      if (eventsData?.events && Array.isArray(eventsData.events)) {
+        const videoEvents = eventsData.events
+          .map((event: any) => {
+            try {
+              return convertEventToPost(event);
+            } catch (error) {
+              console.error('Error converting event to post:', error);
+              return null;
+            }
+          })
+          .filter((item: any) => item !== null); // Null olanları filtrele
+        if (isMounted) {
+          allVideoItems.push(...videoEvents);
+        }
+      }
+    
+      if (isMounted && allVideoItems.length > 0) {
+        try {
+          // Beğeni ve yorum sayısına göre sırala - TikTok tarzı algoritma
+          const sorted = [...allVideoItems].sort((a: any, b: any) => {
+            try {
+              // TikTok benzeri skorlama: beğeni + yorum + zaman faktörü
+              const now = Date.now();
+              const aTime = a?.created_at ? new Date(a.created_at).getTime() : 0;
+              const bTime = b?.created_at ? new Date(b.created_at).getTime() : 0;
+              
+              // Zaman faktörü (son 24 saat içindeki içerikler daha yüksek skor)
+              const aTimeFactor = (now - aTime) < 86400000 ? 1.5 : 1; // 24 saat = 86400000ms
+              const bTimeFactor = (now - bTime) < 86400000 ? 1.5 : 1;
+              
+              // Skor hesaplama: beğeni + (yorum * 2) + zaman faktörü
+              const aScore = ((a?.like_count || 0) + (a?.comment_count || 0) * 2) * aTimeFactor;
+              const bScore = ((b?.like_count || 0) + (b?.comment_count || 0) * 2) * bTimeFactor;
+              
+              return bScore - aScore;
+            } catch (error) {
+              console.error('Error in sort comparison:', error);
+              return 0;
+            }
+          });
+          
+          if (isMounted) {
+            if (offset === 0 && eventsOffset === 0) {
+              // İlk yükleme - videoları direkt set et
+              setAllVideos(sorted);
+            } else {
+              // Daha fazla yükleme - mevcut listeye ekle
+              setAllVideos((prev) => {
+                if (!isMounted) return prev;
+                try {
+                  // Duplicate kontrolü
+                  const safePrev = Array.isArray(prev) ? prev : [];
+                  const existingIds = new Set(safePrev.map((v: any) => v?.id).filter(Boolean));
+                  const newVideos = sorted.filter((v: any) => v?.id && !existingIds.has(v.id));
+                  return [...safePrev, ...newVideos];
+                } catch (error) {
+                  console.error('Error updating videos:', error);
+                  return prev;
+                }
+              });
+            }
+            
+            // Daha fazla video var mı kontrol et
+            const postsHasMore = postsData ? (postsData.total || 0) > offset + 20 : false;
+            const eventsHasMore = eventsData ? (eventsData.total || 0) > eventsOffset + 20 : false;
+            setHasMore(postsHasMore || eventsHasMore);
+            setIsLoadingMore(false);
+          }
+        } catch (error) {
+          console.error('Error processing video items:', error);
+          setIsLoadingMore(false);
+        }
+      } else if ((postsData && !postsData.posts) && (eventsData && !eventsData.events)) {
+        if (isMounted) {
+          setHasMore(false);
+          setIsLoadingMore(false);
+        }
+      }
+      
+      return () => {
+        isMounted = false;
+      };
+    } catch (error) {
+      console.error('Error in video feed effect:', error);
+      return () => {};
     }
   }, [postsData, eventsData, offset, eventsOffset]);
 
@@ -296,7 +339,7 @@ export default function VideoFeedScreen() {
             flatListRef.current?.scrollToIndex({ index: info.index, animated: false });
           });
         }}
-        scrollEnabled={!Object.values(commentsOpenMap).some((isOpen) => isOpen)}
+        scrollEnabled={!commentsOpenMap || !Object.values(commentsOpenMap).some((isOpen) => isOpen)}
         nestedScrollEnabled={true}
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={16}

@@ -3,21 +3,12 @@
   "main": "expo-router/entry",
   "version": "1.0.54",
   "scripts": {
-<<<<<<< HEAD
-    "start": "bunx rork start -p r41wi4vumk2g4wcqmseqt --tunnel",
+    "start": "npx expo start --clear",
     "start:android": "npx expo start --android --clear --dev-client",
     "start:ios": "npx expo start --ios --clear --dev-client",
     "start:lan": "npx expo start --lan --clear --dev-client",
-    "start-web": "bunx rork start -p r41wi4vumk2g4wcqmseqt --web --tunnel",
-    "start-web-dev": "DEBUG=expo* bunx rork start -p r41wi4vumk2g4wcqmseqt --web --tunnel",
-=======
-    "start": "npx expo start --clear",
-    "start:android": "npx expo start --android --clear",
-    "start:ios": "npx expo start --ios --clear",
-    "start:lan": "npx expo start --lan --clear",
     "start:dev": "npx expo start --dev-client --clear",
     "start:qr": "npx expo start --tunnel --clear",
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
     "lint": "expo lint",
     "android": "expo run:android",
     "ios": "expo run:ios",
@@ -54,7 +45,6 @@
     "@ungap/structured-clone": "^1.3.0",
     "bcryptjs": "^3.0.3",
     "expo": "^54.0.20",
-    "expo-dev-client": "~5.0.7",
     "expo-apple-authentication": "~8.0.7",
     "expo-auth-session": "^7.0.8",
     "expo-av": "~16.0.7",
