@@ -15,11 +15,7 @@
       "policy": "sdkVersion"
     },
     "splash": {
-<<<<<<< HEAD
-      "image": "./assets/images/icon.png",
-=======
       "image": "./assets/images/splash-icon.png",
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -97,17 +93,12 @@
       ]
     },
     "plugins": [
-<<<<<<< HEAD
       [
         "expo-router",
         {
           "origin": "https://rork.com/"
         }
       ],
-      "expo-dev-client",
-=======
-      "expo-router",
->>>>>>> c0e01b0a94b268b9348cfd071cf195f01ef88020
       "expo-font",
       [
         "expo-image-picker",
@@ -140,6 +131,19 @@
         {
           "ios": {
             "deploymentTarget": "15.1"
+          },
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "buildToolsVersion": "35.0.0",
+            "minSdkVersion": 24,
+            "javaVersion": "17",
+            "packagingOptions": {
+              "pickFirst": [
+                "**/libc++_shared.so",
+                "**/libjsc.so"
+              ]
+            }
           }
         }
       ],

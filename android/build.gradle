@@ -39,6 +39,14 @@ subprojects {
         }
       }
     }
+    // Kotlin projeleri için de Java 17 ayarla
+    if (project.hasProperty('kotlin')) {
+      project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        kotlinOptions {
+          jvmTarget = "17"
+        }
+      }
+    }
   }
 }
 
