@@ -1,7 +1,7 @@
 {
   "name": "mytrabzon",
   "main": "expo-router/entry",
-  "version": "1.0.61",
+  "version": "1.0.62",
   "scripts": {
     "start": "npx expo start --lan --clear --port 8081",
     "start:expo-go": "npx expo start --tunnel --clear --port 8081",

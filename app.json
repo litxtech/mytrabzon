@@ -2,7 +2,7 @@
   "expo": {
     "name": "MyTrabzon",
     "slug": "mytrabzon-",
-    "version": "1.0.61",
+    "version": "1.0.62",
     "orientation": "portrait",
     "scheme": "mytrabzon",
     "userInterfaceStyle": "light",
@@ -26,7 +26,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.litxtech.mytrabzon",
-      "versionCode": 59,
+      "versionCode": 60,
       "playStoreUrl": "https://play.google.com/store/apps/details?id=com.litxtech.mytrabzon",
       "permissions": [
         "CAMERA",
@@ -64,7 +64,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.litxtech.mytrabzon",
-      "buildNumber": "60",
+      "buildNumber": "61",
       "icon": "./assets/images/icon.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
