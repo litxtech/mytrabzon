@@ -91,11 +91,7 @@ export function VideoFeedItem({ post, isActive, isViewable, index, onCommentsCha
       }
       console.error('Like post error:', error);
     },
-    onSuccess: () => {
-      // Cache'i invalidate et
-      utils.post.getPosts.invalidate();
-      utils.post.getPostDetail.invalidate({ postId: post.id });
-    },
+    // onSuccess kaldırıldı - invalidate yapmıyoruz, optimistic update yeterli
   });
 
   const likeEventMutation = (trpc as any).event.likeEvent.useMutation({

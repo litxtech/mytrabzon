@@ -106,6 +106,10 @@ export default function UserProfileScreen() {
     },
     {
       enabled: !!id,
+      staleTime: 0, // Cache kullanma, her zaman fresh data al
+      refetchOnMount: true, // Sayfa açıldığında her zaman fetch yap
+      refetchOnWindowFocus: true, // Pencere focus olduğunda fetch yap
+      refetchOnReconnect: true, // Bağlantı yenilendiğinde fetch yap
     }
   );
 

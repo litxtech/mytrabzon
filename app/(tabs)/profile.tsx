@@ -268,11 +268,12 @@ export default function ProfileScreen() {
     limit: 50,
     offset: 0,
   }, {
-    enabled: !!user?.id && !!user.id,
+    enabled: !!user?.id,
     retry: false,
-    staleTime: 2 * 60 * 1000,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
+    staleTime: 0, // Cache kullanma, her zaman fresh data al
+    refetchOnMount: true, // Sayfa açıldığında her zaman fetch yap
+    refetchOnWindowFocus: true, // Pencere focus olduğunda fetch yap
+    refetchOnReconnect: true, // Bağlantı yenilendiğinde fetch yap
   });
 
   // Post silme mutation'ı
@@ -345,7 +346,7 @@ export default function ProfileScreen() {
             <MoreVertical size={18} color={theme.colors.text} />
           </TouchableOpacity>
           
-          {/* Profil Avatar - Merkezi ve Büyük */}
+          {/* Profil Avatar - Merkez */}
           <View style={styles.profileTopSection}>
             <View style={styles.avatarContainer}>
               <TouchableOpacity 
@@ -359,33 +360,6 @@ export default function ProfileScreen() {
                     style={styles.avatar}
                   />
                 </View>
-              </TouchableOpacity>
-            </View>
-
-            {/* İstatistikler - Modern Kart Tasarımı */}
-            <View style={styles.statsContainer}>
-              <TouchableOpacity 
-                style={[styles.statCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.statValue, { color: theme.colors.text }]}>{totalPosts}</Text>
-                <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>Gönderi</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.statCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push('/profile/followers' as any)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.statValue, { color: theme.colors.text }]}>{followersCount}</Text>
-                <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>Takipçi</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.statCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push('/profile/following' as any)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.statValue, { color: theme.colors.text }]}>{followingCount}</Text>
-                <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>Takip</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -477,6 +451,33 @@ export default function ProfileScreen() {
             )}
           </View>
 
+          {/* İstatistikler - Profil Bilgilerinin Altında, Orantılı */}
+          <View style={styles.statsContainer}>
+            <TouchableOpacity 
+              style={[styles.statCard, { backgroundColor: 'transparent' }]}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.statValue, { color: theme.colors.text }]}>{totalPosts}</Text>
+              <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>Gönderi</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.statCard, { backgroundColor: 'transparent' }]}
+              onPress={() => router.push('/profile/followers' as any)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.statValue, { color: theme.colors.text }]}>{followersCount}</Text>
+              <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>Takipçi</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.statCard, { backgroundColor: 'transparent' }]}
+              onPress={() => router.push('/profile/following' as any)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.statValue, { color: theme.colors.text }]}>{followingCount}</Text>
+              <Text style={[styles.statLabel, { color: theme.colors.textLight }]}>Takip</Text>
+            </TouchableOpacity>
+          </View>
+
           {/* Quick Actions - Kompakt ve Estetik */}
           <View style={[styles.quickActions, { backgroundColor: theme.colors.card }]}>
             {quickActions.map((action) => {
@@ -495,8 +496,6 @@ export default function ProfileScreen() {
                     styles.quickActionCardCompact, 
                     { 
                       backgroundColor: theme.colors.background, 
-                      borderColor: theme.colors.border,
-                      shadowColor: theme.colors.text,
                     }, 
                     isDisabled && styles.quickActionCardDisabled
                   ]}
@@ -764,7 +763,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   avatarContainer: {
-    marginBottom: SPACING.md,
+    alignItems: 'center',
   },
   avatarWrapper: {
     width: 100,
@@ -788,10 +787,12 @@ const styles = StyleSheet.create({
   },
   statsContainer: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: SPACING.sm,
+    justifyContent: 'space-around',
+    alignItems: 'center',
     width: '100%',
     paddingHorizontal: SPACING.md,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.md,
   },
   statCard: {
     flex: 1,
@@ -799,8 +800,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.xs,
-    borderRadius: 10,
-    borderWidth: 1,
     minHeight: 60,
   },
   statValue: {
@@ -889,16 +888,8 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs + 2,
     paddingHorizontal: SPACING.xs / 2,
     borderRadius: 10,
-    borderWidth: 1,
     gap: 4,
     minHeight: 64,
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
   },
   quickActionIconContainer: {
     width: 28,

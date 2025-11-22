@@ -68,34 +68,35 @@ function resolveSystemMode(): 'light' | 'dark' {
 }
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [mode, setModeState] = useState<ThemeMode>('system');
+  // Her zaman light tema kullan - sistem temasını takip etme
+  const [mode, setModeState] = useState<ThemeMode>('light');
 
-  // load saved mode
+  // load saved mode - ama sadece light veya dark, system değil
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then(saved => {
-      if (saved === 'light' || saved === 'dark' || saved === 'system') {
+      if (saved === 'light' || saved === 'dark') {
         setModeState(saved);
+      } else {
+        // System modu kaydedilmişse light'a çevir
+        setModeState('light');
+        AsyncStorage.setItem(STORAGE_KEY, 'light').catch(() => {});
       }
     });
   }, []);
 
-  useEffect(() => {
-    const sub = Appearance.addChangeListener(() => {
-      if (mode === 'system') {
-        // force rerender
-        setModeState('system');
-      }
-    });
-    return () => sub.remove();
-  }, [mode]);
+  // Sistem teması değişikliklerini dinleme - her zaman light kullan
+  // useEffect kaldırıldı - sistem temasını takip etmiyoruz
 
   const setMode = useCallback((m: ThemeMode) => {
-    setModeState(m);
-    AsyncStorage.setItem(STORAGE_KEY, m).catch(() => {});
+    // System modunu kabul etme, light veya dark olmalı
+    const finalMode = m === 'system' ? 'light' : m;
+    setModeState(finalMode);
+    AsyncStorage.setItem(STORAGE_KEY, finalMode).catch(() => {});
   }, []);
 
+  // Her zaman light tema kullan - sistem temasını takip etme
   const effective: 'light' | 'dark' = useMemo(() => {
-    return mode === 'system' ? resolveSystemMode() : mode;
+    return mode === 'system' ? 'light' : mode;
   }, [mode]);
 
   const theme = useMemo<AppTheme>(() => {

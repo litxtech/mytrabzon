@@ -15,6 +15,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { ArrowLeft, Trash2, AlertTriangle, CheckCircle2, Clock, XCircle } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function DeleteAccountScreen() {
   const router = useRouter();
@@ -39,8 +40,20 @@ export default function DeleteAccountScreen() {
 
   const deleteAccountMutation = trpc.user.requestAccountDeletion.useMutation({
     onSuccess: async () => {
-      // Hesap silme başarılı - direkt çıkış yap ve giriş sayfasına yönlendir
-      // Alert göstermeden direkt işlem yap
+      // Hesap silme başarılı - AsyncStorage'dan misafir bilgilerini temizle
+      try {
+        await AsyncStorage.multiRemove([
+          '@mytrabzon:guest_email',
+          '@mytrabzon:guest_password',
+          '@mytrabzon:guest_user_id',
+        ]);
+        console.log('✅ [DeleteAccount] Guest credentials cleared from AsyncStorage');
+      } catch (storageError: any) {
+        console.warn('⚠️ [DeleteAccount] Failed to clear guest credentials:', storageError);
+        // Hata olsa bile devam et
+      }
+      
+      // Direkt çıkış yap ve giriş sayfasına yönlendir
       await signOut();
       router.replace('/auth/login');
     },

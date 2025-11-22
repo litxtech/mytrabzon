@@ -1,4 +1,6 @@
+import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Environment variables'ı güvenli şekilde al
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() ?? '';
@@ -25,13 +27,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(finalSupabaseUrl, finalSupabaseAnonKey, {
   auth: {
-    persistSession: true, // Session'ı kalıcı olarak sakla
-    autoRefreshToken: true, // Token'ı otomatik yenile (süresiz session için)
-    detectSessionInUrl: true,
-    storage: undefined, // AsyncStorage kullan (default)
-    storageKey: 'supabase.auth.token', // Storage key
-    flowType: 'pkce', // PKCE flow (daha güvenli)
-    // Session süresiz olacak - refresh token ile otomatik yenilenecek
+    storage: AsyncStorage,
+    autoRefreshToken: true,   // token süresi dolunca otomatik yeniler
+    persistSession: true,     // oturumu AsyncStorage'a yazar
+    detectSessionInUrl: false // mobilde URL tabanlı OAuth yok
   },
   realtime: {
     params: {

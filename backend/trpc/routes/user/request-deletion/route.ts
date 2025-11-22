@@ -23,7 +23,7 @@ export const requestAccountDeletionProcedure = publicProcedure.mutation(async ({
     }
 
     const deletionDate = new Date();
-    deletionDate.setDate(deletionDate.getDate() + 7);
+    deletionDate.setDate(deletionDate.getDate() + 30); // 30 gün içinde silme
 
     const { error: updateError } = await supabase
       .from("profiles")

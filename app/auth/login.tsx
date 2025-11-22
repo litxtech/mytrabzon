@@ -4,39 +4,36 @@ import { useRouter, usePathname, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { COLORS, SPACING, FONT_SIZES } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Mail, Lock, PhoneCall, X, Trash2 } from 'lucide-react-native';
+import { Lock, PhoneCall, X, Trash2, Mail } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
-import { makeRedirectUri, useAuthRequest } from 'expo-auth-session';
-import * as AppleAuthentication from 'expo-apple-authentication';
 import { PolicyConsentModal } from '@/components/PolicyConsentModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { User } from 'lucide-react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import { makeRedirectUri } from 'expo-auth-session';
 
 type AuthMode = 'login' | 'register' | 'forgot' | 'phone' | 'phone-register' | 'phone-password-setup' | 'phone-forgot';
-type RegisterType = 'email' | 'phone' | null;
+type RegisterType = 'phone' | null;
 
 export default function LoginScreen() {
   const [mode, setMode] = useState<AuthMode>('login');
   const [registerType, setRegisterType] = useState<RegisterType>(null); // Kayıt tipi: email veya phone
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(''); // Email/telefon input için
   const [password, setPassword] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [smsCode, setSmsCode] = useState('');
   const [smsSent, setSmsSent] = useState(false);
   const [smsLoading, setSmsLoading] = useState(false);
   const [smsVerified, setSmsVerified] = useState(false); // SMS kodu doğrulandı mı?
-  const [emailCode, setEmailCode] = useState(''); // Email doğrulama kodu
-  const [emailCodeSent, setEmailCodeSent] = useState(false);
-  const [emailCodeVerified, setEmailCodeVerified] = useState(false);
   const [phonePassword, setPhonePassword] = useState('');
   const [phonePasswordConfirm, setPhonePasswordConfirm] = useState('');
   const [phoneUserId, setPhoneUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [appleLoading, setAppleLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [policiesAccepted, setPoliciesAccepted] = useState(false);
   const [showPolicyModal, setShowPolicyModal] = useState(false);
   const [guestLoading, setGuestLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const isNavigatingRef = useRef(false); // Navigation flag - duplicate call'ları önlemek için
   const router = useRouter();
   const pathname = usePathname(); // Mevcut path'i takip et
@@ -60,6 +57,7 @@ export default function LoginScreen() {
     },
   });
   const consentMutation = (trpc as any).user.consentToPolicies.useMutation();
+  const cancelAccountDeletionMutation = (trpc as any).user.cancelAccountDeletion.useMutation();
   
   const [selectedPolicy, setSelectedPolicy] = useState<any>(null);
   const [policyModalVisible, setPolicyModalVisible] = useState(false);
@@ -815,6 +813,96 @@ Toprak Travel Tourism – Turkey`;
     }
   }, []);
 
+  // Hesap silme isteği kontrolü - eğer 30 gün içindeyse kullanıcıya "vazgeç" butonu göster
+  const checkAndHandleAccountDeletion = useCallback(async (userId: string): Promise<boolean> => {
+    try {
+      console.log('🔍 [checkAccountDeletion] Checking deletion status for user:', userId);
+      
+      // Profile'den deletion_requested_at kontrolü yap
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('deletion_requested_at')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        console.error('❌ [checkAccountDeletion] Error fetching profile:', error);
+        return false; // Hata durumunda devam et
+      }
+
+      if (!profile || !profile.deletion_requested_at) {
+        console.log('✅ [checkAccountDeletion] No deletion request found');
+        return false; // Silme isteği yok, normal akışa devam et
+      }
+
+      // deletion_requested_at tarihini kontrol et
+      const deletionRequestedAt = new Date(profile.deletion_requested_at);
+      const now = new Date();
+      const daysDiff = (now.getTime() - deletionRequestedAt.getTime()) / (1000 * 60 * 60 * 24); // Gün cinsinden
+
+      console.log('📅 [checkAccountDeletion] Deletion requested at:', deletionRequestedAt);
+      console.log('📅 [checkAccountDeletion] Days since deletion request:', daysDiff.toFixed(2));
+
+      // 30 gün içindeyse kullanıcıya "vazgeç" butonu göster
+      if (daysDiff <= 30) {
+        console.log('⚠️ [checkAccountDeletion] Deletion request found within 30 days, showing restore option');
+        
+        // Promise döndüren Alert wrapper
+        return new Promise<boolean>((resolve) => {
+          Alert.alert(
+            'Hesap Silme İsteği',
+            `Hesabınızı silmek için talepte bulunmuştunuz. 30 gün içinde hesabınızı geri yükleyebilirsiniz.\n\nHesabınızı geri yüklemek ister misiniz?`,
+            [
+              {
+                text: 'Hayır',
+                style: 'cancel',
+                onPress: () => {
+                  console.log('👋 [checkAccountDeletion] User chose to keep deletion request');
+                  resolve(false); // Normal akışa devam et
+                },
+              },
+              {
+                text: 'Hesabını Silmekten Vazgeç',
+                style: 'default',
+                onPress: async () => {
+                  console.log('✅ [checkAccountDeletion] User chose to restore account');
+                  try {
+                    setLoading(true);
+                    // Hesap silme isteğini iptal et
+                    await cancelAccountDeletionMutation.mutateAsync();
+                    console.log('✅ [checkAccountDeletion] Account deletion cancelled successfully');
+                    setLoading(false);
+                    resolve(true); // Hesap geri yüklendi, normal akışa devam et
+                  } catch (error: any) {
+                    console.error('❌ [checkAccountDeletion] Error cancelling deletion:', error);
+                    setLoading(false);
+                    Alert.alert('Hata', 'Hesap silme isteği iptal edilemedi. Lütfen tekrar deneyin.');
+                    resolve(false); // Hata durumunda normal akışa devam et
+                  }
+                },
+              },
+            ],
+            { cancelable: false }
+          );
+        });
+      } else {
+        console.log('⏰ [checkAccountDeletion] Deletion request is older than 30 days, cannot restore');
+        // 30 günü geçtiyse hesap geri yüklenemez
+        Alert.alert(
+          'Hesap Silinmiş',
+          'Hesabınız 30 gün önce silinmek üzere işaretlenmişti. Maalesef hesabınızı geri yükleyemezsiniz.',
+          [{ text: 'Tamam' }]
+        );
+        // Çıkış yap ve giriş sayfasına yönlendir
+        await supabase.auth.signOut();
+        return false;
+      }
+    } catch (error: any) {
+      console.error('❌ [checkAccountDeletion] Unexpected error:', error);
+      return false; // Hata durumunda normal akışa devam et
+    }
+  }, [cancelAccountDeletionMutation]);
+
   const checkProfileAndNavigate = useCallback(async (userId: string) => {
     // Duplicate call'ları önle
     if (isNavigatingRef.current) {
@@ -827,6 +915,38 @@ Toprak Travel Tourism – Turkey`;
       console.log('🔍 [checkProfileAndNavigate] Starting for user:', userId);
       console.log('🔍 [checkProfileAndNavigate] isNavigatingRef.current:', isNavigatingRef.current);
       
+      // Hesap silme isteği kontrolü - eğer 30 gün içindeyse kullanıcıya "vazgeç" butonu göster
+      const accountRestored = await checkAndHandleAccountDeletion(userId);
+      
+      // Eğer hesap geri yüklenmediyse, tekrar deletion_requested_at kontrolü yap
+      // (kullanıcı "hayır" dediyse silme isteği hala var)
+      if (!accountRestored) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('deletion_requested_at')
+          .eq('id', userId)
+          .single();
+        
+        if (profile?.deletion_requested_at) {
+          // Silme isteği hala varsa (kullanıcı "hayır" dedi veya 30 günü geçti)
+          // 30 gün kontrolü yap
+          const deletionRequestedAt = new Date(profile.deletion_requested_at);
+          const now = new Date();
+          const daysDiff = (now.getTime() - deletionRequestedAt.getTime()) / (1000 * 60 * 60 * 24);
+          
+          if (daysDiff > 30) {
+            // 30 günü geçtiyse hesap geri yüklenemez, çıkış yap
+            console.log('⏰ [checkProfileAndNavigate] Account deletion period expired, signing out');
+            await supabase.auth.signOut();
+            isNavigatingRef.current = false;
+            setLoading(false);
+            return;
+          }
+          // 30 gün içindeyse ve kullanıcı "hayır" dediyse, normal akışa devam et
+          // (kullanıcı hesabını silmek istediğini onayladı ama henüz silinmedi)
+        }
+      }
+
       console.log('🔍 [checkProfileAndNavigate] Skipping profile fetch, navigating directly to onboarding');
       
       // Profile fetch'i atla - direkt onboarding'e yönlendir
@@ -844,16 +964,11 @@ Toprak Travel Tourism – Turkey`;
         // returnUrl varsa oraya yönlendir
         targetPath = returnUrl;
       } else {
-        // returnUrl yoksa normal akış
-        const hasProfile = !!profile;
-        const hasFullName = !!(profile as any)?.full_name;
-        targetPath = !hasProfile || !hasFullName
-          ? '/auth/onboarding' 
-          : '/(tabs)/profile';
+        // returnUrl yoksa normal akış - her zaman onboarding'e yönlendir (profile fetch atlandı)
+        targetPath = '/auth/onboarding';
       }
       
       console.log('🚀 [checkProfileAndNavigate] Navigating to:', targetPath);
-      console.log('🚀 [checkProfileAndNavigate] Profile exists:', hasProfile, 'Has full_name:', hasFullName);
 
       // Navigation'ı gerçekleştir - birden fazla deneme yap
       let navigationAttempts = 0;
@@ -963,7 +1078,7 @@ Toprak Travel Tourism – Turkey`;
         console.log('✅ [checkProfileAndNavigate] Error: Navigation flag reset');
       }, 2000);
     }
-  }, [router, pathname]);
+  }, [router, pathname, checkAndHandleAccountDeletion]);
 
   // OAuth callback'i dinle - her zaman aktif
   useEffect(() => {
@@ -1046,6 +1161,100 @@ Toprak Travel Tourism – Turkey`;
       console.error('❌ [login] Error accepting policies:', error);
       const errorMessage = error?.message || 'Politika onayı sırasında bir hata oluştu';
       Alert.alert('Hata', errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Telefon numarasını normalize et
+  const normalizePhone = (raw: string) => {
+    let value = raw.trim();
+    if (!value) return '';
+    
+    // Sadece rakamları al
+    let digits = value.replace(/\D/g, '');
+    
+    // Boşsa döndür
+    if (!digits) return '';
+    
+    // Eğer zaten +90 ile başlıyorsa, olduğu gibi döndür
+    if (value.startsWith('+90')) {
+      return value.replace(/\D/g, '').replace(/^90/, '+90');
+    }
+    
+    // Eğer 0 ile başlıyorsa, 0'ı kaldır
+    if (digits.startsWith('0')) {
+      digits = digits.slice(1);
+    }
+    
+    // Eğer 90 ile başlıyorsa, + ekle
+    if (digits.startsWith('90')) {
+      return `+${digits}`;
+    }
+    
+    // Eğer 10 haneli numara ise (5330483061 gibi), +90 ekle
+    if (digits.length === 10) {
+      return `+90${digits}`;
+    }
+    
+    // Diğer durumlarda +90 ekle
+    return `+90${digits}`;
+  };
+
+  // Telefon ile giriş yap
+  const handlePhoneLogin = async () => {
+    const input = email.trim();
+    const formatted = normalizePhone(input);
+    if (!formatted) {
+      Alert.alert('Hata', 'Lütfen geçerli bir telefon numarası girin');
+      return;
+    }
+    if (!password.trim()) {
+      Alert.alert('Hata', 'Lütfen şifrenizi girin');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Telefon numarasını email formatına çevir (Supabase telefon + şifre girişi için)
+      // Format: +905551234567 -> +905551234567@phone.mytrabzon.com
+      const phoneEmail = `${formatted}@phone.mytrabzon.com`;
+      
+      console.log('📱 [phone-login] Attempting login with phone:', formatted);
+      
+      // Telefon numarasını email olarak kullanarak şifre ile giriş yap
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: phoneEmail,
+        password: password.trim(),
+      });
+
+      if (error) {
+        console.error('❌ [phone-login] Error:', error);
+        throw error;
+      }
+
+      if (data?.user) {
+        console.log('✅ [phone-login] Login successful');
+        // Giriş başarılı - telefon numarasını profile ekle
+        await updateProfileWithAuthInfo(data.user.id, undefined, formatted);
+        await checkProfileAndNavigate(data.user.id);
+      }
+    } catch (error: any) {
+      console.error('Error in phone login:', error);
+      const friendlyMessage = getFriendlyErrorMessage(error);
+      
+      // Kullanıcı bulunamadı hatası için özel mesaj
+      if (error?.message?.includes('not found') || 
+          error?.message?.includes('User not found') ||
+          error?.message?.includes('Invalid login credentials') ||
+          error?.message?.includes('invalid_credentials')) {
+        Alert.alert(
+          'Giriş Yapılamadı', 
+          'Telefon numarası veya şifre hatalı. Lütfen bilgilerinizi kontrol edin.'
+        );
+      } else {
+        Alert.alert('Giriş Yapılamadı', friendlyMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -1170,6 +1379,14 @@ Toprak Travel Tourism – Turkey`;
 
   // Apple Sign In Handler (iOS)
   const handleAppleSignIn = async () => {
+    // Butona tıklandığında direkt bilgilendirme mesajı göster
+    Alert.alert(
+      'Yakında Eklenecek',
+      'Bu özellik yakında eklenecek. Lütfen telefon numarasıyla giriş yapın.',
+      [{ text: 'Tamam' }]
+    );
+    return;
+
     try {
       if (Platform.OS !== 'ios') {
         return;
@@ -1187,7 +1404,14 @@ Toprak Travel Tourism – Turkey`;
       });
 
       if (!credential.identityToken) {
-        throw new Error('Apple Sign In başarısız - identity token alınamadı');
+        console.error('❌ [Apple] Identity token alınamadı');
+        // Hata durumunda kullanıcı dostu mesaj göster
+        Alert.alert(
+          'Yakında Eklenecek',
+          'Bu özellik yakında eklenecek. Lütfen telefon numarasıyla giriş yapın.',
+          [{ text: 'Tamam' }]
+        );
+        return;
       }
 
       console.log('🍎 [Apple] Credential received:', {
@@ -1204,14 +1428,57 @@ Toprak Travel Tourism – Turkey`;
 
       if (error) {
         console.error('❌ [Apple] Sign in error:', error);
-        throw error;
+        // Hata durumunda kullanıcı dostu mesaj göster
+        Alert.alert(
+          'Yakında Eklenecek',
+          'Bu özellik yakında eklenecek. Lütfen telefon numarasıyla giriş yapın.',
+          [{ text: 'Tamam' }]
+        );
+        return;
       }
 
       if (!data.session || !data.user) {
-        throw new Error('Apple Sign In başarısız - session oluşturulamadı');
+        console.error('❌ [Apple] Session oluşturulamadı');
+        // Hata durumunda kullanıcı dostu mesaj göster
+        Alert.alert(
+          'Yakında Eklenecek',
+          'Bu özellik yakında eklenecek. Lütfen telefon numarasıyla giriş yapın.',
+          [{ text: 'Tamam' }]
+        );
+        return;
       }
 
       console.log('✅ [Apple] Sign in successful:', data.user.id);
+
+      // Session'ı manuel olarak set et (AuthContext'in güncellenmesi için)
+      // onAuthStateChange bazen tetiklenmeyebilir, bu yüzden manuel set ediyoruz
+      try {
+        const { error: setSessionError } = await supabase.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+        });
+        if (setSessionError) {
+          console.warn('⚠️ [Apple] setSession warning (non-critical):', setSessionError);
+        } else {
+          console.log('✅ [Apple] Session set successfully');
+        }
+      } catch (setSessionErr: any) {
+        console.warn('⚠️ [Apple] setSession error (non-critical):', setSessionErr);
+      }
+
+      // Kullanıcının yeni olup olmadığını kontrol et (created_at ile)
+      // Eğer kullanıcı şu an oluşturulduysa (5 saniye içinde), yeni kullanıcıdır
+      const userCreatedAt = new Date(data.user.created_at);
+      const now = new Date();
+      const timeDiff = (now.getTime() - userCreatedAt.getTime()) / 1000; // saniye cinsinden
+      const isNewUser = timeDiff < 5; // 5 saniye içinde oluşturulduysa yeni kullanıcı
+
+      console.log('🍎 [Apple] User info:', {
+        userId: data.user.id,
+        isNewUser,
+        created_at: data.user.created_at,
+        timeDiff: `${timeDiff.toFixed(2)}s`,
+      });
 
       // Email ve isim bilgilerini profile ekle
       const email = credential.email || data.user.email;
@@ -1221,7 +1488,8 @@ Toprak Travel Tourism – Turkey`;
 
       if (email || fullName) {
         try {
-          await updateProfileWithAuthInfo(data.user.id, email || undefined, undefined, true);
+          // Yeni kullanıcıysa isNewUser: true gönder, değilse false
+          await updateProfileWithAuthInfo(data.user.id, email || undefined, undefined, isNewUser);
           if (fullName) {
             await supabase
               .from('profiles')
@@ -1244,7 +1512,12 @@ Toprak Travel Tourism – Turkey`;
         return;
       }
 
-      Alert.alert('Hata', error.message || 'Apple ile giriş başarısız');
+      // Hata durumunda kullanıcı dostu mesaj göster
+      Alert.alert(
+        'Yakında Eklenecek',
+        'Bu özellik yakında eklenecek. Lütfen telefon numarasıyla giriş yapın.',
+        [{ text: 'Tamam' }]
+      );
     } finally {
       setAppleLoading(false);
     }
@@ -1252,98 +1525,241 @@ Toprak Travel Tourism – Turkey`;
 
   // Google Sign In Handler (iOS & Android)
   const handleGoogleSignIn = async () => {
+    // Butona tıklandığında direkt bilgilendirme mesajı göster
+    Alert.alert(
+      'Yakında Eklenecek',
+      'Bu özellik yakında eklenecek. Lütfen telefon numarasıyla giriş yapın.',
+      [{ text: 'Tamam' }]
+    );
+    return;
+
     try {
       setGoogleLoading(true);
       console.log('🔵 [Google] Starting Google Sign In...');
 
       const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://xcvcplwimicylaxghiak.supabase.co';
       
-      // Deep link URL (mobil uygulama için)
-      const deepLinkUrl = makeRedirectUri({
-        scheme: 'mytrabzon',
-        path: 'auth/callback',
-      });
-      
-      // Web callback URL (Vercel'deki callback.html'e yönlendirir, o da deep link'e yönlendirir)
-      const webCallbackUrl = 'https://www.litxtech.com/auth/callback';
+      // Platform'a göre callback URL belirle
+      // Mobil uygulamada direkt deep link kullan, web'de web URL kullan
+      const redirectUrl = Platform.OS === 'web' 
+        ? 'https://www.litxtech.com/auth/callback' // Web için
+        : makeRedirectUri({
+            scheme: 'mytrabzon',
+            path: 'auth/callback',
+          }); // Mobil için direkt deep link
 
-      console.log('🔵 [Google] Deep link URL:', deepLinkUrl);
-      console.log('🔵 [Google] Web callback URL:', webCallbackUrl);
+      console.log('🔵 [Google] Platform:', Platform.OS);
+      console.log('🔵 [Google] Redirect URL:', redirectUrl);
 
-      // Google OAuth başlat - web callback URL kullan (Vercel'deki callback.html deep link'e yönlendirir)
+      // Google OAuth başlat - platform'a göre uygun URL kullan
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: webCallbackUrl, // Web URL kullan, Vercel'deki callback.html deep link'e yönlendirir
-          skipBrowserRedirect: true, // Uygulama içinde kal, ayarlara yönlendirme olmadan
+          redirectTo: redirectUrl, // Mobilde direkt deep link, web'de web URL
+          skipBrowserRedirect: Platform.OS !== 'web', // Mobilde true, web'de false
         },
       });
 
       if (error) {
         console.error('❌ [Google] OAuth error:', error);
-        throw error;
+        // Hata durumunda kullanıcı dostu mesaj göster
+        Alert.alert(
+          'Yakında Eklenecek',
+          'Bu özellik yakında eklenecek. Lütfen telefon numarasıyla giriş yapın.',
+          [{ text: 'Tamam' }]
+        );
+        return;
       }
 
       if (!data.url) {
-        throw new Error('Google OAuth URL alınamadı');
+        console.error('❌ [Google] OAuth URL alınamadı');
+        // Hata durumunda kullanıcı dostu mesaj göster
+        Alert.alert(
+          'Yakında Eklenecek',
+          'Bu özellik yakında eklenecek. Lütfen telefon numarasıyla giriş yapın.',
+          [{ text: 'Tamam' }]
+        );
+        return;
       }
 
       console.log('🔵 [Google] Opening OAuth URL in-app...');
       
-      // expo-web-browser ile uygulama içinde aç (ayarlara yönlendirme olmadan)
-      const WebBrowser = await import('expo-web-browser');
-      
-      // OAuth URL'ini uygulama içinde aç
-      // redirectUrl olarak web callback URL kullan (Vercel'deki callback.html deep link'e yönlendirir)
-      const result = await WebBrowser.openAuthSessionAsync(
-        data.url,
-        webCallbackUrl
-      );
-
-      console.log('🔵 [Google] OAuth result:', result.type);
-
-      if (result.type === 'success' && result.url) {
-        // URL'den code veya token'ları çıkar
-        const url = new URL(result.url);
-        const code = url.searchParams.get('code');
+      // Mobil uygulamada expo-web-browser ile uygulama içinde aç
+      if (Platform.OS !== 'web') {
+        const WebBrowser = await import('expo-web-browser');
         
-        if (code) {
-          console.log('🔵 [Google] Exchanging code for session...');
-          const { data: sessionData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-          
-          if (exchangeError) {
-            console.error('❌ [Google] Code exchange error:', exchangeError);
-            throw exchangeError;
-          }
+        // OAuth URL'ini uygulama içinde aç - mobilde direkt deep link kullan
+        const result = await WebBrowser.openAuthSessionAsync(
+          data.url,
+          redirectUrl // Mobilde direkt deep link
+        );
 
-          if (sessionData.session && sessionData.user) {
-            console.log('✅ [Google] Sign in successful:', sessionData.user.id);
-            
-            // Email bilgisini profile ekle
-            if (sessionData.user.email) {
-              try {
-                await updateProfileWithAuthInfo(sessionData.user.id, sessionData.user.email, undefined, true);
-              } catch (profileError: any) {
-                console.warn('⚠️ [Google] Profile update warning (non-critical):', profileError);
+        console.log('🔵 [Google] OAuth result:', result.type);
+        console.log('🔵 [Google] Result URL:', result.type === 'success' && 'url' in result ? result.url : 'N/A');
+
+        if (result.type === 'success' && 'url' in result && result.url) {
+          const resultUrl = result.url;
+          
+          // URL'den code veya token'ları çıkar
+          // Android için URL parsing iyileştirmeleri
+          let url: URL;
+          try {
+            url = new URL(resultUrl);
+          } catch (urlError) {
+            console.error('❌ [Google] URL parsing error:', urlError);
+            // Android için alternatif parsing
+            const match = resultUrl.match(/[?&#](code|access_token|error)=([^&]+)/);
+            if (match && match[1] === 'code') {
+              const code = decodeURIComponent(match[2]);
+              console.log('🔵 [Google] Code extracted via regex:', code.substring(0, 20) + '...');
+              
+              const { data: sessionData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+              
+              if (exchangeError) {
+                console.error('❌ [Google] Code exchange error:', exchangeError);
+                // Hata durumunda kullanıcı dostu mesaj göster
+                Alert.alert(
+                  'Yakında Eklenecek',
+                  'Bu özellik yakında eklenecek. Lütfen telefon numarasıyla giriş yapın.',
+                  [{ text: 'Tamam' }]
+                );
+                return;
+              }
+
+              if (sessionData.session && sessionData.user) {
+                console.log('✅ [Google] Sign in successful:', sessionData.user.id);
+                
+                // Email bilgisini profile ekle
+                if (sessionData.user.email) {
+                  try {
+                    await updateProfileWithAuthInfo(sessionData.user.id, sessionData.user.email, undefined, true);
+                  } catch (profileError: any) {
+                    console.warn('⚠️ [Google] Profile update warning (non-critical):', profileError);
+                  }
+                }
+
+                // Profil kontrolü ve yönlendirme
+                await checkProfileAndNavigate(sessionData.user.id);
+                return;
               }
             }
+            throw new Error('URL parse edilemedi ve code bulunamadı');
+          }
+          
+          const code = url.searchParams.get('code') || url.hash.match(/[#&]code=([^&]+)/)?.[1];
+          
+          if (code) {
+            console.log('🔵 [Google] Exchanging code for session...');
+            const { data: sessionData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+            
+            if (exchangeError) {
+              console.error('❌ [Google] Code exchange error:', exchangeError);
+              // Hata durumunda kullanıcı dostu mesaj göster
+              Alert.alert(
+                'Yakında Eklenecek',
+                'Bu özellik yakında eklenecek. Lütfen telefon numarasıyla giriş yapın.',
+                [{ text: 'Tamam' }]
+              );
+              return;
+            }
 
-            // Profil kontrolü ve yönlendirme
-            await checkProfileAndNavigate(sessionData.user.id);
+            if (sessionData.session && sessionData.user) {
+              console.log('✅ [Google] Sign in successful:', sessionData.user.id);
+              
+              // Email bilgisini profile ekle
+              if (sessionData.user.email) {
+                try {
+                  await updateProfileWithAuthInfo(sessionData.user.id, sessionData.user.email, undefined, true);
+                } catch (profileError: any) {
+                  console.warn('⚠️ [Google] Profile update warning (non-critical):', profileError);
+                }
+              }
+
+              // Profil kontrolü ve yönlendirme
+              await checkProfileAndNavigate(sessionData.user.id);
+              return;
+            }
+          } else {
+            // Android için alternatif - hash'ten code çıkarmayı dene
+            console.warn('⚠️ [Google] No code in URL params, checking hash...');
+            const hashMatch = resultUrl.match(/[#&]code=([^&]+)/);
+            if (hashMatch) {
+              const codeFromHash = decodeURIComponent(hashMatch[1]);
+              console.log('🔵 [Google] Code found in hash, exchanging...');
+              
+              const { data: sessionData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(codeFromHash);
+              
+              if (exchangeError) {
+                console.error('❌ [Google] Code exchange error:', exchangeError);
+                // Hata durumunda kullanıcı dostu mesaj göster
+                Alert.alert(
+                  'Yakında Eklenecek',
+                  'Bu özellik yakında eklenecek. Lütfen telefon numarasıyla giriş yapın.',
+                  [{ text: 'Tamam' }]
+                );
+                return;
+              }
+
+              if (sessionData.session && sessionData.user) {
+                console.log('✅ [Google] Sign in successful:', sessionData.user.id);
+                
+                if (sessionData.user.email) {
+                  try {
+                    await updateProfileWithAuthInfo(sessionData.user.id, sessionData.user.email, undefined, true);
+                  } catch (profileError: any) {
+                    console.warn('⚠️ [Google] Profile update warning (non-critical):', profileError);
+                  }
+                }
+
+                await checkProfileAndNavigate(sessionData.user.id);
+                return;
+              }
+            }
+            
+            // Code bulunamadı - kullanıcı dostu mesaj göster
+            Alert.alert(
+              'Yakında Eklenecek',
+              'Bu özellik yakında eklenecek. Lütfen telefon numarasıyla giriş yapın.',
+              [{ text: 'Tamam' }]
+            );
             return;
           }
+        } else if (result.type === 'cancel') {
+          console.log('🔵 [Google] User canceled sign in');
+          return;
+        } else {
+          console.error('❌ [Google] OAuth result type:', result.type);
+          // OAuth başarısız - kullanıcı dostu mesaj göster
+          Alert.alert(
+            'Yakında Eklenecek',
+            'Bu özellik yakında eklenecek. Lütfen telefon numarasıyla giriş yapın.',
+            [{ text: 'Tamam' }]
+          );
+          return;
         }
-      } else if (result.type === 'cancel') {
-        console.log('🔵 [Google] User canceled sign in');
-        setGoogleLoading(false);
-        return;
       } else {
-        throw new Error('Google ile giriş iptal edildi veya başarısız oldu');
+        // Web platform - Supabase otomatik yönlendirme yapacak
+        console.log('🔵 [Google] Web platform - Supabase will handle redirect automatically');
+        // Web'de skipBrowserRedirect: false olduğu için Supabase otomatik yönlendirecek
+        // Deep link handling app/_layout.tsx'te yapılacak
       }
     } catch (error: any) {
       console.error('❌ [Google] Sign in error:', error);
+      
+      // Kullanıcı iptal ettiyse hata gösterme
+      if (error.code === 'ERR_REQUEST_CANCELED' || error.message?.includes('cancel')) {
+        console.log('🔵 [Google] User canceled sign in');
+        return;
+      }
+      
+      // Hata durumunda kullanıcı dostu mesaj göster
+      Alert.alert(
+        'Yakında Eklenecek',
+        'Bu özellik yakında eklenecek. Lütfen telefon numarasıyla giriş yapın.',
+        [{ text: 'Tamam' }]
+      );
+    } finally {
       setGoogleLoading(false);
-      Alert.alert('Hata', error.message || 'Google ile giriş başarısız');
     }
   };
 
@@ -1623,40 +2039,6 @@ Toprak Travel Tourism – Turkey`;
     } finally {
       setLoading(false);
     }
-  };
-
-  const normalizePhone = (raw: string) => {
-    let value = raw.trim();
-    if (!value) return '';
-    
-    // Sadece rakamları al
-    let digits = value.replace(/\D/g, '');
-    
-    // Boşsa döndür
-    if (!digits) return '';
-    
-    // Eğer zaten +90 ile başlıyorsa, olduğu gibi döndür
-    if (value.startsWith('+90')) {
-      return value.replace(/\D/g, '').replace(/^90/, '+90');
-    }
-    
-    // Eğer 0 ile başlıyorsa, 0'ı kaldır
-    if (digits.startsWith('0')) {
-      digits = digits.slice(1);
-    }
-    
-    // Eğer 90 ile başlıyorsa, + ekle
-    if (digits.startsWith('90')) {
-      return `+${digits}`;
-    }
-    
-    // Eğer 10 haneli numara ise (5330483061 gibi), +90 ekle
-    if (digits.length === 10) {
-      return `+90${digits}`;
-    }
-    
-    // Diğer durumlarda +90 ekle
-    return `+90${digits}`;
   };
 
   const handleSendSmsCode = async (isRegister: boolean = false) => {
@@ -1987,62 +2369,6 @@ Toprak Travel Tourism – Turkey`;
     }
   };
 
-  const handlePhoneLogin = async () => {
-    const formatted = normalizePhone(phoneNumber);
-    if (!formatted) {
-      Alert.alert('Hata', 'Lütfen geçerli bir telefon numarası girin');
-      return;
-    }
-    if (!password.trim()) {
-      Alert.alert('Hata', 'Lütfen şifrenizi girin');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // Telefon numarasını email formatına çevir (Supabase telefon + şifre girişi için)
-      // Format: +905551234567 -> +905551234567@phone.mytrabzon.com
-      const phoneEmail = `${formatted}@phone.mytrabzon.com`;
-      
-      console.log('📱 [phone-login] Attempting login with phone:', formatted);
-      
-      // Telefon numarasını email olarak kullanarak şifre ile giriş yap
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: phoneEmail,
-        password: password.trim(),
-      });
-
-      if (error) {
-        console.error('❌ [phone-login] Error:', error);
-        throw error;
-      }
-
-      if (data?.user) {
-        console.log('✅ [phone-login] Login successful');
-        // Giriş başarılı - telefon numarasını profile ekle
-        await updateProfileWithAuthInfo(data.user.id, undefined, formatted);
-        await checkProfileAndNavigate(data.user.id);
-      }
-    } catch (error: any) {
-      console.error('Error in phone login:', error);
-      const friendlyMessage = getFriendlyErrorMessage(error);
-      
-      // Kullanıcı bulunamadı hatası için özel mesaj
-      if (error?.message?.includes('not found') || 
-          error?.message?.includes('User not found') ||
-          error?.message?.includes('Invalid login credentials') ||
-          error?.message?.includes('invalid_credentials')) {
-        Alert.alert(
-          'Giriş Yapılamadı', 
-          'Telefon numarası veya şifre hatalı. Lütfen bilgilerinizi kontrol edin.'
-        );
-      } else {
-        Alert.alert('Giriş Yapılamadı', friendlyMessage);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleVerifySmsCode = async (isRegister: boolean = false) => {
     const formatted = normalizePhone(phoneNumber);
@@ -2163,191 +2489,9 @@ Toprak Travel Tourism – Turkey`;
 
   const renderForm = () => {
     if (mode === 'forgot') {
-      const isPhone = phoneNumber && /^[0-9+\s-]+$/.test(email.trim()) && !email.includes('@');
-      
-      return (
-        <View style={styles.formContainer}>
-          <Text style={styles.formTitle}>Şifremi Unuttum</Text>
-          <Text style={styles.formSubtitle}>
-            {isPhone ? 'Telefon numaranıza doğrulama kodu göndereceğiz' : 'Email veya telefon numaranızla şifre sıfırlama linki göndereceğiz'}
-          </Text>
-          
-          <View style={styles.inputContainer}>
-            <Mail size={20} color={COLORS.white} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Email veya Telefon (5xx xxx xx xx)"
-              placeholderTextColor="rgba(255,255,255,0.6)"
-              value={email}
-              onChangeText={(text) => {
-                setEmail(text);
-                // Eğer telefon numarası formatındaysa phoneNumber'a da ekle
-                if (/^[0-9+\s-]+$/.test(text) && !text.includes('@')) {
-                  setPhoneNumber(text);
-                  setSmsSent(false);
-                  setSmsCode('');
-                  setSmsVerified(false);
-                } else {
-                  // Email girildiğinde telefon numarasını temizle
-                  if (text.includes('@')) {
-                    setPhoneNumber('');
-                    setSmsSent(false);
-                    setSmsCode('');
-                    setSmsVerified(false);
-                  }
-                }
-              }}
-              keyboardType="default"
-              autoCapitalize="none"
-              editable={!smsSent && !smsVerified}
-            />
-          </View>
-
-          {/* SMS Kodu Input (Telefon numarası girildiğinde ve SMS gönderildiğinde) */}
-          {isPhone && smsSent && !smsVerified && (
-            <View style={styles.inputContainer}>
-              <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="SMS Kodu"
-                placeholderTextColor="rgba(255,255,255,0.6)"
-                keyboardType="number-pad"
-                value={smsCode}
-                onChangeText={setSmsCode}
-                maxLength={6}
-              />
-            </View>
-          )}
-
-          {/* Şifre Alanları (SMS doğrulandığında) */}
-          {isPhone && smsVerified && (
-            <>
-              <View style={styles.inputContainer}>
-                <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Yeni Şifre (en az 6 karakter)"
-                  placeholderTextColor="rgba(255,255,255,0.6)"
-                  value={phonePassword}
-                  onChangeText={setPhonePassword}
-                  secureTextEntry
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Yeni Şifre Tekrar"
-                  placeholderTextColor="rgba(255,255,255,0.6)"
-                  value={phonePasswordConfirm}
-                  onChangeText={setPhonePasswordConfirm}
-                  secureTextEntry
-                />
-              </View>
-            </>
-          )}
-
-          {/* SMS Kodu Gönder Butonu (Telefon numarası girildiğinde ve SMS gönderilmediğinde) */}
-          {isPhone && !smsSent && (
-            <TouchableOpacity
-              style={[styles.primaryButton, (smsLoading || !phoneNumber.trim()) && styles.buttonDisabled]}
-              onPress={handlePhoneForgotPassword}
-              disabled={smsLoading || !phoneNumber.trim()}
-            >
-              {smsLoading ? (
-                <ActivityIndicator color={COLORS.white} />
-              ) : (
-                <Text style={styles.primaryButtonText}>Doğrulama Kodu Gönder</Text>
-              )}
-            </TouchableOpacity>
-          )}
-
-          {/* SMS Kodu Doğrula Butonu (SMS gönderildiğinde ve doğrulanmadığında) */}
-          {isPhone && smsSent && !smsVerified && (
-            <TouchableOpacity
-              style={[styles.primaryButton, (!smsCode.trim() || loading) && styles.buttonDisabled]}
-              onPress={async () => {
-                const formatted = normalizePhone(phoneNumber);
-                if (!formatted) {
-                  Alert.alert('Hata', 'Telefon numarası gerekli');
-                  return;
-                }
-                if (!smsCode.trim()) {
-                  Alert.alert('Hata', 'SMS kodunu girin');
-                  return;
-                }
-
-                setLoading(true);
-                try {
-                  const { data, error } = await supabase.auth.verifyOtp({
-                    phone: formatted,
-                    token: smsCode.trim(),
-                    type: 'sms',
-                  });
-                  
-                  if (error) throw error;
-                  
-                  setSmsVerified(true);
-                  Alert.alert('Başarılı', 'Kod doğrulandı. Yeni şifrenizi girin.');
-                } catch (error: any) {
-                  console.error('Error verifying SMS code:', error);
-                  const friendlyMessage = getFriendlyErrorMessage(error);
-                  Alert.alert('Doğrulama Başarısız', friendlyMessage);
-                } finally {
-                  setLoading(false);
-                }
-              }}
-              disabled={!smsCode.trim() || loading}
-            >
-              {loading ? (
-                <ActivityIndicator color={COLORS.white} />
-              ) : (
-                <Text style={styles.primaryButtonText}>Kodu Doğrula</Text>
-              )}
-            </TouchableOpacity>
-          )}
-
-          {/* Şifre Değiştir Butonu (SMS doğrulandığında) */}
-          {isPhone && smsVerified && (
-            <TouchableOpacity
-              style={[styles.primaryButton, (!phonePassword.trim() || !phonePasswordConfirm.trim() || phonePassword.length < 6 || phonePassword !== phonePasswordConfirm || loading) && styles.buttonDisabled]}
-              onPress={handlePhoneResetPassword}
-              disabled={!phonePassword.trim() || !phonePasswordConfirm.trim() || phonePassword.length < 6 || phonePassword !== phonePasswordConfirm || loading}
-            >
-              {loading ? (
-                <ActivityIndicator color={COLORS.white} />
-              ) : (
-                <Text style={styles.primaryButtonText}>Şifreyi Değiştir</Text>
-              )}
-            </TouchableOpacity>
-          )}
-
-          {/* Email ile şifre sıfırlama butonu */}
-          {!isPhone && (
-            <TouchableOpacity
-              style={[styles.primaryButton, loading && styles.buttonDisabled]}
-              onPress={handleForgotPassword}
-              disabled={loading || !email.trim()}
-            >
-              {loading ? (
-                <ActivityIndicator color={COLORS.white} />
-              ) : (
-                <Text style={styles.primaryButtonText}>Şifre Sıfırlama Linki Gönder</Text>
-              )}
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity onPress={() => {
-            setMode('login');
-            setSmsSent(false);
-            setSmsCode('');
-            setSmsVerified(false);
-          }}>
-            <Text style={styles.linkText}>Geri Dön</Text>
-          </TouchableOpacity>
-        </View>
-      );
+      // Şifre sıfırlama için phone-forgot moduna yönlendir
+      setMode('phone-forgot');
+      return null;
     }
 
 
@@ -2360,11 +2504,11 @@ Toprak Travel Tourism – Turkey`;
           <Text style={styles.betaText}>{isPasswordReset ? 'Yeni Şifre Belirle' : 'Şifre Belirle'}</Text>
 
           <View style={styles.inputContainer}>
-            <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
+            <Lock size={20} color={COLORS.textLight} style={styles.inputIcon} />
             <TextInput
               style={styles.input}
               placeholder="Şifre (en az 6 karakter)"
-              placeholderTextColor="rgba(255,255,255,0.6)"
+              placeholderTextColor={COLORS.textLight}
               value={phonePassword}
               onChangeText={setPhonePassword}
               secureTextEntry
@@ -2373,11 +2517,11 @@ Toprak Travel Tourism – Turkey`;
           </View>
 
           <View style={styles.inputContainer}>
-            <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
+            <Lock size={20} color={COLORS.textLight} style={styles.inputIcon} />
             <TextInput
               style={styles.input}
               placeholder="Şifre Tekrar"
-              placeholderTextColor="rgba(255,255,255,0.6)"
+              placeholderTextColor={COLORS.textLight}
               value={phonePasswordConfirm}
               onChangeText={setPhonePasswordConfirm}
               secureTextEntry
@@ -2390,7 +2534,7 @@ Toprak Travel Tourism – Turkey`;
             disabled={!phonePassword.trim() || !phonePasswordConfirm.trim() || loading}
           >
             {loading ? (
-              <ActivityIndicator color={COLORS.white} />
+              <ActivityIndicator color={COLORS.textLight} />
             ) : (
               <Text style={styles.primaryButtonText}>
                 {isPasswordReset ? 'Şifreyi Değiştir ve Giriş Yap' : 'Kayıt Ol'}
@@ -2408,11 +2552,11 @@ Toprak Travel Tourism – Turkey`;
           <Text style={styles.formSubtitle}>Telefon numaranıza doğrulama kodu göndereceğiz</Text>
 
           <View style={styles.inputContainer}>
-            <PhoneCall size={20} color={COLORS.white} style={styles.inputIcon} />
+            <PhoneCall size={20} color={COLORS.textLight} style={styles.inputIcon} />
             <TextInput
               style={styles.input}
               placeholder="5xx xxx xx xx"
-              placeholderTextColor="rgba(255,255,255,0.6)"
+              placeholderTextColor={COLORS.textLight}
               keyboardType="phone-pad"
               value={phoneNumber}
               onChangeText={setPhoneNumber}
@@ -2425,7 +2569,7 @@ Toprak Travel Tourism – Turkey`;
             disabled={smsLoading || !phoneNumber.trim()}
           >
             {smsLoading ? (
-              <ActivityIndicator color={COLORS.white} />
+              <ActivityIndicator color={COLORS.textLight} />
             ) : (
               <Text style={styles.secondaryButtonText}>
                 {smsSent ? 'Kodu Yeniden Gönder' : 'Doğrulama Kodu Gönder'}
@@ -2440,11 +2584,11 @@ Toprak Travel Tourism – Turkey`;
               </Text>
               
               <View style={styles.inputContainer}>
-                <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
+                <Lock size={20} color={COLORS.textLight} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="SMS Kodu (6 haneli)"
-                  placeholderTextColor="rgba(255,255,255,0.6)"
+                  placeholderTextColor={COLORS.textLight}
                   keyboardType="number-pad"
                   value={smsCode}
                   onChangeText={setSmsCode}
@@ -2462,7 +2606,7 @@ Toprak Travel Tourism – Turkey`;
                 disabled={!smsCode.trim() || loading}
               >
                 {loading ? (
-                  <ActivityIndicator color={COLORS.white} />
+                  <ActivityIndicator color={COLORS.textLight} />
                 ) : (
                   <Text style={styles.primaryButtonText}>Kodu Doğrula</Text>
                 )}
@@ -2486,11 +2630,11 @@ Toprak Travel Tourism – Turkey`;
               </View>
 
               <View style={styles.inputContainer}>
-                <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
+                <Lock size={20} color={COLORS.textLight} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="Yeni Şifre (en az 6 karakter)"
-                  placeholderTextColor="rgba(255,255,255,0.6)"
+                  placeholderTextColor={COLORS.textLight}
                   value={phonePassword}
                   onChangeText={setPhonePassword}
                   secureTextEntry
@@ -2499,11 +2643,11 @@ Toprak Travel Tourism – Turkey`;
               </View>
 
               <View style={styles.inputContainer}>
-                <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
+                <Lock size={20} color={COLORS.textLight} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="Yeni Şifre Tekrar"
-                  placeholderTextColor="rgba(255,255,255,0.6)"
+                  placeholderTextColor={COLORS.textLight}
                   value={phonePasswordConfirm}
                   onChangeText={setPhonePasswordConfirm}
                   secureTextEntry
@@ -2516,7 +2660,7 @@ Toprak Travel Tourism – Turkey`;
                 disabled={!phonePassword.trim() || !phonePasswordConfirm.trim() || loading}
               >
                 {loading ? (
-                  <ActivityIndicator color={COLORS.white} />
+                  <ActivityIndicator color={COLORS.textLight} />
                 ) : (
                   <Text style={styles.primaryButtonText}>Şifreyi Değiştir ve Giriş Yap</Text>
                 )}
@@ -2531,165 +2675,12 @@ Toprak Travel Tourism – Turkey`;
       );
     }
 
-    // Kayıt modunda ve henüz tip seçilmediyse seçim ekranını göster
+    // Kayıt modunda direkt telefon kayıt akışına geç
     if (mode === 'register' && !registerType) {
-      return (
-        <View style={styles.formContainer}>
-          <Text style={styles.betaText}>Yakında tam sürüm kullanıma sunulacak</Text>
-          <Text style={styles.formTitle}>Kayıt Ol</Text>
-          <Text style={styles.formSubtitle}>Kayıt olmak için bir yöntem seçin</Text>
-          
-          <TouchableOpacity
-            style={styles.registerTypeButton}
-            onPress={() => {
-              setRegisterType('email');
-              setEmail('');
-              setEmailCode('');
-              setEmailCodeSent(false);
-              setEmailCodeVerified(false);
-            }}
-          >
-            <Mail size={18} color={COLORS.white} style={{ marginRight: SPACING.xs }} />
-            <Text style={styles.registerTypeButtonText}>E-posta ile Kayıt Ol</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.registerTypeButton}
-            onPress={() => {
-              setRegisterType('phone');
-              setPhoneNumber('');
-              setSmsSent(false);
-              setSmsCode('');
-              setSmsVerified(false);
-            }}
-          >
-            <PhoneCall size={18} color={COLORS.white} style={{ marginRight: SPACING.xs }} />
-            <Text style={styles.registerTypeButtonText}>Telefon ile Kayıt Ol</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            onPress={() => {
-              setMode('login');
-              setRegisterType(null);
-            }}
-            style={{ marginTop: SPACING.md }}
-          >
-            <Text style={styles.linkText}>Geri Dön</Text>
-          </TouchableOpacity>
-        </View>
-      );
+      setRegisterType('phone');
+      return null;
     }
 
-    // Email kayıt akışı
-    if (mode === 'register' && registerType === 'email') {
-      return (
-        <View style={styles.formContainer}>
-          <Text style={styles.betaText}>Yakında tam sürüm kullanıma sunulacak</Text>
-          <Text style={styles.formTitle}>E-posta ile Kayıt Ol</Text>
-          
-          <View style={styles.inputContainer}>
-            <Mail size={20} color={COLORS.white} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="E-posta adresiniz"
-              placeholderTextColor="rgba(255,255,255,0.6)"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-          </View>
-
-          <TouchableOpacity
-            style={[styles.primaryButton, (!email.trim() || loading) && styles.buttonDisabled]}
-            onPress={handleSendEmailVerificationCode}
-            disabled={!email.trim() || loading}
-          >
-            {loading ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <Text style={styles.primaryButtonText}>Doğrulama Linki Gönder</Text>
-            )}
-          </TouchableOpacity>
-
-          <Text style={styles.formSubtitle}>
-            Email adresinize doğrulama linki gönderilecek. Linke tıklayarak kayıt işleminizi tamamlayabilirsiniz.
-          </Text>
-        </View>
-      );
-    }
-
-    // Email kayıt tamamlama (callback'ten sonra)
-    if (mode === 'register' && registerType === 'email' && emailCodeVerified) {
-      return (
-        <View style={styles.formContainer}>
-          <Text style={styles.formTitle}>Kayıt Tamamla</Text>
-          
-          {(
-            <>
-              <View style={styles.inputContainer}>
-                <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Şifre (en az 6 karakter)"
-                  placeholderTextColor="rgba(255,255,255,0.6)"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                  autoCapitalize="none"
-                />
-              </View>
-
-              {/* Politika Onay Checkbox */}
-              {requiredPolicies?.policies && requiredPolicies.policies.length > 0 && (
-                <TouchableOpacity
-                  style={styles.policyCheckboxContainer}
-                  onPress={() => setShowPolicyModal(true)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[
-                    styles.checkbox,
-                    policiesAccepted && styles.checkboxChecked,
-                    { borderColor: COLORS.white }
-                  ]}>
-                    {policiesAccepted && <Text style={styles.checkmark}>✓</Text>}
-                  </View>
-                  <Text style={styles.policyCheckboxText}>
-                    Kullanım Koşulları ve Gizlilik Politikası&apos;nı kabul ediyorum
-                  </Text>
-                </TouchableOpacity>
-              )}
-
-              <TouchableOpacity
-                style={[styles.primaryButton, (!password.trim() || password.length < 6 || loading) && styles.buttonDisabled]}
-                onPress={handleCompleteEmailRegistration}
-                disabled={!password.trim() || password.length < 6 || loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color={COLORS.white} />
-                ) : (
-                  <Text style={styles.primaryButtonText}>Kayıt Ol</Text>
-                )}
-              </TouchableOpacity>
-            </>
-          )}
-
-          <TouchableOpacity 
-            onPress={() => {
-              setRegisterType(null);
-              setEmail('');
-              setEmailCode('');
-              setEmailCodeSent(false);
-              setEmailCodeVerified(false);
-              setPassword('');
-            }}
-            style={{ marginTop: SPACING.md }}
-          >
-            <Text style={styles.linkText}>Geri Dön</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
 
     // Telefon kayıt akışı
     if (mode === 'register' && registerType === 'phone') {
@@ -2701,11 +2692,11 @@ Toprak Travel Tourism – Turkey`;
           {!smsSent && !smsVerified && (
             <>
               <View style={styles.inputContainer}>
-                <PhoneCall size={20} color={COLORS.white} style={styles.inputIcon} />
+                <PhoneCall size={20} color={COLORS.textLight} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="Telefon numaranız (5xx xxx xx xx)"
-                  placeholderTextColor="rgba(255,255,255,0.6)"
+                  placeholderTextColor={COLORS.textLight}
                   value={phoneNumber}
                   onChangeText={(text) => {
                     setPhoneNumber(text);
@@ -2716,11 +2707,11 @@ Toprak Travel Tourism – Turkey`;
               </View>
 
               <View style={styles.inputContainer}>
-                <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
+                <Lock size={20} color={COLORS.textLight} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="Şifre (en az 6 karakter)"
-                  placeholderTextColor="rgba(255,255,255,0.6)"
+                  placeholderTextColor={COLORS.textLight}
                   value={phonePassword}
                   onChangeText={setPhonePassword}
                   secureTextEntry
@@ -2728,11 +2719,11 @@ Toprak Travel Tourism – Turkey`;
               </View>
 
               <View style={styles.inputContainer}>
-                <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
+                <Lock size={20} color={COLORS.textLight} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="Şifre Tekrar"
-                  placeholderTextColor="rgba(255,255,255,0.6)"
+                  placeholderTextColor={COLORS.textLight}
                   value={phonePasswordConfirm}
                   onChangeText={setPhonePasswordConfirm}
                   secureTextEntry
@@ -2767,7 +2758,7 @@ Toprak Travel Tourism – Turkey`;
                 disabled={!phoneNumber.trim() || !phonePassword.trim() || !phonePasswordConfirm.trim() || phonePassword !== phonePasswordConfirm || phonePassword.length < 6 || smsLoading}
               >
                 {smsLoading ? (
-                  <ActivityIndicator color={COLORS.white} />
+                  <ActivityIndicator color={COLORS.textLight} />
                 ) : (
                   <Text style={styles.primaryButtonText}>Doğrulama Kodu Gönder</Text>
                 )}
@@ -2782,11 +2773,11 @@ Toprak Travel Tourism – Turkey`;
               </Text>
               
               <View style={styles.inputContainer}>
-                <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
+                <Lock size={20} color={COLORS.textLight} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="SMS Kodu (6 haneli)"
-                  placeholderTextColor="rgba(255,255,255,0.6)"
+                  placeholderTextColor={COLORS.textLight}
                   value={smsCode}
                   onChangeText={setSmsCode}
                   keyboardType="number-pad"
@@ -2801,7 +2792,7 @@ Toprak Travel Tourism – Turkey`;
                 disabled={!smsCode.trim() || loading}
               >
                 {loading ? (
-                  <ActivityIndicator color={COLORS.white} />
+                  <ActivityIndicator color={COLORS.textLight} />
                 ) : (
                   <Text style={styles.primaryButtonText}>Kodu Doğrula</Text>
                 )}
@@ -2853,7 +2844,7 @@ Toprak Travel Tourism – Turkey`;
                 disabled={loading || (requiredPolicies?.policies && requiredPolicies.policies.length > 0 && !policiesAccepted)}
               >
                 {loading ? (
-                  <ActivityIndicator color={COLORS.white} />
+                  <ActivityIndicator color={COLORS.textLight} />
                 ) : (
                   <Text style={styles.primaryButtonText}>Kayıt Ol</Text>
                 )}
@@ -2863,6 +2854,7 @@ Toprak Travel Tourism – Turkey`;
 
           <TouchableOpacity 
             onPress={() => {
+              setMode('login');
               setRegisterType(null);
               setPhoneNumber('');
               setSmsSent(false);
@@ -2870,6 +2862,7 @@ Toprak Travel Tourism – Turkey`;
               setSmsVerified(false);
               setPhonePassword('');
               setPhonePasswordConfirm('');
+              setPhoneUserId(null);
             }}
             style={{ marginTop: SPACING.md }}
           >
@@ -2888,36 +2881,40 @@ Toprak Travel Tourism – Turkey`;
         <Text style={styles.formTitle}>Giriş Yap</Text>
         
         <View style={styles.inputContainer}>
-          <Mail size={20} color={COLORS.white} style={styles.inputIcon} />
+          {/* Dinamik ikon: email varsa Mail, yoksa PhoneCall */}
+          {email.includes('@') ? (
+            <Mail size={20} color={COLORS.textLight} style={styles.inputIcon} />
+          ) : (
+            <PhoneCall size={20} color={COLORS.textLight} style={styles.inputIcon} />
+          )}
           <TextInput
             style={styles.input}
-            placeholder="E-posta veya Telefon (5xx xxx xx xx)"
-            placeholderTextColor="rgba(255,255,255,0.6)"
+            placeholder="Telefon veya Email"
+            placeholderTextColor={COLORS.textLight}
             value={email}
             onChangeText={(text) => {
               setEmail(text);
-              // Eğer telefon numarası formatındaysa phoneNumber'a da ekle
-              if (/^[0-9+\s-]+$/.test(text) && !text.includes('@')) {
+              // Eğer telefon numarası formatındaysa phoneNumber'a da kaydet
+              const isPhone = /^[0-9+\s-]+$/.test(text) && !text.includes('@');
+              if (isPhone) {
                 setPhoneNumber(text);
               } else {
-                // Email girildiğinde telefon numarasını temizle
-                if (text.includes('@')) {
-                  setPhoneNumber('');
-                }
+                setPhoneNumber('');
               }
             }}
-            keyboardType="default"
+            keyboardType={email.includes('@') ? 'email-address' : 'default'}
             autoCapitalize="none"
+            autoCorrect={false}
           />
         </View>
 
         {/* Şifre Input */}
         <View style={styles.inputContainer}>
-          <Lock size={20} color={COLORS.white} style={styles.inputIcon} />
-          <TextInput
-            style={styles.input}
-            placeholder="Şifre"
-            placeholderTextColor="rgba(255,255,255,0.6)"
+            <Lock size={20} color={COLORS.textLight} style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Şifre"
+              placeholderTextColor={COLORS.textLight}
             value={password}
             onChangeText={(text) => {
               console.log('🔑 [login] Password changed:', text.length, 'characters');
@@ -2937,10 +2934,10 @@ Toprak Travel Tourism – Turkey`;
         <TouchableOpacity
           style={[styles.primaryButton, loading && styles.buttonDisabled]}
           onPress={handleEmailAuth}
-          disabled={loading}
+          disabled={loading || !email.trim()}
         >
           {loading ? (
-            <ActivityIndicator color={COLORS.white} />
+            <ActivityIndicator color={COLORS.textLight} />
           ) : (
             <Text style={styles.primaryButtonText}>Giriş Yap</Text>
           )}
@@ -2949,48 +2946,50 @@ Toprak Travel Tourism – Turkey`;
         <TouchableOpacity onPress={() => {
           setMode(mode === 'login' ? 'register' : 'login');
           setRegisterType(null);
+          setPhoneNumber('');
+          setSmsSent(false);
+          setSmsCode('');
+          setSmsVerified(false);
         }}>
           <Text style={styles.switchText}>
             {mode === 'login' ? 'Hesabın yok mu? Kayıt ol' : 'Hesabın var mı? Giriş yap'}
           </Text>
         </TouchableOpacity>
 
-        {/* OAuth Giriş Butonları - Login ve Register modunda */}
-        {(mode === 'login' || mode === 'register') && (
-          <>
-            {/* Apple Sign In - Sadece iOS'ta */}
-            {Platform.OS === 'ios' && (
-              <TouchableOpacity
-                style={[styles.oauthButton, styles.appleButton, appleLoading && styles.buttonDisabled]}
-                onPress={handleAppleSignIn}
-                disabled={appleLoading}
-              >
-                {appleLoading ? (
-                  <ActivityIndicator color={COLORS.primary} />
-                ) : (
-                  <Text style={styles.appleButtonText}>
-                    {mode === 'login' ? 'Apple ile Giriş Yap' : 'Apple ile Kayıt Ol'}
-                  </Text>
-                )}
-              </TouchableOpacity>
+        {/* Sosyal Giriş Butonları */}
+        <View style={styles.socialButtonsContainer}>
+          {/* Google Sign In Button */}
+          <TouchableOpacity
+            style={[styles.googleButton, (googleLoading || loading) && styles.buttonDisabled]}
+            onPress={handleGoogleSignIn}
+            disabled={googleLoading || loading}
+          >
+            {googleLoading ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <Text style={styles.googleButtonText}>Google ile Giriş Yap</Text>
             )}
+          </TouchableOpacity>
 
-            {/* Google Sign In - iOS & Android */}
+          {/* Apple Sign In Button (iOS only) */}
+          {Platform.OS === 'ios' && (
             <TouchableOpacity
-              style={[styles.oauthButton, styles.googleButton, googleLoading && styles.buttonDisabled]}
-              onPress={handleGoogleSignIn}
-              disabled={googleLoading}
+              style={[styles.appleButton, (appleLoading || loading) && styles.buttonDisabled]}
+              onPress={handleAppleSignIn}
+              disabled={appleLoading || loading}
             >
-              {googleLoading ? (
-                <ActivityIndicator color={COLORS.white} />
+              {appleLoading ? (
+                <ActivityIndicator color="#DC2626" />
               ) : (
-                <Text style={styles.googleButtonText}>
-                  {mode === 'login' ? 'Google ile Giriş Yap' : 'Google ile Kayıt Ol'}
-                </Text>
+                <Text style={styles.appleButtonText}>Apple ile Giriş Yap</Text>
               )}
             </TouchableOpacity>
+          )}
+        </View>
 
-            {/* Misafir Olarak Devam Et Butonu */}
+        {/* Misafir Olarak Devam Et Butonu */}
+        {(mode === 'login' || mode === 'register') && (
+          <>
             <TouchableOpacity
               style={[styles.guestButton, (loading || guestLoading) && styles.buttonDisabled]}
               onPress={async () => {
@@ -3009,10 +3008,10 @@ Toprak Travel Tourism – Turkey`;
               disabled={loading || guestLoading}
             >
               {guestLoading ? (
-                <ActivityIndicator color={COLORS.primary} />
+                <ActivityIndicator color="#DC2626" />
               ) : (
                 <>
-                  <User size={20} color={COLORS.primary} style={{ marginRight: SPACING.xs }} />
+                  <User size={20} color="#DC2626" style={{ marginRight: SPACING.xs }} />
                   <Text style={styles.guestButtonText}>Misafir Olarak Devam Et</Text>
                 </>
               )}
@@ -3054,73 +3053,67 @@ Toprak Travel Tourism – Turkey`;
               &apos;nı kabul etmiş olursunuz
             </Text>
 
-            {/* Platform Simgeleri */}
-            <View style={styles.platformBadges}>
-              <Text style={styles.platformBadge}>☁️ Supabase Secure DB</Text>
-              <Text style={styles.platformBadge}>🔐 SSL Encryption</Text>
-              <Text style={styles.platformBadge}>⚡ Powered by LitxTech LLC & Toprak Travel Tourism</Text>
-              <Text style={styles.platformBadge}>🛡️ 17+ Age Rating</Text>
+            {/* Platform Bilgileri - Estetik Düzen */}
+            <View style={styles.platformInfoContainer}>
+              <View style={styles.platformInfoRow}>
+                <Text style={styles.platformInfoText}>☁️ Supabase Secure DB</Text>
+                <Text style={styles.platformInfoSeparator}>•</Text>
+                <Text style={styles.platformInfoText}>🔐 SSL Encryption</Text>
+              </View>
+              <View style={styles.platformInfoRow}>
+                <Text style={styles.platformInfoText}>⚡ Powered by LitxTech LLC & Toprak Travel Tourism</Text>
+              </View>
+              <View style={styles.platformInfoRow}>
+                <Text style={styles.platformInfoText}>🛡️ 17+ Age Rating</Text>
+              </View>
             </View>
 
-            {/* Kullanım Koşulları */}
-            <TouchableOpacity 
-              style={styles.policySection}
-              onPress={() => handlePolicyPress('terms')}
-            >
-              <Text style={styles.policyTitle} numberOfLines={1}>
-                Kullanım Koşulları
-              </Text>
-            </TouchableOpacity>
-
-            {/* Gizlilik Politikası */}
-            <TouchableOpacity 
-              style={styles.policySection}
-              onPress={() => handlePolicyPress('privacy')}
-            >
-              <Text style={styles.policyTitle} numberOfLines={1}>
-                Gizlilik Politikası
-              </Text>
-            </TouchableOpacity>
-
-            {/* Çocuk Koruma Politikası */}
-            <TouchableOpacity 
-              style={styles.policySection}
-              onPress={() => handlePolicyPress('childSafety')}
-            >
-              <Text style={styles.policyTitle} numberOfLines={2}>
-                Çocuk Koruma Politikası
-              </Text>
-            </TouchableOpacity>
-
-            {/* Hesap Silme Bilgilendirmesi */}
-            <TouchableOpacity 
-              style={styles.policySection}
-              onPress={() => handlePolicyPress('accountDeletion')}
-            >
-              <Text style={styles.policyTitle} numberOfLines={1}>
-                Hesap Silme Bilgilendirmesi
-              </Text>
-            </TouchableOpacity>
-
-              {/* Yolcu Taşıma Politikası */}
-              <TouchableOpacity
-                style={styles.policySection}
-                onPress={() => handlePolicyPress('ridePolicy')}
-              >
-                <Text style={styles.policyTitle} numberOfLines={1}>
-                  Yolcu Taşıma Politikası
+            {/* Politikalar - Küçük Linkler */}
+            <View style={styles.policiesLinksContainer}>
+              <Text style={styles.policiesLinksText}>
+                <Text 
+                  style={styles.policyLink}
+                  onPress={() => handlePolicyPress('terms')}
+                >
+                  Kullanım Koşulları
                 </Text>
-              </TouchableOpacity>
-
-              {/* Veri Politikası */}
-              <TouchableOpacity
-                style={styles.policySection}
-                onPress={() => handlePolicyPress('dataPolicy')}
-              >
-                <Text style={styles.policyTitle} numberOfLines={1}>
+                {' • '}
+                <Text 
+                  style={styles.policyLink}
+                  onPress={() => handlePolicyPress('privacy')}
+                >
+                  Gizlilik Politikası
+                </Text>
+                {' • '}
+                <Text 
+                  style={styles.policyLink}
+                  onPress={() => handlePolicyPress('childSafety')}
+                >
+                  Çocuk Koruma
+                </Text>
+                {' • '}
+                <Text 
+                  style={styles.policyLink}
+                  onPress={() => handlePolicyPress('accountDeletion')}
+                >
+                  Hesap Silme
+                </Text>
+                {' • '}
+                <Text 
+                  style={styles.policyLink}
+                  onPress={() => handlePolicyPress('ridePolicy')}
+                >
+                  Yolcu Taşıma
+                </Text>
+                {' • '}
+                <Text 
+                  style={styles.policyLink}
+                  onPress={() => handlePolicyPress('dataPolicy')}
+                >
                   Veri Politikası
                 </Text>
-              </TouchableOpacity>
+              </Text>
+            </View>
             </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -3190,7 +3183,7 @@ Toprak Travel Tourism – Turkey`;
                     router.push('/profile/delete-account');
                   }}
                 >
-                  <Trash2 size={20} color={COLORS.white} style={{ marginRight: SPACING.xs }} />
+                  <Trash2 size={20} color={COLORS.textLight} style={{ marginRight: SPACING.xs }} />
                   <Text style={styles.deleteAccountButtonText}>Hesabımı Sil</Text>
                 </TouchableOpacity>
               </View>
@@ -3221,7 +3214,7 @@ Toprak Travel Tourism – Turkey`;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.white,
   },
   keyboardView: {
     flex: 1,
@@ -3240,7 +3233,7 @@ const styles = StyleSheet.create({
   formTitle: {
     fontSize: FONT_SIZES.xl,
     fontWeight: '700' as const,
-    color: COLORS.white,
+    color: COLORS.text,
     marginBottom: SPACING.xs,
     textAlign: 'center' as const,
     flexWrap: 'wrap',
@@ -3251,7 +3244,7 @@ const styles = StyleSheet.create({
   },
   formSubtitle: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.white,
+    color: COLORS.textLight,
     opacity: 0.8,
     marginBottom: SPACING.lg,
     textAlign: 'center' as const,
@@ -3264,19 +3257,19 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: COLORS.background,
     borderRadius: 30,
     marginBottom: SPACING.md,
     paddingHorizontal: SPACING.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: COLORS.border,
   },
   inputIcon: {
     marginRight: SPACING.sm,
   },
   input: {
     flex: 1,
-    color: COLORS.white,
+    color: COLORS.text,
     fontSize: FONT_SIZES.md,
     paddingVertical: SPACING.md,
     ...(Platform.OS === 'android' && {
@@ -3287,7 +3280,7 @@ const styles = StyleSheet.create({
     }),
   },
   forgotText: {
-    color: COLORS.white,
+    color: '#DC2626',
     fontSize: FONT_SIZES.sm,
     textAlign: 'right' as const,
     marginBottom: SPACING.md,
@@ -3298,7 +3291,7 @@ const styles = StyleSheet.create({
     }),
   },
   primaryButton: {
-    backgroundColor: COLORS.secondary,
+    backgroundColor: '#DC2626',
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
     borderRadius: 30,
@@ -3321,17 +3314,17 @@ const styles = StyleSheet.create({
     }),
   },
   secondaryButton: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: COLORS.background,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     borderRadius: 30,
     alignItems: 'center' as const,
     marginBottom: SPACING.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: COLORS.border,
   },
   secondaryButtonText: {
-    color: COLORS.white,
+    color: COLORS.text,
     fontSize: FONT_SIZES.sm,
     fontWeight: '500' as const,
     flexWrap: 'wrap',
@@ -3355,6 +3348,16 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'android' && {
       includeFontPadding: false,
       lineHeight: FONT_SIZES.md * 1.2,
+    }),
+  },
+  googleInfoText: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textLight,
+    opacity: 0.7,
+    textAlign: 'center' as const,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.xs * 1.3,
     }),
   },
   magicLinkButton: {
@@ -3404,7 +3407,7 @@ const styles = StyleSheet.create({
     }),
   },
   switchText: {
-    color: COLORS.white,
+    color: COLORS.text,
     fontSize: FONT_SIZES.sm,
     textAlign: 'center' as const,
     marginTop: SPACING.md,
@@ -3417,7 +3420,7 @@ const styles = StyleSheet.create({
     }),
   },
   linkText: {
-    color: COLORS.white,
+    color: '#DC2626',
     fontSize: FONT_SIZES.sm,
     textAlign: 'center' as const,
     marginTop: SPACING.md,
@@ -3433,20 +3436,6 @@ const styles = StyleSheet.create({
     marginHorizontal: -SPACING.xl,
     marginTop: SPACING.md,
   },
-  appleButton: {
-    backgroundColor: COLORS.white,
-  },
-  appleButtonText: {
-    color: COLORS.primary,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600' as const,
-    flexWrap: 'wrap',
-    textAlign: 'center' as const,
-    ...(Platform.OS === 'android' && {
-      includeFontPadding: false,
-      lineHeight: FONT_SIZES.md * 1.2,
-    }),
-  },
   oauthButton: {
     backgroundColor: COLORS.white,
     paddingVertical: SPACING.md,
@@ -3460,26 +3449,66 @@ const styles = StyleSheet.create({
     width: '100%',
     marginTop: SPACING.md,
   },
+  socialButtonsContainer: {
+    width: '100%',
+    marginTop: SPACING.md,
+    gap: SPACING.sm,
+  },
   googleButton: {
     backgroundColor: '#4285F4',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: 30,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: 48,
+    width: '100%',
+  },
+  appleButton: {
+    backgroundColor: COLORS.background,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: 30,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: 48,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  appleButtonText: {
+    color: '#DC2626',
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600' as const,
+    textAlign: 'center' as const,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.md * 1.2,
+    }),
   },
   guestButton: {
-    backgroundColor: COLORS.white,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
+    backgroundColor: COLORS.background,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
     borderRadius: 30,
     marginTop: SPACING.lg,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-    borderWidth: 2,
-    borderColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     width: '100%',
+    minHeight: 48,
   },
   guestButtonText: {
-    color: COLORS.primary,
-    fontSize: FONT_SIZES.sm,
+    color: '#DC2626',
+    fontSize: FONT_SIZES.md,
     fontWeight: '600' as const,
+    textAlign: 'center' as const,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.md * 1.2,
+    }),
   },
   footer: {
     marginTop: SPACING.xxl,
@@ -3523,9 +3552,9 @@ const styles = StyleSheet.create({
   },
   terms: {
     fontSize: FONT_SIZES.xs,
-    color: COLORS.white,
+    color: COLORS.textLight,
     textAlign: 'center' as const,
-    opacity: 0.7,
+    opacity: 0.8,
     lineHeight: Platform.OS === 'android' ? FONT_SIZES.xs * 1.4 : 18,
     flexWrap: 'wrap',
     paddingHorizontal: SPACING.xs,
@@ -3539,7 +3568,7 @@ const styles = StyleSheet.create({
   betaText: {
     fontSize: FONT_SIZES.md,
     fontWeight: '700' as const,
-    color: '#FFC107',
+    color: COLORS.textLight,
     marginBottom: SPACING.xs,
     ...(Platform.OS === 'android' && {
       includeFontPadding: false,
@@ -3678,6 +3707,35 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     flexWrap: 'wrap',
   },
+  platformInfoContainer: {
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.md,
+    alignItems: 'center' as const,
+    gap: SPACING.xs,
+  },
+  platformInfoRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    flexWrap: 'wrap' as const,
+    gap: SPACING.xs,
+  },
+  platformInfoText: {
+    fontSize: FONT_SIZES.xs - 1,
+    color: COLORS.textLight,
+    opacity: 0.8,
+    textAlign: 'center' as const,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      lineHeight: FONT_SIZES.xs * 1.3,
+    }),
+  },
+  platformInfoSeparator: {
+    fontSize: FONT_SIZES.xs - 1,
+    color: COLORS.textLight,
+    opacity: 0.5,
+    marginHorizontal: SPACING.xs / 2,
+  },
   platformBadges: {
     marginTop: SPACING.lg,
     marginBottom: SPACING.md,
@@ -3729,6 +3787,30 @@ const styles = StyleSheet.create({
     textAlign: 'center' as const,
     opacity: 0.9,
     lineHeight: FONT_SIZES.xs * 1.4,
+  },
+  policiesLinksContainer: {
+    marginTop: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    alignItems: 'center' as const,
+  },
+  policiesLinksText: {
+    fontSize: FONT_SIZES.xs - 2,
+    color: COLORS.textLight,
+    opacity: 0.8,
+    textAlign: 'center' as const,
+    lineHeight: FONT_SIZES.xs * 1.5,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+    }),
+  },
+  policyLink: {
+    fontSize: FONT_SIZES.xs - 2,
+    color: '#DC2626',
+    opacity: 0.9,
+    textDecorationLine: 'underline' as const,
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+    }),
   },
   registerTypeButton: {
     flexDirection: 'row' as const,

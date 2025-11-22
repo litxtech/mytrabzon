@@ -63,6 +63,10 @@ app.post("/", async (c) => {
         id: authData.user.id,
         email: authData.user.email,
       },
+      credentials: {
+        email: tempEmail,
+        password: tempPassword, // Misafir hesabı için geçici password - AsyncStorage'a kaydedilecek
+      },
       session: {
         access_token: sessionData.session?.access_token,
         refresh_token: sessionData.session?.refresh_token,

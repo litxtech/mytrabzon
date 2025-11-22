@@ -146,9 +146,7 @@ export default function FeedScreen() {
         );
       }
     },
-    onSettled: () => {
-      refetch();
-    },
+    // onSettled kaldırıldı - refetch yapmıyoruz, optimistic update yeterli
   });
 
   const handleLike = useCallback((postId: string) => {
@@ -992,7 +990,7 @@ export default function FeedScreen() {
         <Modal
           visible={warningModalVisible}
           transparent={true}
-          animationType="fade"
+          animationType="none"
           onRequestClose={() => setWarningModalVisible(false)}
         >
           <View style={styles.modalOverlay}>
@@ -1138,7 +1136,7 @@ export default function FeedScreen() {
       <Modal
         visible={imageModalVisible}
         transparent={true}
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => {
           setImageModalVisible(false);
           setSelectedPostMedia([]);
@@ -1251,7 +1249,7 @@ export default function FeedScreen() {
       <Modal
         visible={videoModalVisible}
         transparent={true}
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => setVideoModalVisible(false)}
       >
         <View style={styles.fullScreenModal}>

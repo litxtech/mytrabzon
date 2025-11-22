@@ -116,12 +116,9 @@ export default function PostDetailScreen() {
         };
       });
     },
-    onSuccess: () => {
-      // Başarılı olursa sadece invalidate et, refetch yapma (optimistic update zaten yapıldı)
-      queryClient.invalidateQueries({ queryKey: [['post', 'getPostDetail'], { postId: id! }] });
-    },
+    // onSuccess kaldırıldı - invalidate yapmıyoruz, optimistic update yeterli
     onError: () => {
-      // Hata durumunda refetch yap
+      // Hata durumunda geri al
       refetch();
     },
   });

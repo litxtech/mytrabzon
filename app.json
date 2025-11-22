@@ -2,10 +2,10 @@
   "expo": {
     "name": "MyTrabzon",
     "slug": "mytrabzon-",
-    "version": "1.0.56",
+    "version": "1.0.61",
     "orientation": "portrait",
     "scheme": "mytrabzon",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "platforms": [
       "ios",
@@ -26,18 +26,20 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.litxtech.mytrabzon",
-      "versionCode": 55,
+      "versionCode": 59,
       "playStoreUrl": "https://play.google.com/store/apps/details?id=com.litxtech.mytrabzon",
       "permissions": [
         "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
         "RECORD_AUDIO",
         "INTERNET",
         "ACCESS_NETWORK_STATE",
         "ACCESS_WIFI_STATE",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
+        "READ_MEDIA_AUDIO",
+        "POST_NOTIFICATIONS"
       ],
       "intentFilters": [
         {
@@ -45,12 +47,10 @@
           "autoVerify": true,
           "data": [
             {
-              "scheme": "mytrabzon",
-              "host": "*"
+              "scheme": "mytrabzon"
             },
             {
-              "scheme": "litxtech",
-              "host": "*"
+              "scheme": "litxtech"
             }
           ],
           "category": [
@@ -64,12 +64,8 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.litxtech.mytrabzon",
-      "buildNumber": "55",
+      "buildNumber": "60",
       "icon": "./assets/images/icon.png",
-      "appStoreUrl": "https://apps.apple.com/app/mytrabzon/id1234567890",
-      "config": {
-        "usesNonExemptEncryption": false
-      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "MyTrabzon needs access to your photo library to let you share photos and videos with your friends and create posts.",
@@ -77,8 +73,6 @@
         "NSCameraUsageDescription": "MyTrabzon needs access to your camera to let you take photos and videos to share with your friends and create posts.",
         "NSMicrophoneUsageDescription": "MyTrabzon needs access to your microphone for voice and video calls, and to record videos with audio.",
         "NSLocationWhenInUseUsageDescription": "MyTrabzon uses your location to show nearby users, events, matches, and help you discover local activities in Trabzon. Location is only used when the app is active and you have enabled location sharing in settings.",
-        "NSLocationAlwaysUsageDescription": "MyTrabzon does not use location in the background. This permission is not required.",
-        "NSUserTrackingUsageDescription": "MyTrabzon does not track users across apps or websites. This permission is not used.",
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
@@ -89,17 +83,12 @@
         ]
       },
       "associatedDomains": [
-        "applinks:mytrabzon.app",
+        "applinks:litxtech.com",
         "applinks:www.litxtech.com"
       ]
     },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "origin": "https://rork.com/"
-        }
-      ],
+      "expo-router",
       "expo-font",
       [
         "expo-image-picker",
@@ -111,12 +100,6 @@
         "expo-notifications",
         {
           "color": "#ffffff"
-        }
-      ],
-      [
-        "expo-apple-authentication",
-        {
-          "appleTeamId": "9W6CR7KXM7"
         }
       ],
       [

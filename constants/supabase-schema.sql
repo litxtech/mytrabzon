@@ -1083,7 +1083,7 @@ CREATE OR REPLACE FUNCTION schedule_account_deletion()
 RETURNS TRIGGER AS $$
 BEGIN
   IF NEW.deletion_requested_at IS NOT NULL AND OLD.deletion_requested_at IS NULL THEN
-    NEW.deletion_scheduled_at = NEW.deletion_requested_at + INTERVAL '7 days';
+    NEW.deletion_scheduled_at = NEW.deletion_requested_at + INTERVAL '30 days';
   ELSIF NEW.deletion_requested_at IS NULL AND OLD.deletion_requested_at IS NOT NULL THEN
     NEW.deletion_scheduled_at = NULL;
   END IF;
@@ -1258,13 +1258,13 @@ BEGIN
   UPDATE user_profiles 
   SET 
     deletion_requested_at = NOW(),
-    deletion_scheduled_at = NOW() + INTERVAL '7 days'
+    deletion_scheduled_at = NOW() + INTERVAL '30 days'
   WHERE id = auth.uid()
   RETURNING deletion_scheduled_at INTO scheduled_date;
   
   RETURN json_build_object(
     'success', true,
-    'message', 'Hesap silme talebi oluşturuldu. 7 gün içinde hesabınız silinecek.',
+    'message', 'Hesap silme talebi oluşturuldu. 30 gün içinde hesabınız silinecek.',
     'scheduled_at', scheduled_date
   );
 END;

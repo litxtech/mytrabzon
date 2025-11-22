@@ -92,26 +92,6 @@
             const errorDescription = hashParams.get('error_description') || urlParams.get('error_description');
             const type = hashParams.get('type') || urlParams.get('type'); // Email confirmation type
 
-            console.log('URL params:', {
-                hasAccessToken: !!accessToken,
-                hasRefreshToken: !!refreshToken,
-                hasCode: !!code,
-                redirectTo: redirectTo,
-                error: error,
-                type: type
-            });
-            
-            // Debug: Sayfaya bilgi göster
-            const debugInfo = document.createElement('div');
-            debugInfo.style.cssText = 'position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px; font-size: 12px; z-index: 9999; max-width: 300px;';
-            debugInfo.innerHTML = `
-                <strong>Debug Info:</strong><br>
-                Mobile: ${/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)}<br>
-                RedirectTo: ${redirectTo || 'None'}<br>
-                Has Code: ${!!code}<br>
-                Has Token: ${!!accessToken}
-            `;
-            document.body.appendChild(debugInfo);
 
             // Hata varsa göster
             if (error) {

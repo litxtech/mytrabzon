@@ -231,7 +231,7 @@ export default function ChatRoomScreen() {
       
       setMessageText('');
       setReplyTo(null);
-      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
       
       return { previousMessages: currentMessages };
     },
@@ -242,10 +242,13 @@ export default function ChatRoomScreen() {
       }
       Alert.alert('Hata', 'Mesaj gönderilemedi: ' + error.message);
     },
-    onSettled: () => {
-      // Cache'i invalidate et, ama optimistic update'i koru
-      utils.chat.getMessages.invalidate({ roomId });
-      utils.chat.getRooms.invalidate();
+    onSuccess: () => {
+      // Sadece başarılı olduğunda invalidate et, ama refetch yapma (optimistic update zaten var)
+      // Invalidate'i arka planda yap, UI'ı bloklamasın
+      setTimeout(() => {
+        utils.chat.getMessages.invalidate({ roomId }).catch(() => {});
+        utils.chat.getRooms.invalidate().catch(() => {});
+      }, 0);
     },
   });
 
@@ -1271,7 +1274,7 @@ export default function ChatRoomScreen() {
       <Modal
         visible={showMessageActions}
         transparent
-        animationType="fade"
+        animationType="none"
         onRequestClose={closeMessageModals}
       >
         <TouchableOpacity 
@@ -1309,7 +1312,7 @@ export default function ChatRoomScreen() {
       <Modal
         visible={isEditingMessage}
         transparent
-        animationType="fade"
+        animationType="none"
         onRequestClose={closeMessageModals}
       >
         <View style={styles.modalOverlay}>
@@ -1345,7 +1348,7 @@ export default function ChatRoomScreen() {
       {/* Add Members Modal */}
       <Modal
         visible={showAddMembersModal}
-        animationType="slide"
+        animationType="none"
         transparent={true}
         onRequestClose={() => {
           setShowAddMembersModal(false);
@@ -1450,7 +1453,7 @@ export default function ChatRoomScreen() {
       <Modal
         visible={showGroupOptionsModal}
         transparent
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => setShowGroupOptionsModal(false)}
       >
         <View style={styles.modalOverlay}>
@@ -1552,7 +1555,7 @@ export default function ChatRoomScreen() {
       {/* Manage Members Modal */}
       <Modal
         visible={showManageMembersModal}
-        animationType="slide"
+        animationType="none"
         transparent
         onRequestClose={() => setShowManageMembersModal(false)}
       >
@@ -1627,7 +1630,7 @@ export default function ChatRoomScreen() {
       <Modal
         visible={showReportModal}
         transparent
-        animationType="slide"
+        animationType="none"
         onRequestClose={() => setShowReportModal(false)}
       >
         <View style={styles.modalOverlay}>

@@ -1,18 +1,25 @@
 import createContextHook from '@nkzw/create-context-hook';
 import { supabase } from '@/lib/supabase';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { UserProfile } from '@/types/database';
 import { registerForPushNotifications } from '@/lib/notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState, AppStateStatus } from 'react-native';
+
+// AsyncStorage key'leri
+const GUEST_EMAIL_KEY = '@mytrabzon:guest_email';
+const GUEST_PASSWORD_KEY = '@mytrabzon:guest_password';
+const GUEST_USER_ID_KEY = '@mytrabzon:guest_user_id';
 
 export const [AuthContext, useAuth] = createContextHook(() => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const appStateRef = useRef(AppState.currentState);
 
   const loadProfile = useCallback(async (userId: string): Promise<UserProfile> => {
-
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -27,17 +34,14 @@ export const [AuthContext, useAuth] = createContextHook(() => {
     if (!data) {
       console.warn('Profile not found, creating one...');
       
-      // User bilgisini al
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       
-      // Email kolonu olmayabilir, kontrol et
       const profileData: any = {
         id: userId,
         full_name: currentUser?.user_metadata?.full_name || 'Kullanıcı',
         district: currentUser?.user_metadata?.district || 'Ortahisar',
       };
       
-      // Email kolonu varsa ekle
       if (currentUser?.email) {
         profileData.email = currentUser.email;
       }
@@ -76,66 +80,133 @@ export const [AuthContext, useAuth] = createContextHook(() => {
     let mounted = true;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     
-    // Android için ULTRA AGRESIF timeout - 500ms içinde session alınamazsa loading'i false yap
+    // Session'ı restore et - kalıcı oturum için
+    const restoreSession = async () => {
+      try {
+        // Önce mevcut session'ı kontrol et
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('❌ [AuthContext] Session get error:', sessionError);
+          // Hata olsa bile refresh token ile yenilemeyi dene
+          try {
+            const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+            if (refreshError || !refreshedSession) {
+              if (mounted) {
+                setLoading(false);
+              }
+              return;
+            }
+            
+            if (refreshedSession && mounted) {
+              setSession(refreshedSession);
+              setUser(refreshedSession.user);
+              if (refreshedSession.user) {
+                const profileData = await loadProfile(refreshedSession.user.id);
+                if (mounted) {
+                  setProfile(profileData);
+                  setLoading(false);
+                }
+              }
+              return;
+            }
+          } catch (refreshError) {
+            console.error('❌ [AuthContext] Refresh error:', refreshError);
+          }
+          
+          if (mounted) {
+            setLoading(false);
+          }
+          return;
+        }
+
+        if (!mounted) return;
+
+        // Session varsa kullan
+        if (session) {
+          setSession(session);
+          setUser(session.user);
+          
+          if (session.user) {
+            try {
+              const profileData = await loadProfile(session.user.id);
+              if (mounted) {
+                setProfile(profileData);
+                setLoading(false);
+              }
+            } catch (error) {
+              console.error('❌ [AuthContext] Profile load error:', error);
+              // Hata olsa bile session'ı koru
+              if (mounted) {
+                setLoading(false);
+              }
+            }
+          } else {
+            if (mounted) {
+              setLoading(false);
+            }
+          }
+        } else {
+          // Session yoksa refresh token ile yenilemeyi dene
+          try {
+            const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+            if (refreshError || !refreshedSession) {
+              console.log('⚠️ [AuthContext] No session and refresh failed - user needs to login');
+              if (mounted) {
+                setLoading(false);
+              }
+              return;
+            }
+            
+            if (refreshedSession && mounted) {
+              setSession(refreshedSession);
+              setUser(refreshedSession.user);
+              if (refreshedSession.user) {
+                const profileData = await loadProfile(refreshedSession.user.id);
+                if (mounted) {
+                  setProfile(profileData);
+                  setLoading(false);
+                }
+              } else {
+                if (mounted) {
+                  setLoading(false);
+                }
+              }
+            } else {
+              if (mounted) {
+                setLoading(false);
+              }
+            }
+          } catch (error) {
+            console.error('❌ [AuthContext] Refresh attempt error:', error);
+            if (mounted) {
+              setLoading(false);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('❌ [AuthContext] Unexpected error in restoreSession:', error);
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    // Timeout - 2 saniye içinde session alınamazsa loading'i false yap
     timeoutId = setTimeout(() => {
       if (mounted) {
         setLoading(false);
       }
-    }, 500);
+    }, 2000);
     
-    // Session'ı al ve koru - otomatik çıkış yapma
-    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+    // Session'ı restore et
+    restoreSession().then(() => {
       if (timeoutId) {
         clearTimeout(timeoutId);
         timeoutId = null;
       }
-      
-      if (!mounted) return;
-      
-      if (error) {
-        // Hata olsa bile session'ı korumaya çalış - refresh token ile yenilenebilir
-        if (mounted) {
-          setLoading(false);
-        }
-        return;
-      }
-
-      if (!mounted) return;
-
-      setSession(session);
-      const nextUser = session?.user ?? null;
-      setUser(nextUser);
-
-      if (nextUser) {
-        // Profile yükleme için de agresif timeout
-        const profileTimeout = setTimeout(() => {
-          if (mounted) {
-            setLoading(false);
-          }
-        }, 1000);
-        
-        try {
-          const profileData = await loadProfile(nextUser.id);
-          clearTimeout(profileTimeout);
-          
-          if (mounted) {
-            setProfile(profileData);
-            setLoading(false);
-          }
-        } catch (error) {
-          clearTimeout(profileTimeout);
-          // Hata olsa bile session'ı koru - otomatik çıkış yapma
-          if (mounted) {
-            setLoading(false);
-          }
-        }
-      } else {
-        // Session yoksa bile otomatik çıkış yapma - refresh token ile yenilenebilir
-        if (mounted) {
-          setLoading(false);
-        }
-      }
     }).catch((error) => {
+      console.error('❌ [AuthContext] restoreSession promise error:', error);
       if (timeoutId) {
         clearTimeout(timeoutId);
         timeoutId = null;
@@ -155,36 +226,91 @@ export const [AuthContext, useAuth] = createContextHook(() => {
 
   useEffect(() => {
     // Token refresh listener - session'ı süresiz tutmak için
+    // Daha sık refresh yap (her 15 dakikada bir) - session'ın süresiz kalması için
     const refreshInterval = setInterval(async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
           // Session varsa token'ı yenile (otomatik refresh)
-          await supabase.auth.refreshSession();
-          console.log('🔄 [AuthContext] Token refreshed automatically');
+          const { data: { session: refreshedSession }, error } = await supabase.auth.refreshSession();
+          if (error) {
+            console.error('❌ [AuthContext] Token refresh error:', error);
+            // Hata olsa bile session'ı koru - tekrar denenecek
+          } else if (refreshedSession) {
+            console.log('🔄 [AuthContext] Token refreshed automatically');
+            // Refreshed session'ı güncelle
+            setSession(refreshedSession);
+            setUser(refreshedSession.user);
+          }
+        } else {
+          // Session yoksa bile refresh token ile yenilemeyi dene
+          try {
+            const { data: { session: refreshedSession } } = await supabase.auth.refreshSession();
+            if (refreshedSession) {
+              console.log('🔄 [AuthContext] Session restored from refresh token');
+              setSession(refreshedSession);
+              setUser(refreshedSession.user);
+              if (refreshedSession.user) {
+                const profileData = await loadProfile(refreshedSession.user.id);
+                setProfile(profileData);
+              }
+            }
+          } catch (refreshError) {
+            // Refresh token da yoksa kullanıcı gerçekten çıkış yapmış demektir
+            console.log('⚠️ [AuthContext] No refresh token available');
+          }
         }
       } catch (error) {
-        console.error('Error refreshing token:', error);
+        console.error('❌ [AuthContext] Error in refresh interval:', error);
         // Hata olsa bile session'ı koru
       }
-    }, 30 * 60 * 1000); // Her 30 dakikada bir token'ı yenile
+    }, 10 * 60 * 1000); // Her 10 dakikada bir token'ı yenile (süresiz session için)
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('🔄 [AuthContext] Auth state changed:', event, session?.user?.id);
+      
       // Sadece manuel SIGNED_OUT event'inde çıkış yap
-      // TOKEN_REFRESHED ve diğer event'lerde session'ı koru
-      // Not: Supabase'de SIGNED_OUT event'i sadece manuel signOut() çağrıldığında tetiklenir
-      // Ancak TypeScript'te SIGNED_OUT event'i yok, bu yüzden session null kontrolü yapıyoruz
+      // TOKEN_REFRESHED, INITIAL_SESSION ve diğer event'lerde session'ı koru
+      if (event === 'SIGNED_OUT') {
+        // Sadece manuel çıkış yapıldığında temizle
+        console.log('👋 [AuthContext] User signed out manually');
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+      
+      // Session yoksa bile refresh token ile yenilemeyi dene
       if (!session && event !== 'TOKEN_REFRESHED' && event !== 'INITIAL_SESSION') {
-        // Session yoksa ve manuel çıkış yapılmışsa
-        console.log('👋 [AuthContext] Session ended - user may have signed out');
-        // Sadece gerçekten çıkış yapıldıysa temizle
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        if (!currentSession) {
-          setSession(null);
-          setUser(null);
-          setProfile(null);
-          setLoading(false);
-          return;
+        console.log('⚠️ [AuthContext] Session temporarily unavailable, attempting refresh...');
+        try {
+          const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError || !refreshedSession) {
+            // Refresh token da yoksa gerçekten çıkış yapılmış
+            console.log('👋 [AuthContext] No refresh token - user signed out');
+            setSession(null);
+            setUser(null);
+            setProfile(null);
+            setLoading(false);
+            return;
+          }
+          
+          // Refresh başarılı - session'ı restore et
+          console.log('✅ [AuthContext] Session restored from refresh token');
+          session = refreshedSession;
+        } catch (error) {
+          console.error('❌ [AuthContext] Refresh attempt failed:', error);
+          // Hata olsa bile bir kez daha kontrol et
+          const { data: { session: currentSession } } = await supabase.auth.getSession();
+          if (!currentSession) {
+            setSession(null);
+            setUser(null);
+            setProfile(null);
+            setLoading(false);
+            return;
+          }
+          session = currentSession;
         }
       }
 
@@ -220,9 +346,72 @@ export const [AuthContext, useAuth] = createContextHook(() => {
       }
     });
 
+    const appStateSubscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (
+        appStateRef.current.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        supabase.auth.getSession().then(({ data: { session }, error }) => {
+          if (error) {
+            console.error('❌ [AuthContext] Get session error on foreground:', error);
+            supabase.auth.refreshSession().then(({ data: { session: refreshedSession } }) => {
+              if (refreshedSession) {
+                console.log('✅ [AuthContext] Session restored from refresh token on foreground');
+                setSession(refreshedSession);
+                setUser(refreshedSession.user);
+                if (refreshedSession.user) {
+                  loadProfile(refreshedSession.user.id).then(setProfile).catch((err) => {
+                    console.error('❌ [AuthContext] Profile load error on foreground:', err);
+                  });
+                }
+              }
+            }).catch((refreshErr) => {
+              console.error('❌ [AuthContext] Refresh session error on foreground:', refreshErr);
+            });
+            return;
+          }
+
+          if (session) {
+            console.log('✅ [AuthContext] Session found on foreground, updating state');
+            setSession(session);
+            setUser(session.user);
+            if (session.user) {
+              loadProfile(session.user.id).then(setProfile).catch((err) => {
+                console.error('❌ [AuthContext] Profile load error on foreground:', err);
+              });
+            }
+          } else {
+            console.log('⚠️ [AuthContext] No session on foreground, attempting refresh...');
+            supabase.auth.refreshSession().then(({ data: { session: refreshedSession } }) => {
+              if (refreshedSession) {
+                console.log('✅ [AuthContext] Session restored from refresh token on foreground');
+                setSession(refreshedSession);
+                setUser(refreshedSession.user);
+                if (refreshedSession.user) {
+                  loadProfile(refreshedSession.user.id).then(setProfile).catch((err) => {
+                    console.error('❌ [AuthContext] Profile load error on foreground:', err);
+                  });
+                }
+              } else {
+                console.log('⚠️ [AuthContext] No refresh token available on foreground');
+              }
+            }).catch((refreshErr) => {
+              console.error('❌ [AuthContext] Refresh session error on foreground:', refreshErr);
+            });
+          }
+        }).catch((err) => {
+          console.error('❌ [AuthContext] Unexpected error on foreground session check:', err);
+        });
+      }
+      appStateRef.current = nextAppState;
+    });
+
     return () => {
       clearInterval(refreshInterval);
       subscription.unsubscribe();
+      if (appStateSubscription && typeof appStateSubscription.remove === 'function') {
+        appStateSubscription.remove();
+      }
     };
   }, [loadProfile]);
 
@@ -384,90 +573,180 @@ export const [AuthContext, useAuth] = createContextHook(() => {
 
   /**
    * Misafir olarak giriş yap (Anonymous Auth)
-   * Önce anonymous auth dener, başarısız olursa geçici email ile otomatik kayıt yapar
+   * Önce AsyncStorage'dan kayıtlı misafir hesabını kontrol eder, varsa onunla giriş yapar
+   * Yoksa yeni misafir hesabı oluşturur ve AsyncStorage'a kaydeder
    */
   const signInAsGuest = useCallback(async () => {
     try {
       setLoading(true);
       
-      // Önce anonymous auth'u dene
+      // Önce AsyncStorage'dan kayıtlı misafir hesabını kontrol et
+      const savedGuestEmail = await AsyncStorage.getItem('@mytrabzon:guest_email');
+      const savedGuestPassword = await AsyncStorage.getItem('@mytrabzon:guest_password');
+      const savedGuestUserId = await AsyncStorage.getItem('@mytrabzon:guest_user_id');
+      
       let data = null;
-      let error = null;
+      let guestEmail = '';
+      let guestPassword = '';
       
-      try {
-        const result = await supabase.auth.signInAnonymously();
-        data = result.data;
-        error = result.error;
-      } catch (anonError: any) {
-        error = anonError;
-      }
-      
-      // Anonymous auth başarısızsa backend fonksiyonu ile misafir kullanıcı oluştur (email doğrulaması bypass)
-      if (error && error.message?.includes('Anonymous sign-ins are disabled')) {
-        console.log('🔄 [Guest] Anonymous auth disabled, creating guest user via backend...');
+      // Kayıtlı misafir hesabı varsa onunla giriş yapmayı dene
+      if (savedGuestEmail && savedGuestPassword) {
+        console.log('🔄 [Guest] Saved guest account found, attempting login...');
+        guestEmail = savedGuestEmail;
+        guestPassword = savedGuestPassword;
         
         try {
-          // Backend fonksiyonu ile misafir kullanıcı oluştur (email confirmation bypass)
-          console.log('🔄 [Guest] Calling create-guest-user function via supabase.functions.invoke');
-          
-          const { data: result, error: invokeError } = await supabase.functions.invoke('create-guest-user', {
-            body: {},
-          });
-          
-          if (invokeError) {
-            console.error('❌ [Guest] create-guest-user invoke error:', invokeError);
-            throw new Error(invokeError.message || 'Misafir hesabı oluşturulamadı');
-          }
-
-          console.log('✅ [Guest] Backend response:', { success: result?.success, hasSession: !!result?.session, hasUser: !!result?.user });
-          
-          if (!result?.success || !result?.session || !result?.user) {
-            console.error('❌ [Guest] Invalid backend response:', result);
-            throw new Error('Misafir hesabı oluşturulamadı - geçersiz yanıt');
-          }
-
-          // Session'ı set et
-          console.log('🔄 [Guest] Setting session...');
-          const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-            access_token: result.session.access_token,
-            refresh_token: result.session.refresh_token,
-          });
-
-          if (sessionError || !sessionData.session || !sessionData.user) {
-            console.error('❌ [Guest] Session set error:', sessionError);
-            throw new Error('Misafir oturumu oluşturulamadı');
-          }
-
-          console.log('✅ [Guest] Session set successfully');
-          data = { session: sessionData.session, user: sessionData.user };
-        } catch (backendError: any) {
-          console.error('❌ [Guest] Backend creation error:', backendError);
-          // Fallback: Eski yöntemi dene
-          console.log('🔄 [Guest] Falling back to direct signup...');
-          
-          // Geçici email oluştur
-          const timestamp = Date.now();
-          const randomId = Math.random().toString(36).substring(2, 9);
-          const tempEmail = `guest_${timestamp}_${randomId}@mytrabzon.guest`;
-          
-          // Geçici password oluştur
-          const tempPassword = `Guest_${timestamp}_${randomId}_${Math.random().toString(36).substring(2, 15)}`;
-          
-          // Önce giriş yapmayı dene (hesap zaten varsa)
           const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-            email: tempEmail,
-            password: tempPassword,
+            email: savedGuestEmail,
+            password: savedGuestPassword,
           });
           
           if (!signInError && signInData?.session && signInData?.user) {
-            // Hesap zaten varsa direkt giriş yap
+            // Kayıtlı hesap ile giriş başarılı
+            console.log('✅ [Guest] Logged in with saved guest account');
             data = signInData;
           } else {
-            throw new Error(backendError.message || 'Misafir hesabı oluşturulamadı. Lütfen email veya telefon ile giriş yapın.');
+            console.warn('⚠️ [Guest] Saved account login failed, creating new guest account...');
+            // Kayıtlı hesap ile giriş başarısız, yeni hesap oluştur
+            // AsyncStorage'ı temizle (eski hesap geçersiz)
+            try {
+              await AsyncStorage.multiRemove([
+                '@mytrabzon:guest_email',
+                '@mytrabzon:guest_password',
+                '@mytrabzon:guest_user_id',
+              ]);
+              console.log('🔄 [Guest] Cleared invalid saved credentials');
+            } catch (clearError) {
+              console.warn('⚠️ [Guest] Failed to clear invalid credentials:', clearError);
+            }
+          }
+        } catch (loginError: any) {
+          console.warn('⚠️ [Guest] Saved account login error:', loginError);
+          // Giriş başarısız, yeni hesap oluştur
+          // AsyncStorage'ı temizle
+          try {
+            await AsyncStorage.multiRemove([
+              '@mytrabzon:guest_email',
+              '@mytrabzon:guest_password',
+              '@mytrabzon:guest_user_id',
+            ]);
+            console.log('🔄 [Guest] Cleared invalid saved credentials after error');
+          } catch (clearError) {
+            console.warn('⚠️ [Guest] Failed to clear invalid credentials:', clearError);
           }
         }
-      } else if (error) {
-        throw new Error(error.message || 'Misafir girişi başarısız');
+      }
+      
+      // Kayıtlı hesap yoksa veya giriş başarısız olduysa yeni misafir hesabı oluştur
+      if (!data || !data.session || !data.user) {
+        console.log('🔄 [Guest] Creating new guest account...');
+        
+        // Önce anonymous auth'u dene
+        let error = null;
+        
+        try {
+          const result = await supabase.auth.signInAnonymously();
+          data = result.data;
+          error = result.error;
+        } catch (anonError: any) {
+          error = anonError;
+        }
+        
+        // Anonymous auth başarısızsa backend fonksiyonu ile misafir kullanıcı oluştur
+        if (error && error.message?.includes('Anonymous sign-ins are disabled')) {
+          console.log('🔄 [Guest] Anonymous auth disabled, creating guest user via backend...');
+          
+          try {
+            // Backend fonksiyonu ile misafir kullanıcı oluştur (email confirmation bypass)
+            console.log('🔄 [Guest] Calling create-guest-user function via supabase.functions.invoke');
+            
+            const { data: result, error: invokeError } = await supabase.functions.invoke('create-guest-user', {
+              body: {},
+            });
+            
+            if (invokeError) {
+              console.error('❌ [Guest] create-guest-user invoke error:', invokeError);
+              throw new Error(invokeError.message || 'Misafir hesabı oluşturulamadı');
+            }
+
+            console.log('✅ [Guest] Backend response:', { success: result?.success, hasSession: !!result?.session, hasUser: !!result?.user });
+            
+            if (!result?.success || !result?.session || !result?.user) {
+              console.error('❌ [Guest] Invalid backend response:', result);
+              throw new Error('Misafir hesabı oluşturulamadı - geçersiz yanıt');
+            }
+
+            // Session'ı set et
+            console.log('🔄 [Guest] Setting session...');
+            const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+              access_token: result.session.access_token,
+              refresh_token: result.session.refresh_token,
+            });
+
+            if (sessionError || !sessionData.session || !sessionData.user) {
+              console.error('❌ [Guest] Session set error:', sessionError);
+              throw new Error('Misafir oturumu oluşturulamadı');
+            }
+
+            console.log('✅ [Guest] Session set successfully');
+            data = { session: sessionData.session, user: sessionData.user };
+            
+            // Backend'den dönen email/password'ü kaydet
+            if (result.credentials?.email && result.credentials?.password) {
+              guestEmail = result.credentials.email;
+              guestPassword = result.credentials.password;
+              
+              // AsyncStorage'a kaydet
+              try {
+                await AsyncStorage.multiSet([
+                  ['@mytrabzon:guest_email', guestEmail],
+                  ['@mytrabzon:guest_password', guestPassword],
+                  ['@mytrabzon:guest_user_id', sessionData.user.id],
+                ]);
+                console.log('✅ [Guest] Guest credentials saved to AsyncStorage from backend');
+              } catch (storageError: any) {
+                console.warn('⚠️ [Guest] Failed to save credentials to AsyncStorage:', storageError);
+              }
+            } else if (result.user?.email) {
+              // Backend'den email/password yoksa sadece email'i kaydet (password yok)
+              guestEmail = result.user.email;
+              console.warn('⚠️ [Guest] Backend did not return password, credentials not saved');
+            }
+          } catch (backendError: any) {
+            console.error('❌ [Guest] Backend creation error:', backendError);
+            // Fallback: Geçici email ile misafir hesabı oluştur
+            console.log('🔄 [Guest] Falling back to direct signup...');
+          }
+        }
+        
+        // Backend başarısız olduysa veya email/password yoksa fallback yöntemi kullan
+        if (!data || !data.session || !data.user) {
+          // Geçici email ve password oluştur
+          const timestamp = Date.now();
+          const randomId = Math.random().toString(36).substring(2, 9);
+          guestEmail = `guest_${timestamp}_${randomId}@mytrabzon.guest`;
+          guestPassword = `Guest_${timestamp}_${randomId}_${Math.random().toString(36).substring(2, 15)}`;
+          
+          // Yeni misafir hesabı oluştur (email confirmation bypass için backend kullanılmalı)
+          // Ancak fallback olarak normal signup denenebilir (ancak email confirmation gerekir)
+          // Bu yüzden backend fonksiyonunu kullanmak daha iyi
+          throw new Error('Misafir hesabı oluşturulamadı. Lütfen tekrar deneyin.');
+        }
+        
+        // Yeni misafir hesabı oluşturuldu, email ve password'ü AsyncStorage'a kaydet
+        if (guestEmail && guestPassword && data.user) {
+          try {
+            await AsyncStorage.multiSet([
+              ['@mytrabzon:guest_email', guestEmail],
+              ['@mytrabzon:guest_password', guestPassword],
+              ['@mytrabzon:guest_user_id', data.user.id],
+            ]);
+            console.log('✅ [Guest] Guest credentials saved to AsyncStorage');
+          } catch (storageError: any) {
+            console.warn('⚠️ [Guest] Failed to save credentials to AsyncStorage:', storageError);
+            // AsyncStorage hatası kritik değil, devam et
+          }
+        }
       }
 
       if (!data || !data.session || !data.user) {
